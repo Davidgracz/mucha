@@ -12,6 +12,7 @@ from discord.ext import tasks
 from .brain import FlyBrain
 from .config import Config
 from .connectome import Connectome
+from .console_ui import ConsoleBrainUI
 from .language import OnlineLanguage
 
 log = logging.getLogger("mucha")
@@ -53,10 +54,17 @@ class MuchaClient(discord.Client):
         self._last_save = time.monotonic()
         self._brain_lock = asyncio.Lock()
         self._last_presence_text: str | None = None
+        self._last_brain_event = "startup"
+        self._last_brain_action = "brak"
+        self.console_ui = ConsoleBrainUI(
+            mode=cfg.console_ui.mode,
+            top_neurons=cfg.console_ui.top_neurons,
+        )
 
     async def setup_hook(self) -> None:
         self.idle_loop.change_interval(seconds=self.cfg.behavior.idle_tick_seconds)
         self.voice_loop.change_interval(seconds=self.cfg.voice.poll_seconds)
+        self.console_loop.change_interval(seconds=max(0.25, self.cfg.console_ui.refresh_seconds))
         self.idle_loop.start()
         self.presence_loop.start()
         if self.cfg.voice.enabled:
@@ -67,12 +75,16 @@ class MuchaClient(discord.Client):
         log.info("Zalogowano jako %s", self.user)
         log.info("Connectome: %s neuronów, %s połączeń", self.connectome.n_neurons, self.connectome.matrix.nnz)
         log.info("Źródło: %s", m.get("source", "unknown"))
+        self.console_ui.start()
+        if self.cfg.console_ui.mode != "off" and not self.console_loop.is_running():
+            self.console_loop.start()
         await self._update_presence()
 
     async def close(self) -> None:
         try:
             self.brain.save()
             self.language.close()
+            self.console_ui.stop()
         finally:
             await super().close()
 
@@ -90,6 +102,8 @@ class MuchaClient(discord.Client):
         self.last_text_channel[message.guild.id] = message.channel.id
         self.language.learn(message.content)
         mentioned = self.user in message.mentions if self.user else False
+        channel_name = getattr(message.channel, "name", str(message.channel.id))
+        self._last_brain_event = f"TEXT • {message.author.display_name} • #{channel_name}" + (" • mention" if mentioned else "")
 
         async with self._brain_lock:
             self.brain.inject_text(message.content, message.author.id, mentioned)
@@ -114,6 +128,8 @@ class MuchaClient(discord.Client):
         try:
             sent = await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
             self.sent[sent.id] = SentTrace(trigrams=trigrams, created=time.monotonic())
+            channel_name = getattr(channel, "name", "kanał")
+            self._last_brain_action = f"TEXT → #{channel_name}: {text[:80]}"
             if len(self.sent) > 500:
                 oldest = sorted(self.sent.items(), key=lambda kv: kv[1].created)[:100]
                 for mid, _ in oldest:
@@ -134,6 +150,7 @@ class MuchaClient(discord.Client):
         elif emoji in NEGATIVE:
             amount = -1.0
         if amount:
+            self._last_brain_event = f"REACTION • {emoji} • reward {amount:+.0f}"
             self.language.reinforce(trace.trigrams, amount)
             async with self._brain_lock:
                 self.brain.reward(amount)
@@ -142,6 +159,9 @@ class MuchaClient(discord.Client):
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         if self.paused or (self.user and member.id == self.user.id):
             return
+        before_name = getattr(before.channel, "name", "poza voice")
+        after_name = getattr(after.channel, "name", "poza voice")
+        self._last_brain_event = f"VOICE • {member.display_name}: {before_name} → {after_name}"
         key = f"voice-change:{member.id}:{getattr(before.channel, 'id', 0)}:{getattr(after.channel, 'id', 0)}"
         async with self._brain_lock:
             self.brain.inject(key, 0.65, 64)
@@ -244,6 +264,45 @@ class MuchaClient(discord.Client):
         except discord.HTTPException:
             log.exception("Nie udało się zaktualizować statusu Discord")
 
+    async def _console_snapshot(self) -> dict:
+        async with self._brain_lock:
+            scores = self.brain.action_scores()
+            diag = self.brain.diagnostics()
+            top_neurons = self.brain.top_active_neurons(self.cfg.console_ui.top_neurons)
+
+        language_tokens, language_unique = self.language.stats()
+        voice_parts = []
+        for guild in self.guilds:
+            vc = guild.voice_client
+            if vc and vc.is_connected() and vc.channel:
+                voice_parts.append(f"{guild.name}/{vc.channel.name}")
+        return {
+            "source": self.connectome.metadata.get("source", "unknown"),
+            "diag": diag,
+            "scores": scores,
+            "top_neurons": top_neurons,
+            "language_tokens": language_tokens,
+            "language_unique": language_unique,
+            "language_ready": self.language.ready(),
+            "voice": ", ".join(voice_parts) if voice_parts else "poza voice",
+            "last_event": self._last_brain_event,
+            "last_action": self._last_brain_action,
+            "paused": self.paused,
+        }
+
+    @tasks.loop(seconds=1)
+    async def console_loop(self):
+        await self.wait_until_ready()
+        try:
+            snap = await self._console_snapshot()
+            self.console_ui.update(snap)
+        except Exception:
+            log.exception("Błąd konsolowego dashboardu")
+
+    @console_loop.before_loop
+    async def before_console(self):
+        await self.wait_until_ready()
+
     @tasks.loop(seconds=30)
     async def presence_loop(self):
         await self.wait_until_ready()
@@ -302,6 +361,7 @@ class MuchaClient(discord.Client):
             try:
                 await target.connect(self_deaf=True)
                 self.voice_arrived[guild.id] = now
+                self._last_brain_action = f"VOICE JOIN → {target.name}"
             except (discord.ClientException, discord.Forbidden, discord.HTTPException):
                 return
             return
@@ -314,8 +374,10 @@ class MuchaClient(discord.Client):
             return
 
         if scores["voice_leave"] >= self.cfg.voice.leave_threshold:
+            old_name = getattr(current, "name", "voice")
             await vc.disconnect(force=False)
             self.voice_arrived[guild.id] = now
+            self._last_brain_action = f"VOICE LEAVE ← {old_name}"
             return
 
         current_aff = affinities.get(current.id, 0.5)
@@ -329,6 +391,7 @@ class MuchaClient(discord.Client):
             try:
                 await vc.move_to(target)
                 self.voice_arrived[guild.id] = now
+                self._last_brain_action = f"VOICE MOVE → {target.name}"
             except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError):
                 pass
 
@@ -355,9 +418,11 @@ class MuchaClient(discord.Client):
             await message.add_reaction("💾")
         elif cmd == "pause":
             self.paused = True
+            self._last_brain_action = "ADMIN → pause"
             await message.add_reaction("⏸️")
         elif cmd == "resume":
             self.paused = False
+            self._last_brain_action = "ADMIN → resume"
             await message.add_reaction("▶️")
         elif cmd == "reward":
             async with self._brain_lock:
