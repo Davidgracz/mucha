@@ -309,3 +309,28 @@ reaction_cooldown_seconds = 20
 ```
 
 Do reakcji bot potrzebuje Discord permission **Add Reactions**.
+
+
+## Voice overstay punishment
+
+Mucha może dostać automatyczną karę za zbyt długie pozostawanie na jednym kanale voice:
+
+```toml
+[voice]
+maximum_dwell_seconds = 300
+overstay_punish_amount = 0.5
+overstay_punish_interval_seconds = 60
+```
+
+Po przekroczeniu limitu reward `-overstay_punish_amount` jest przypisywany do akcji `stay`. Jeśli nadal pozostaje na tym samym kanale, kara może zostać powtórzona po skonfigurowanym interwale. Join, move i leave resetują licznik kar dla danego pobytu.
+
+## Full reaction emoji pool
+
+Autonomiczne reakcje korzystają z pełnej bazy Unicode emoji oraz custom emoji dostępnych na bieżącym serwerze. Dla wydajności Mucha losuje i ocenia connectome tylko podzbiór całej puli dla jednej wiadomości:
+
+```toml
+[behavior]
+reaction_candidate_sample = 64
+```
+
+Każde emoji z pełnej puli może trafić do kolejnych próbek. Jeśli Discord odrzuci najwyżej ocenioną reakcję, bot próbuje następnych kandydatów. Reaction Debug pokazuje całkowity rozmiar puli, liczbę ocenionych kandydatów i top wyników.
