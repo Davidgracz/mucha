@@ -98,6 +98,8 @@ class ConsoleBrainUI:
         stats.add_row("maks. |a|", f"{diag['max_abs']:.5f}")
         stats.add_row("reward trace", f"{diag['reward_trace']:+.4f}")
         stats.add_row("tick", f"{diag['ticks']:,}")
+        stats.add_row("backend", str(diag.get("backend", "cpu")).upper())
+        stats.add_row("device", str(diag.get("device", "CPU")))
 
         actions = Table(box=box.SIMPLE, show_header=True, header_style="bold", expand=True, pad_edge=False)
         actions.add_column("readout", no_wrap=True)
