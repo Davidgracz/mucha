@@ -239,7 +239,6 @@ class MuchaClient(discord.Client):
             await self.change_presence(
                 status=discord.Status.online,
                 activity=activity,
-                afk=False,
             )
             self._last_presence_text = text
         except discord.HTTPException:
