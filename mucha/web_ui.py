@@ -186,6 +186,20 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card span3">
+      <h2>Audio Debug</h2>
+      <div class="learning-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="kpi"><small>Status</small><strong id="audio-status">—</strong></div>
+        <div class="kpi"><small>Etap</small><strong id="audio-stage">—</strong></div>
+        <div class="kpi"><small>Serwer / kanał</small><strong id="audio-target">—</strong></div>
+        <div class="kpi"><small>Plik</small><strong id="audio-file">—</strong></div>
+      </div>
+      <div class="metric"><span>FFmpeg</span><strong id="audio-ffmpeg">—</strong></div>
+      <div class="metric"><span>Rozmiar pliku</span><strong id="audio-size">—</strong></div>
+      <div class="metric"><span>Tekst TTS</span><strong id="audio-text">—</strong></div>
+      <div class="reason" id="audio-error">Brak błędów audio.</div>
+    </div>
+
+    <div class="card span3">
       <h2>Voice Debug</h2>
       <div id="voice-debug"><div class="reason">Czekam na pierwszy cykl voice…</div></div>
     </div>
@@ -216,6 +230,23 @@ function renderActions(scores){
 function esc(v){
   return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
 }
+function renderAudioDebug(a){
+  a=a||{};
+  const status=String(a.status||"—");
+  $("audio-status").textContent=status;
+  $("audio-status").className=status==="ERROR"?"no":status==="PLAYING"?"ok":"";
+  $("audio-stage").textContent=a.stage||"—";
+  $("audio-target").textContent=(a.guild||"—")+" / "+(a.channel||"—");
+  $("audio-file").textContent=a.file||"—";
+  $("audio-ffmpeg").textContent=a.ffmpeg||"—";
+  $("audio-size").textContent=nfmt(a.file_size||0)+" B";
+  $("audio-text").textContent=a.text||"—";
+  const err=a.error||"";
+  $("audio-error").innerHTML=err
+    ? '<b class="no">BŁĄD:</b> '+esc(err)
+    : 'Brak błędów audio.';
+}
+
 function renderVoiceDebug(items){
   const root=$("voice-debug");
   if(!Array.isArray(items)||!items.length){
@@ -421,6 +452,7 @@ async function update(){
     renderActionHistory(s.action_history||[]);
     renderGuildLearningContext(s.guild_learning_context||[]);
     drawRewardChart(s.reward_history||[],d.reward_trace);
+    renderAudioDebug(s.audio_debug||{});
     renderVoiceDebug(s.voice_debug||[]);
     $("top").innerHTML=(s.top_neurons||[]).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+x[0]+'</td><td>'+(x[1]>=0?"+":"")+Number(x[1]).toFixed(5)+'</td><td>'+Math.abs(x[1]).toFixed(5)+'</td></tr>').join("");
     history.push({mean:Number(d.mean_abs),max:Number(d.max_abs)});while(history.length>maxHistory)history.shift();draw();
