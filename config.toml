@@ -90,6 +90,17 @@ reaction_threshold = 0.62
 reaction_cooldown_seconds = 1
 reaction_candidate_sample = 64
 save_every_seconds = 45
+social_learning_enabled = true
+social_window_seconds = 900
+word_reuse_reward = 0.20
+phrase_reuse_reward = 0.35
+direct_reply_reward = 0.10
+self_repeat_penalty = 0.10
+user_affinity_positive_step = 0.08
+user_affinity_negative_step = 0.12
+user_avoid_threshold = -0.35
+ignore_disliked_users_text = true
+avoid_disliked_users_on_voice = true
 
 [discord]
 command_prefix = "!mucha "
