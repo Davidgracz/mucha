@@ -1,9 +1,15 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
+import os
+import shutil
+import time
 import webbrowser
+from pathlib import Path
 from typing import Awaitable, Callable
 
 from aiohttp import web
@@ -11,6 +17,203 @@ from aiohttp import web
 log = logging.getLogger("mucha.web")
 
 SnapshotProvider = Callable[[], Awaitable[dict]]
+
+LOGIN_HTML = r"""<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mucha Control Center — logowanie</title>
+<style>
+:root{color-scheme:dark;--bg:#070b10;--card:#101720;--line:#243142;--txt:#eef6ff;--muted:#8291a2;--a:#59ddc6;--b:#6ea8fe;--bad:#ff7474}
+*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;background:
+radial-gradient(circle at 20% 10%,rgba(89,221,198,.12),transparent 35%),
+radial-gradient(circle at 80% 90%,rgba(110,168,254,.14),transparent 35%),var(--bg);
+font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;color:var(--txt)}
+.box{width:min(420px,calc(100% - 28px));background:rgba(16,23,32,.94);border:1px solid var(--line);
+border-radius:22px;padding:28px;box-shadow:0 28px 80px rgba(0,0,0,.35)}
+.logo{font-size:42px}.eyebrow{color:var(--a);text-transform:uppercase;letter-spacing:.14em;font-size:11px;font-weight:800}
+h1{font-size:25px;margin:8px 0 5px}p{color:var(--muted);margin:0 0 22px;line-height:1.5}
+label{display:block;color:#afbdcb;font-size:12px;margin:14px 0 7px}
+input{width:100%;padding:12px 13px;background:#0a1017;color:var(--txt);border:1px solid #263548;border-radius:11px;outline:0}
+input:focus{border-color:var(--a);box-shadow:0 0 0 3px rgba(89,221,198,.1)}
+button{width:100%;margin-top:18px;padding:12px;border:0;border-radius:11px;font-weight:800;color:#06110e;
+background:linear-gradient(90deg,var(--a),#79e2d1);cursor:pointer}
+.err{color:var(--bad);font-size:13px;margin-top:12px}.foot{text-align:center;color:#607081;font-size:11px;margin-top:18px}
+</style></head>
+<body><form class="box" method="post" action="/login">
+<div class="logo">🪰</div><div class="eyebrow">Mucha Control Center</div>
+<h1>Prywatny dashboard</h1><p>Status VPS, Muchy, Chasera, voice i connectome w jednym miejscu.</p>
+<label>Użytkownik</label><input name="username" autocomplete="username" required>
+<label>Hasło</label><input type="password" name="password" autocomplete="current-password" required>
+<div class="err">__ERROR__</div>
+<button type="submit">Wejdź do panelu</button>
+<div class="foot">Sesja jest zapisywana tylko w bezpiecznym cookie HTTP-only.</div>
+</form></body></html>"""
+
+OVERVIEW_HTML = r"""<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mucha Control Center</title>
+<style>
+:root{--bg:#070b10;--panel:#0f161f;--panel2:#0a1118;--line:#213043;--txt:#edf5fd;--muted:#8190a1;
+--a:#58dac4;--blue:#6ea8fe;--good:#57db91;--warn:#f0c45b;--bad:#ff7272}
+*{box-sizing:border-box}body{margin:0;background:
+radial-gradient(circle at 12% 0%,rgba(88,218,196,.10),transparent 30%),
+radial-gradient(circle at 88% 0%,rgba(110,168,254,.10),transparent 32%),
+linear-gradient(180deg,#070b10,#0a1017 60%,#080c11);color:var(--txt);
+font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1480px;margin:auto;padding:22px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+.brand{display:flex;gap:13px;align-items:center}.logo{font-size:37px;filter:drop-shadow(0 0 18px rgba(88,218,196,.22))}
+h1{margin:0;font-size:24px}.sub{margin-top:4px;color:var(--muted);font-size:12px}.nav{display:flex;gap:8px;flex-wrap:wrap}
+.nav a{color:#b9c8d7;text-decoration:none;background:#0e1720;border:1px solid var(--line);padding:8px 11px;border-radius:10px;font-size:12px}
+.nav a:hover{border-color:#3b566f;color:white}.hero{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:12px}
+.hero-card,.card{background:rgba(15,22,31,.94);border:1px solid var(--line);border-radius:16px}
+.hero-card{padding:14px}.hero-card small,.k small{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}
+.hero-card strong{font-size:18px}.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{padding:15px;min-width:0}
+.card h2{margin:0 0 12px;font-size:12px;color:#aebdcb;text-transform:uppercase;letter-spacing:.1em}
+.row{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid rgba(33,48,67,.65);font-size:13px}
+.row:last-child{border-bottom:0}.row span{color:var(--muted)}.row strong{text-align:right;word-break:break-word}
+.kpis{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:10px}.k{background:var(--panel2);border:1px solid #1e2b3a;border-radius:11px;padding:10px;min-width:0}
+.k strong{font-size:14px;word-break:break-word}.status{display:inline-flex;align-items:center;gap:7px}.dot{width:8px;height:8px;border-radius:50%;background:var(--good);box-shadow:0 0 12px rgba(87,219,145,.55)}
+.dot.bad{background:var(--bad);box-shadow:0 0 12px rgba(255,114,114,.5)}.dot.warn{background:var(--warn)}
+.good{color:var(--good)}.badc{color:var(--bad)}.warnc{color:var(--warn)}.accent{color:var(--a)}
+.actions{display:flex;flex-direction:column;gap:7px}.act{display:grid;grid-template-columns:95px 1fr 45px;gap:8px;align-items:center;font-size:12px}
+.track{height:8px;background:#071019;border:1px solid #1d2b39;border-radius:999px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--a))}
+.logs{background:#070d13;border:1px solid #1c2937;border-radius:11px;padding:10px;max-height:270px;overflow:auto;
+font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;color:#aebccc}
+.logs .err{color:#ff9393}.span2{grid-column:span 2}.progress{height:8px;background:#071019;border-radius:999px;overflow:hidden;border:1px solid #1d2b39;margin-top:7px}
+.progress>div{height:100%;background:linear-gradient(90deg,var(--a),var(--blue))}
+.footer{text-align:right;color:#5e6e7d;font-size:11px;margin-top:12px}
+@media(max-width:900px){.hero{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.span2{grid-column:auto}}
+@media(max-width:560px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr}}
+</style></head>
+<body><main>
+<div class="top">
+  <div class="brand"><div class="logo">🪰</div><div><h1>Mucha Control Center</h1><div class="sub">VPS • Discord • Connectome • Chaser • Audio</div></div></div>
+  <div class="nav"><a href="/brain">🧠 Brain Debug</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
+</div>
+
+<section class="hero">
+ <div class="hero-card"><small>Mucha</small><strong id="hero-mucha">łączenie…</strong></div>
+ <div class="hero-card"><small>Chaser</small><strong id="hero-chaser">łączenie…</strong></div>
+ <div class="hero-card"><small>Voice</small><strong id="hero-voice">—</strong></div>
+ <div class="hero-card"><small>Następny pościg</small><strong id="hero-next">—</strong></div>
+</section>
+
+<section class="grid">
+ <div class="card">
+  <h2>🪰 Mucha Service</h2>
+  <div class="kpis">
+   <div class="k"><small>RAM</small><strong id="mucha-ram">—</strong></div>
+   <div class="k"><small>Uptime</small><strong id="mucha-up">—</strong></div>
+   <div class="k"><small>PID</small><strong id="mucha-pid">—</strong></div>
+  </div>
+  <div class="row"><span>Stan</span><strong id="mucha-state">—</strong></div>
+  <div class="row"><span>Connectome</span><strong id="connectome">—</strong></div>
+  <div class="row"><span>Backend</span><strong id="backend">—</strong></div>
+  <div class="row"><span>Ostatni bodziec</span><strong id="last-event">—</strong></div>
+  <div class="row"><span>Ostatnia akcja</span><strong id="last-action">—</strong></div>
+ </div>
+
+ <div class="card">
+  <h2>🏃 Mucha Chaser</h2>
+  <div class="kpis">
+   <div class="k"><small>RAM</small><strong id="chaser-ram">—</strong></div>
+   <div class="k"><small>Cykl</small><strong id="chaser-cycle">—</strong></div>
+   <div class="k"><small>Pościg</small><strong id="chaser-duration">—</strong></div>
+  </div>
+  <div class="row"><span>Stan</span><strong id="chaser-state">—</strong></div>
+  <div class="row"><span>Kanał</span><strong id="chaser-channel">—</strong></div>
+  <div class="row"><span>Następna runda</span><strong id="chaser-next">—</strong></div>
+  <div class="row"><span>Ostatnie zdarzenie</span><strong id="chaser-event">—</strong></div>
+ </div>
+
+ <div class="card">
+  <h2>🖥 VPS</h2>
+  <div class="kpis">
+   <div class="k"><small>Uptime</small><strong id="vps-up">—</strong></div>
+   <div class="k"><small>Load</small><strong id="vps-load">—</strong></div>
+   <div class="k"><small>Dysk</small><strong id="vps-disk">—</strong></div>
+  </div>
+  <div class="row"><span>RAM</span><strong id="vps-ram">—</strong></div>
+  <div class="progress"><div id="ram-bar" style="width:0"></div></div>
+  <div class="row"><span>Wolny RAM</span><strong id="vps-free">—</strong></div>
+  <div class="row"><span>Aktualizacja panelu</span><strong id="updated">—</strong></div>
+ </div>
+
+ <div class="card">
+  <h2>🔊 Audio / TTS</h2>
+  <div class="row"><span>Status</span><strong id="audio-status">—</strong></div>
+  <div class="row"><span>Etap</span><strong id="audio-stage">—</strong></div>
+  <div class="row"><span>Cel</span><strong id="audio-target">—</strong></div>
+  <div class="row"><span>Plik</span><strong id="audio-file">—</strong></div>
+  <div class="row"><span>Tekst</span><strong id="audio-text">—</strong></div>
+ </div>
+
+ <div class="card">
+  <h2>🧠 Connectome Output</h2>
+  <div class="actions" id="actions"></div>
+ </div>
+
+ <div class="card">
+  <h2>📊 Brain Snapshot</h2>
+  <div class="row"><span>Neurony</span><strong id="neurons">—</strong></div>
+  <div class="row"><span>Połączenia</span><strong id="connections">—</strong></div>
+  <div class="row"><span>Aktywne |a| &gt; .1</span><strong id="active-neurons">—</strong></div>
+  <div class="row"><span>Mean |a|</span><strong id="mean-a">—</strong></div>
+  <div class="row"><span>Reward trace</span><strong id="reward-trace">—</strong></div>
+  <div class="row"><span>Tick</span><strong id="ticks">—</strong></div>
+ </div>
+
+ <div class="card">
+  <h2>📜 Mucha — ostatnie logi</h2>
+  <div class="logs" id="mucha-logs">czekam…</div>
+ </div>
+ <div class="card">
+  <h2>📜 Chaser — ostatnie logi</h2>
+  <div class="logs" id="chaser-logs">czekam…</div>
+ </div>
+</section>
+<div class="footer">Mucha Control Center • live refresh</div>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const fmtBytes=n=>{n=Number(n||0);if(!n)return "0 B";const u=["B","KB","MB","GB","TB"];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return n.toFixed(i>1?2:1)+" "+u[i]};
+const dur=s=>{s=Math.max(0,Number(s||0));const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);const x=Math.floor(s%60);return (d?d+"d ":"")+(h?h+"h ":"")+(m?m+"m ":"")+x+"s"};
+const nfmt=n=>Number(n||0).toLocaleString("pl-PL");
+const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+let last=null;
+function serviceLabel(s){const ok=s&&s.active;return '<span class="status"><i class="dot '+(ok?'':'bad')+'"></i><span class="'+(ok?'good':'badc')+'">'+(ok?'ONLINE':'OFFLINE')+'</span></span>'}
+function firstGuild(cs){const g=Object.values((cs&&cs.guilds)||{});return g.find(x=>x.active_chase)||g[0]||{}}
+function nextText(ts){if(!ts)return "—";const sec=Number(ts)-Date.now()/1000;if(sec<=0)return "teraz";return "za "+dur(sec)}
+function renderActions(scores){const order=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];const dom=Object.entries(scores||{}).sort((a,b)=>b[1]-a[1])[0]?.[0];
+ $("actions").innerHTML=order.map(k=>{const v=Number((scores||{})[k]||0);return '<div class="act"><b class="'+(k===dom?'accent':'')+'">'+(k===dom?'▶ ':'')+k+'</b><div class="track"><div class="fill" style="width:'+Math.max(0,Math.min(100,v*100))+'%"></div></div><span>'+v.toFixed(3)+'</span></div>'}).join("")}
+function render(d){
+ last=d;const s=d.snapshot||{},diag=s.diag||{},m=d.services?.mucha||{},ch=d.services?.chaser||{},sys=d.system||{},cs=d.chaser_status||{},cg=firstGuild(cs),a=s.audio_debug||{};
+ $("hero-mucha").innerHTML=serviceLabel(m);$("hero-chaser").innerHTML=serviceLabel(ch);
+ $("hero-voice").textContent=s.voice||"poza voice";$("hero-next").textContent=nextText(cg.next_round_at);
+ $("mucha-ram").textContent=fmtBytes(m.memory_bytes);$("mucha-up").textContent=dur(m.uptime_seconds);$("mucha-pid").textContent=m.pid||"—";$("mucha-state").innerHTML=serviceLabel(m);
+ $("connectome").textContent=nfmt(diag.neurons)+" / "+nfmt(diag.connections);$("backend").textContent=(diag.backend||"cpu").toUpperCase()+" • "+(diag.device||"CPU");
+ $("last-event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";
+ $("chaser-ram").textContent=fmtBytes(ch.memory_bytes);$("chaser-cycle").textContent=dur(cs.interval_seconds||0);$("chaser-duration").textContent=dur(cs.duration_seconds||0);
+ $("chaser-state").innerHTML=serviceLabel(ch)+" • <span class='"+(cg.active_chase?"badc":"accent")+"'>"+esc(cg.state||"—")+"</span>";
+ $("chaser-channel").textContent=cg.current_voice_channel||"poza voice";$("chaser-next").textContent=nextText(cg.next_round_at);$("chaser-event").textContent=cg.last_event||"—";
+ $("vps-up").textContent=dur(sys.uptime_seconds);$("vps-load").textContent=(sys.load||[]).map(x=>Number(x).toFixed(2)).join(" / ");
+ $("vps-disk").textContent=fmtBytes(sys.disk_used)+" / "+fmtBytes(sys.disk_total);$("vps-ram").textContent=fmtBytes(sys.mem_used)+" / "+fmtBytes(sys.mem_total);
+ $("vps-free").textContent=fmtBytes(sys.mem_available);$("ram-bar").style.width=Math.max(0,Math.min(100,Number(sys.mem_percent||0)))+"%";$("updated").textContent=new Date().toLocaleTimeString("pl-PL");
+ $("audio-status").textContent=a.status||"—";$("audio-stage").textContent=a.stage||"—";$("audio-target").textContent=(a.guild||"—")+" / "+(a.channel||"—");
+ $("audio-file").textContent=a.file||"—";$("audio-text").textContent=a.text||"—";
+ $("neurons").textContent=nfmt(diag.neurons);$("connections").textContent=nfmt(diag.connections);$("active-neurons").textContent=nfmt(diag.active_abs_gt_0_1);
+ $("mean-a").textContent=Number(diag.mean_abs||0).toFixed(5);$("reward-trace").textContent=Number(diag.reward_trace||0).toFixed(4);$("ticks").textContent=nfmt(diag.ticks);
+ renderActions(s.scores||{});
+ $("mucha-logs").textContent=(d.logs?.mucha||[]).join("\n")||"brak logów";$("chaser-logs").textContent=(d.logs?.chaser||[]).join("\n")||"brak logów";
+}
+async function update(){try{const r=await fetch("/api/overview",{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}catch(e){console.error(e);$("hero-mucha").innerHTML='<span class="badc">BRAK POŁĄCZENIA</span>'}}
+setInterval(update,2500);setInterval(()=>{if(last){const g=firstGuild(last.chaser_status||{});$("hero-next").textContent=nextText(g.next_round_at);$("chaser-next").textContent=nextText(g.next_round_at)}},1000);update();
+</script></body></html>"""
 
 HTML = r"""<!doctype html>
 <html lang="pl">
@@ -485,6 +688,11 @@ class WebDashboard:
         auto_open: bool = True,
         refresh_ms: int = 500,
         history_points: int = 180,
+        auth_enabled: bool = True,
+        auth_username: str = "admin",
+        auth_password_env: str = "MUCHA_DASHBOARD_PASSWORD",
+        session_hours: int = 168,
+        chaser_status_file: str = "/opt/mucha-chaser/state/chaser_status.json",
     ):
         self.snapshot_provider = snapshot_provider
         self.host = host
@@ -492,23 +700,95 @@ class WebDashboard:
         self.auto_open = bool(auto_open)
         self.refresh_ms = max(100, int(refresh_ms))
         self.history_points = max(30, int(history_points))
+        self.auth_enabled = bool(auth_enabled)
+        self.auth_username = str(auth_username)
+        self.auth_password_env = str(auth_password_env)
+        self.auth_password = os.getenv(self.auth_password_env, "")
+        self.session_hours = max(1, int(session_hours))
+        self.chaser_status_file = Path(chaser_status_file)
         self.runner: web.AppRunner | None = None
         self.site: web.TCPSite | None = None
+        self._bind_host = self.host
+
+    def _session_token(self, expires: int) -> str:
+        payload = str(int(expires))
+        signature = hmac.new(
+            self.auth_password.encode("utf-8"),
+            payload.encode("ascii"),
+            hashlib.sha256,
+        ).hexdigest()
+        return f"{payload}.{signature}"
+
+    def _is_authenticated(self, request: web.Request) -> bool:
+        if not self.auth_enabled:
+            return True
+        if not self.auth_password:
+            return False
+
+        raw = request.cookies.get("mucha_dashboard_session", "")
+        try:
+            expires_text, signature = raw.split(".", 1)
+            expires = int(expires_text)
+        except (ValueError, TypeError):
+            return False
+
+        if expires < int(time.time()):
+            return False
+
+        expected = self._session_token(expires).split(".", 1)[1]
+        return hmac.compare_digest(signature, expected)
+
+    @web.middleware
+    async def _auth_middleware(
+        self,
+        request: web.Request,
+        handler,
+    ) -> web.StreamResponse:
+        if request.path in {"/login", "/health"}:
+            return await handler(request)
+
+        if self._is_authenticated(request):
+            return await handler(request)
+
+        if request.path.startswith("/api/"):
+            raise web.HTTPUnauthorized(text="authentication required")
+        raise web.HTTPFound("/login")
 
     async def start(self) -> None:
         if self.runner is not None:
             return
-        app = web.Application()
+
+        if (
+            self.auth_enabled
+            and not self.auth_password
+            and self.host not in {"127.0.0.1", "localhost", "::1"}
+        ):
+            self._bind_host = "127.0.0.1"
+            log.error(
+                "Public Web UI requested, but %s is empty. "
+                "Binding to 127.0.0.1 until a dashboard password is configured.",
+                self.auth_password_env,
+            )
+        else:
+            self._bind_host = self.host
+
+        app = web.Application(middlewares=[self._auth_middleware])
         app.router.add_get("/", self._index)
+        app.router.add_get("/brain", self._brain)
+        app.router.add_get("/login", self._login_get)
+        app.router.add_post("/login", self._login_post)
+        app.router.add_get("/logout", self._logout)
         app.router.add_get("/api/state", self._state)
+        app.router.add_get("/api/overview", self._overview)
         app.router.add_get("/health", self._health)
+
         self.runner = web.AppRunner(app, access_log=None)
         await self.runner.setup()
-        self.site = web.TCPSite(self.runner, self.host, self.port)
+        self.site = web.TCPSite(self.runner, self._bind_host, self.port)
         await self.site.start()
-        log.info("Web UI: http://%s:%s", self.host, self.port)
+        log.info("Web UI: http://%s:%s", self._bind_host, self.port)
 
-        if self.auto_open and self.host in {"127.0.0.1", "localhost"}:
+        if self.auto_open and self._bind_host in {"127.0.0.1", "localhost"}:
             url = f"http://127.0.0.1:{self.port}"
             asyncio.get_running_loop().call_later(1.0, webbrowser.open, url)
 
@@ -519,13 +799,255 @@ class WebDashboard:
             self.site = None
 
     async def _index(self, request: web.Request) -> web.Response:
-        html = HTML.replace("const maxHistory=180;", f"const maxHistory={self.history_points};")
-        html = html.replace("setInterval(update,500);", f"setInterval(update,{self.refresh_ms});")
+        return web.Response(text=OVERVIEW_HTML, content_type="text/html")
+
+    async def _brain(self, request: web.Request) -> web.Response:
+        html = HTML.replace(
+            "const maxHistory=180;",
+            f"const maxHistory={self.history_points};",
+        )
+        html = html.replace(
+            "setInterval(update,500);",
+            f"setInterval(update,{self.refresh_ms});",
+        )
         return web.Response(text=html, content_type="text/html")
+
+    async def _login_get(self, request: web.Request) -> web.Response:
+        if self._is_authenticated(request):
+            raise web.HTTPFound("/")
+        return web.Response(
+            text=LOGIN_HTML.replace("__ERROR__", ""),
+            content_type="text/html",
+        )
+
+    async def _login_post(self, request: web.Request) -> web.StreamResponse:
+        if not self.auth_enabled:
+            raise web.HTTPFound("/")
+
+        form = await request.post()
+        username = str(form.get("username", ""))
+        password = str(form.get("password", ""))
+
+        user_ok = hmac.compare_digest(username, self.auth_username)
+        password_ok = bool(self.auth_password) and hmac.compare_digest(
+            password,
+            self.auth_password,
+        )
+
+        if not (user_ok and password_ok):
+            return web.Response(
+                text=LOGIN_HTML.replace(
+                    "__ERROR__",
+                    "Nieprawidłowy login lub hasło.",
+                ),
+                content_type="text/html",
+                status=401,
+            )
+
+        expires = int(time.time() + self.session_hours * 3600)
+        response = web.HTTPFound("/")
+        response.set_cookie(
+            "mucha_dashboard_session",
+            self._session_token(expires),
+            max_age=self.session_hours * 3600,
+            httponly=True,
+            samesite="Strict",
+            secure=request.headers.get("X-Forwarded-Proto", "").lower()
+            == "https",
+        )
+        return response
+
+    async def _logout(self, request: web.Request) -> web.StreamResponse:
+        response = web.HTTPFound("/login")
+        response.del_cookie("mucha_dashboard_session")
+        return response
 
     async def _state(self, request: web.Request) -> web.Response:
         snap = await self.snapshot_provider()
-        return web.json_response(snap, dumps=lambda x: json.dumps(x, ensure_ascii=False))
+        return web.json_response(
+            snap,
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
+
+    async def _service_status(self, unit: str) -> dict:
+        props = (
+            "ActiveState,SubState,MainPID,MemoryCurrent,CPUUsageNSec,"
+            "ActiveEnterTimestampMonotonic"
+        )
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "systemctl",
+                "show",
+                unit,
+                f"--property={props}",
+                "--no-pager",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=3.0,
+            )
+        except Exception as exc:
+            return {
+                "unit": unit,
+                "active": False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+        data: dict[str, str] = {}
+        for line in stdout.decode("utf-8", "replace").splitlines():
+            if "=" in line:
+                key, value = line.split("=", 1)
+                data[key] = value
+
+        def as_int(value: str | None) -> int:
+            try:
+                return int(value or 0)
+            except ValueError:
+                return 0
+
+        entered_us = as_int(data.get("ActiveEnterTimestampMonotonic"))
+        uptime = (
+            max(0.0, time.monotonic() - entered_us / 1_000_000.0)
+            if entered_us
+            else 0.0
+        )
+        return {
+            "unit": unit,
+            "active": data.get("ActiveState") == "active",
+            "active_state": data.get("ActiveState", "unknown"),
+            "sub_state": data.get("SubState", "unknown"),
+            "pid": as_int(data.get("MainPID")),
+            "memory_bytes": as_int(data.get("MemoryCurrent")),
+            "cpu_seconds": as_int(data.get("CPUUsageNSec")) / 1_000_000_000.0,
+            "uptime_seconds": uptime,
+            "error": stderr.decode("utf-8", "replace").strip(),
+        }
+
+    def _system_status(self) -> dict:
+        mem: dict[str, int] = {}
+        try:
+            for line in Path("/proc/meminfo").read_text(
+                encoding="utf-8",
+            ).splitlines():
+                if ":" not in line:
+                    continue
+                key, value = line.split(":", 1)
+                number = value.strip().split()[0]
+                mem[key] = int(number) * 1024
+        except (OSError, ValueError):
+            pass
+
+        try:
+            uptime = float(
+                Path("/proc/uptime").read_text(
+                    encoding="utf-8",
+                ).split()[0]
+            )
+        except (OSError, ValueError, IndexError):
+            uptime = 0.0
+
+        try:
+            load = list(os.getloadavg())
+        except OSError:
+            load = [0.0, 0.0, 0.0]
+
+        disk = shutil.disk_usage("/")
+        total = int(mem.get("MemTotal", 0))
+        available = int(mem.get("MemAvailable", 0))
+        used = max(0, total - available)
+        percent = (used / total * 100.0) if total else 0.0
+
+        return {
+            "uptime_seconds": uptime,
+            "load": load,
+            "mem_total": total,
+            "mem_available": available,
+            "mem_used": used,
+            "mem_percent": percent,
+            "disk_total": disk.total,
+            "disk_used": disk.used,
+            "disk_free": disk.free,
+        }
+
+    def _chaser_status(self) -> dict:
+        try:
+            return json.loads(
+                self.chaser_status_file.read_text(encoding="utf-8")
+            )
+        except (OSError, json.JSONDecodeError):
+            return {}
+
+    async def _journal_tail(self, unit: str, lines: int = 18) -> list[str]:
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                "journalctl",
+                "-u",
+                unit,
+                "-n",
+                str(max(1, min(50, int(lines)))),
+                "--no-pager",
+                "-o",
+                "cat",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=3.0,
+            )
+            if proc.returncode != 0:
+                message = stderr.decode("utf-8", "replace").strip()
+                return [message] if message else []
+            return stdout.decode(
+                "utf-8",
+                "replace",
+            ).splitlines()[-lines:]
+        except Exception as exc:
+            return [f"{type(exc).__name__}: {exc}"]
+
+    async def _overview(self, request: web.Request) -> web.Response:
+        snapshot_task = asyncio.create_task(self.snapshot_provider())
+        mucha_task = asyncio.create_task(
+            self._service_status("mucha.service")
+        )
+        chaser_task = asyncio.create_task(
+            self._service_status("mucha-chaser.service")
+        )
+        mucha_logs_task = asyncio.create_task(
+            self._journal_tail("mucha.service")
+        )
+        chaser_logs_task = asyncio.create_task(
+            self._journal_tail("mucha-chaser.service")
+        )
+
+        snapshot, mucha, chaser, mucha_logs, chaser_logs = await asyncio.gather(
+            snapshot_task,
+            mucha_task,
+            chaser_task,
+            mucha_logs_task,
+            chaser_logs_task,
+        )
+
+        payload = {
+            "now": time.time(),
+            "snapshot": snapshot,
+            "system": self._system_status(),
+            "services": {
+                "mucha": mucha,
+                "chaser": chaser,
+            },
+            "chaser_status": self._chaser_status(),
+            "logs": {
+                "mucha": mucha_logs,
+                "chaser": chaser_logs,
+            },
+        }
+        return web.json_response(
+            payload,
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
 
     async def _health(self, request: web.Request) -> web.Response:
         return web.json_response({"ok": True})
