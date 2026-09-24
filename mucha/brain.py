@@ -282,7 +282,9 @@ class FlyBrain:
         idx_cpu = self._subset("output:" + key, self.c.output, width)
         idx = self._backend_indices(idx_cpu)
         raw = self.compute.scalar(self.xp.mean(self.state[idx]))
-        return _sigmoid(3.2 * raw + 0.35 * self.reward_trace)
+        # Reward trace is a mild global arousal signal. Most learning is now
+        # action-specific in reward(), so feedback no longer lifts every action equally.
+        return _sigmoid(3.2 * raw + 0.08 * self.reward_trace)
 
     def action_scores(self) -> dict[str, float]:
         return {name: self.readout("action:" + name, 128) for name in self.ACTIONS}
