@@ -45,6 +45,43 @@ NEGATIVE_REACTION_WEIGHT = {
     "🤮": 1.0, "😡": 0.9, "👎": 0.8, "💩": 0.7, "😒": 0.6,
 }
 
+# Natural-language rejection aimed at Mucha. Severity is 0..1 and controls
+# both social affinity damage and the negative reward of the triggering trace.
+VERBAL_REJECTION_PATTERNS: tuple[tuple[re.Pattern[str], str, float], ...] = (
+    (re.compile(r"\\bwypierdal(?:aj|ać|ac)?\\b", re.I), "wypierdalaj", 1.00),
+    (re.compile(r"\\bspierdal(?:aj|ać|ac)?\\b", re.I), "spierdalaj", 1.00),
+    (re.compile(r"\\bodpierdol\\s*(?:się|sie)?\\b", re.I), "odpierdol się", 1.00),
+    (re.compile(r"\\bpierdol\\s*(?:się|sie)\\b", re.I), "pierdol się", 0.95),
+    (re.compile(r"\\bjeb\\s*(?:się|sie)\\b", re.I), "jeb się", 0.95),
+    (re.compile(r"\\bzamknij\\s+(?:mordę|morde|ryj|pysk)\\b", re.I), "zamknij mordę", 0.95),
+    (re.compile(r"\\bstul\\s+(?:mordę|morde|ryj|pysk)\\b", re.I), "stul pysk", 0.95),
+    (re.compile(r"\\bprzestań\\s+pierdolić\\b", re.I), "przestań pierdolić", 0.90),
+    (re.compile(r"\\bprzestan\\s+pierdolic\\b", re.I), "przestań pierdolić", 0.90),
+    (re.compile(r"\\bnie\\s+pierdol\\b", re.I), "nie pierdol", 0.85),
+    (re.compile(r"\\bskończ\\s+pierdolić\\b", re.I), "skończ pierdolić", 0.85),
+    (re.compile(r"\\bskoncz\\s+pierdolic\\b", re.I), "skończ pierdolić", 0.85),
+    (re.compile(r"\\bcicho\\s+kurwa\\b", re.I), "cicho kurwa", 0.85),
+    (re.compile(r"\\bkurwa\\s+(?:cicho|zamknij\\s+się|zamknij\\s+sie)\\b", re.I), "kurwa cicho", 0.85),
+    (re.compile(r"\\bco\\s+ty\\s+pierdolisz\\b", re.I), "co ty pierdolisz", 0.75),
+    (re.compile(r"\\bale\\s+pierdolisz\\b", re.I), "ale pierdolisz", 0.70),
+    (re.compile(r"\\bzamknij\\s+(?:się|sie)\\b", re.I), "zamknij się", 0.70),
+    (re.compile(r"\\bweź\\s+się\\s+zamknij\\b", re.I), "weź się zamknij", 0.75),
+    (re.compile(r"\\bwez\\s+sie\\s+zamknij\\b", re.I), "weź się zamknij", 0.75),
+    (re.compile(r"\\bnie\\s+odzywaj\\s+(?:się|sie)\\b", re.I), "nie odzywaj się", 0.70),
+    (re.compile(r"\\bzamilcz\\b", re.I), "zamilcz", 0.65),
+    (re.compile(r"\\bjapa\\b", re.I), "japa", 0.65),
+    (re.compile(r"\\bstul\\s+się\\b", re.I), "stul się", 0.65),
+    (re.compile(r"\\bstul\\s+sie\\b", re.I), "stul się", 0.65),
+    (re.compile(r"\\bprzestań\\b", re.I), "przestań", 0.45),
+    (re.compile(r"\\bprzestan\\b", re.I), "przestań", 0.45),
+    (re.compile(r"\\bdaj\\s+spokój\\b", re.I), "daj spokój", 0.35),
+    (re.compile(r"\\bdaj\\s+spokoj\\b", re.I), "daj spokój", 0.35),
+    (re.compile(r"\\bgłupia\\s+mucha\\b", re.I), "głupia mucha", 0.55),
+    (re.compile(r"\\bglupia\\s+mucha\\b", re.I), "głupia mucha", 0.55),
+    (re.compile(r"\\bdebilna\\s+mucha\\b", re.I), "debilna mucha", 0.70),
+    (re.compile(r"\\bidiotyczna\\s+mucha\\b", re.I), "idiotyczna mucha", 0.65),
+)
+
 
 @dataclass
 class SentTrace:
@@ -466,6 +503,28 @@ class MuchaClient(discord.Client):
             "updated_at": time.time(),
         }
 
+    @staticmethod
+    def _detect_verbal_rejection(text: str) -> tuple[str, float] | None:
+        normalized = OnlineLanguage.normalize(text).lower()
+        best: tuple[str, float] | None = None
+        for pattern, label, severity in VERBAL_REJECTION_PATTERNS:
+            if pattern.search(normalized):
+                if best is None or severity > best[1]:
+                    best = (label, float(severity))
+        return best
+
+    def _message_targets_mucha(
+        self,
+        message: discord.Message,
+        referenced: SentTrace | None,
+    ) -> bool:
+        if referenced is not None:
+            return True
+        if self.user is not None and self.user in message.mentions:
+            return True
+        normalized = OnlineLanguage.normalize(message.content).lower()
+        return bool(re.search(r"\\bmucha\\b", normalized, flags=re.UNICODE))
+
     async def _apply_social_message_feedback(
         self,
         message: discord.Message,
@@ -485,8 +544,99 @@ class MuchaClient(discord.Client):
         )
         referenced = self.sent.get(reference_id) if reference_id else None
 
+        verbal_rejection = self._detect_verbal_rejection(message.content)
+        targeted_rejection = bool(
+            verbal_rejection
+            and self._message_targets_mucha(message, referenced)
+        )
+        if targeted_rejection and verbal_rejection is not None:
+            label, severity = verbal_rejection
+            affinity_delta = -min(
+                0.30,
+                max(
+                    0.01,
+                    float(self.cfg.behavior.user_affinity_negative_step)
+                    * (0.45 + 1.05 * severity),
+                ),
+            )
+            new_affinity = self.language.adjust_user_affinity(
+                message.author.id,
+                message.author.display_name,
+                affinity_delta,
+                "negative",
+            )
+
+            source_trace = referenced
+            if source_trace is None:
+                recent_target = sorted(
+                    (
+                        trace
+                        for trace in self.sent.values()
+                        if trace.guild_id == message.guild.id
+                        and trace.channel_id == message.channel.id
+                        and now - trace.created <= min(window, 180.0)
+                    ),
+                    key=lambda trace: trace.created,
+                    reverse=True,
+                )
+                source_trace = recent_target[0] if recent_target else None
+
+            brain_penalty = -min(0.35, 0.06 + 0.24 * severity)
+            async with self._brain_lock:
+                self.brain.inject(
+                    "social:user-told-me-stop",
+                    0.55 + 0.65 * severity,
+                    160,
+                )
+                self.brain.inject(
+                    "social:user-rejected-me",
+                    0.50 + 0.70 * severity,
+                    160,
+                )
+                self.brain.inject(
+                    "internal:social-failure",
+                    0.35 + 0.65 * severity,
+                    128,
+                )
+                self.brain.inject(
+                    f"social:user-rejected-me:user:{message.author.id}",
+                    0.45 + 0.55 * severity,
+                    96,
+                )
+                if source_trace is not None:
+                    self.brain.reward(
+                        brain_penalty,
+                        action=source_trace.action,
+                        trace=source_trace.learning_trace,
+                    )
+                else:
+                    self.brain.reward(brain_penalty)
+                self.brain.step(2)
+
+            self._record_reward(
+                brain_penalty,
+                source_trace.action if source_trace is not None else None,
+                f"verbal rejection • {label}",
+                message.guild,
+            )
+            self._record_action(
+                "verbal_rejection",
+                (
+                    f"{message.author.display_name} • {label} • "
+                    f"severity {severity:.2f} • affinity {new_affinity:+.2f}"
+                ),
+                message.guild,
+            )
+            self._remember_social_event(
+                "VERBAL_REJECTION",
+                f"{label} • affinity {new_affinity:+.2f}",
+                affinity_delta,
+                message.author,
+            )
+
         if (
-            referenced is not None
+            not targeted_rejection
+            and referenced is not None
             and referenced.guild_id == message.guild.id
             and now - referenced.created <= window
         ):
