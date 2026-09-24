@@ -2435,6 +2435,7 @@ class MuchaClient(discord.Client):
             "word_feedback": self.language.top_word_feedback(30),
             "social_settings": {
                 "user_avoid_threshold": self.cfg.behavior.user_avoid_threshold,
+                "familiar_affinity_threshold": self.cfg.behavior.familiar_affinity_threshold,
                 "ignore_disliked_users_text": self.cfg.behavior.ignore_disliked_users_text,
                 "avoid_disliked_users_on_voice": self.cfg.behavior.avoid_disliked_users_on_voice,
             },
