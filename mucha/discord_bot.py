@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import threading
 import time
+import tomllib
 import wave
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,6 +17,7 @@ from pathlib import Path
 import discord
 import emoji as emoji_lib
 import pyttsx3
+import tomli_w
 from discord.ext import tasks
 
 try:
@@ -154,7 +156,210 @@ class MuchaClient(discord.Client):
             auth_password_env=cfg.web_ui.auth_password_env,
             session_hours=cfg.web_ui.session_hours,
             chaser_status_file=cfg.web_ui.chaser_status_file,
+            config_provider=self._dashboard_config_snapshot,
+            config_updater=self._dashboard_update_config,
         )
+
+    def _dashboard_config_snapshot(self) -> dict:
+        behavior_fields = [
+            "speak_threshold",
+            "reaction_threshold",
+            "reaction_cooldown_seconds",
+            "social_learning_enabled",
+            "social_window_seconds",
+            "word_reuse_reward",
+            "phrase_reuse_reward",
+            "direct_reply_reward",
+            "self_repeat_penalty",
+            "user_affinity_positive_step",
+            "user_affinity_negative_step",
+            "user_avoid_threshold",
+            "ignore_disliked_users_text",
+            "avoid_disliked_users_on_voice",
+        ]
+        voice_fields = [
+            "poll_seconds",
+            "minimum_dwell_seconds",
+            "maximum_dwell_seconds",
+            "move_threshold",
+            "join_threshold",
+            "leave_threshold",
+            "include_empty_channels",
+            "tts_enabled",
+            "tts_interval_seconds",
+            "tts_volume",
+            "random_audio_enabled",
+        ]
+        data = {
+            "behavior": {
+                key: getattr(self.cfg.behavior, key)
+                for key in behavior_fields
+            },
+            "voice": {
+                key: getattr(self.cfg.voice, key)
+                for key in voice_fields
+            },
+            "discord": {
+                "blocked_text_channel_ids": list(
+                    self.cfg.discord.blocked_text_channel_ids
+                ),
+            },
+            "blocked_voice_channel_ids": list(
+                self.cfg.voice.blocked_voice_channel_ids
+            ),
+            "channels": {
+                "text": [],
+                "voice": [],
+            },
+        }
+
+        blocked_text = set(self.cfg.discord.blocked_text_channel_ids)
+        blocked_voice = set(self.cfg.voice.blocked_voice_channel_ids)
+        for guild in self.guilds:
+            for channel in guild.text_channels:
+                data["channels"]["text"].append({
+                    "id": channel.id,
+                    "name": channel.name,
+                    "guild": guild.name,
+                    "blocked": channel.id in blocked_text,
+                })
+            for channel in guild.voice_channels:
+                data["channels"]["voice"].append({
+                    "id": channel.id,
+                    "name": channel.name,
+                    "guild": guild.name,
+                    "blocked": channel.id in blocked_voice,
+                })
+        return data
+
+    def _dashboard_update_config(self, payload: dict) -> dict:
+        allowed: dict[tuple[str, str], tuple[type, float | None, float | None]] = {
+            ("behavior", "speak_threshold"): (float, 0.0, 1.0),
+            ("behavior", "reaction_threshold"): (float, 0.0, 1.0),
+            ("behavior", "reaction_cooldown_seconds"): (int, 0, 3600),
+            ("behavior", "social_learning_enabled"): (bool, None, None),
+            ("behavior", "social_window_seconds"): (int, 30, 86400),
+            ("behavior", "word_reuse_reward"): (float, 0.0, 1.0),
+            ("behavior", "phrase_reuse_reward"): (float, 0.0, 1.0),
+            ("behavior", "direct_reply_reward"): (float, 0.0, 1.0),
+            ("behavior", "self_repeat_penalty"): (float, 0.0, 1.0),
+            ("behavior", "user_affinity_positive_step"): (float, 0.0, 1.0),
+            ("behavior", "user_affinity_negative_step"): (float, 0.0, 1.0),
+            ("behavior", "user_avoid_threshold"): (float, -1.0, 1.0),
+            ("behavior", "ignore_disliked_users_text"): (bool, None, None),
+            ("behavior", "avoid_disliked_users_on_voice"): (bool, None, None),
+            ("voice", "poll_seconds"): (int, 1, 3600),
+            ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
+            ("voice", "maximum_dwell_seconds"): (int, 1, 86400),
+            ("voice", "move_threshold"): (float, 0.0, 1.0),
+            ("voice", "join_threshold"): (float, 0.0, 1.0),
+            ("voice", "leave_threshold"): (float, 0.0, 1.0),
+            ("voice", "include_empty_channels"): (bool, None, None),
+            ("voice", "tts_enabled"): (bool, None, None),
+            ("voice", "tts_interval_seconds"): (int, 1, 3600),
+            ("voice", "tts_volume"): (float, 0.0, 2.0),
+            ("voice", "random_audio_enabled"): (bool, None, None),
+        }
+
+        config_path = Path("config.toml")
+        with config_path.open("rb") as handle:
+            raw = tomllib.load(handle)
+
+        changed = []
+        for (section, key), (kind, minimum, maximum) in allowed.items():
+            section_payload = payload.get(section, {})
+            if key not in section_payload:
+                continue
+            value = section_payload[key]
+            if kind is bool:
+                value = bool(value)
+            elif kind is int:
+                value = int(value)
+            else:
+                value = float(value)
+            if minimum is not None:
+                value = max(minimum, value)
+            if maximum is not None:
+                value = min(maximum, value)
+
+            raw.setdefault(section, {})[key] = value
+            setattr(getattr(self.cfg, section), key, value)
+            changed.append(f"{section}.{key}")
+
+        if "blocked_text_channel_ids" in payload:
+            ids = tuple(
+                sorted({
+                    int(value)
+                    for value in payload.get(
+                        "blocked_text_channel_ids",
+                        [],
+                    )
+                })
+            )
+            raw.setdefault("discord", {})[
+                "blocked_text_channel_ids"
+            ] = list(ids)
+            self.cfg.discord.blocked_text_channel_ids = ids
+            changed.append("discord.blocked_text_channel_ids")
+
+        if "blocked_voice_channel_ids" in payload:
+            ids = tuple(
+                sorted({
+                    int(value)
+                    for value in payload.get(
+                        "blocked_voice_channel_ids",
+                        [],
+                    )
+                })
+            )
+            raw.setdefault("voice", {})[
+                "blocked_voice_channel_ids"
+            ] = list(ids)
+            self.cfg.voice.blocked_voice_channel_ids = ids
+            changed.append("voice.blocked_voice_channel_ids")
+
+        temp_path = config_path.with_suffix(".toml.tmp")
+        temp_path.write_text(
+            tomli_w.dumps(raw),
+            encoding="utf-8",
+        )
+        temp_path.replace(config_path)
+
+        self.voice_loop.change_interval(
+            seconds=max(1, int(self.cfg.voice.poll_seconds))
+        )
+        self.tts_loop.change_interval(
+            seconds=max(1, int(self.cfg.voice.tts_interval_seconds))
+        )
+
+        if self.is_ready():
+            if self.cfg.voice.tts_enabled:
+                if (
+                    self.cfg.voice.enabled
+                    and not self.tts_loop.is_running()
+                ):
+                    self.tts_loop.start()
+            elif self.tts_loop.is_running():
+                self.tts_loop.cancel()
+
+            if self.cfg.voice.random_audio_enabled:
+                if (
+                    self.cfg.voice.enabled
+                    and not self.random_audio_loop.is_running()
+                ):
+                    self.random_audio_loop.start()
+            elif self.random_audio_loop.is_running():
+                self.random_audio_loop.cancel()
+
+        self._record_action(
+            "config",
+            ", ".join(changed) if changed else "brak zmian",
+        )
+        return {
+            "ok": True,
+            "changed": changed,
+            "config": self._dashboard_config_snapshot(),
+        }
 
     def _record_action(
         self,
