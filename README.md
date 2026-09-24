@@ -385,3 +385,33 @@ threat_steps = 3
 ```
 
 Voice Debug pokazuje poziom zagrożenia, magnitude bodźca, efektywny move score, efektywny margin oraz aktualny escape target.
+
+
+## Blocked text channels / deadly voice memory
+
+Mucha może obserwować i uczyć się z wiadomości na wybranych kanałach tekstowych, ale nie może tam wysyłać własnego tekstu. Dotyczy to odpowiedzi autonomicznych, wiadomości spontanicznych oraz tekstowych odpowiedzi komend diagnostycznych.
+
+```toml
+[discord]
+blocked_text_channel_ids = [
+  344519890083774475,
+  506193122460434443,
+  1049295352680947752,
+]
+```
+
+Po udanej ucieczce spowodowanej voice threat kanał, z którego Mucha uciekła, zostaje oznaczony jako śmiertelnie niebezpieczny:
+
+```toml
+[voice]
+deadly_channel_seconds = 600
+deadly_threat_magnitude = 1.6
+```
+
+Przez ten czas kanał:
+- nie może zostać wybrany do join,
+- nie może zostać wybrany do zwykłego move,
+- nie może być celem kolejnej ucieczki,
+- emituje osobny bodziec `voice:deadly-channel:<guild>:<channel>` do connectome.
+
+Voice Debug pokazuje taki kanał jako `☠ ŚMIERTELNE <sekundy>s`. Po wygaśnięciu pamięci automatycznie wraca do normalnej puli kanałów.
