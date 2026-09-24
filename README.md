@@ -566,7 +566,8 @@ Jeżeli hasło nie jest ustawione, a host to `0.0.0.0`, aplikacja celowo wraca d
 Ścieżki:
 
 - `/` — Control Center: VPS, usługi, Chaser, voice, audio, connectome i logi,
-- `/brain` — pełny dotychczasowy Brain Debug,
+- `/details` — pełny rozbudowany dashboard kafelkowy ze szczegółami,
+- `/brain` — przekierowanie kompatybilności do `/details`,
 - `/api/overview` — JSON Control Center,
 - `/api/state` — pełny JSON Muchy,
 - `/logout` — wylogowanie.
