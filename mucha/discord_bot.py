@@ -992,6 +992,60 @@ class MuchaClient(discord.Client):
                     message.author,
                 )
 
+        if (
+            not targeted_rejection
+            and referenced is not None
+            and referenced.guild_id == message.guild.id
+            and now - referenced.created <= window
+        ):
+            await self._grant_positive_social(
+                message.author,
+                "DIRECT_REPLY_AFFINITY",
+                "social:user-replied",
+                self.cfg.behavior.direct_reply_affinity_step,
+                message.guild,
+                detail="bezpośredni reply do Muchy",
+            )
+
+        if (
+            not targeted_rejection
+            and self.user is not None
+            and self.user in message.mentions
+        ):
+            await self._grant_positive_social(
+                message.author,
+                "MENTION",
+                "social:user-mentioned-me",
+                self.cfg.behavior.mention_affinity_step,
+                message.guild,
+                detail="wspomniał Muchę",
+            )
+
+        if not targeted_rejection and referenced is None:
+            recent_conversation = sorted(
+                (
+                    trace
+                    for trace in self.sent.values()
+                    if trace.guild_id == message.guild.id
+                    and trace.channel_id == message.channel.id
+                    and now - trace.created <= min(window, 120.0)
+                ),
+                key=lambda trace: trace.created,
+                reverse=True,
+            )
+            if recent_conversation:
+                source_trace = recent_conversation[0]
+                await self._grant_positive_social(
+                    message.author,
+                    "CONTINUED_CONVERSATION",
+                    "social:user-continued-conversation",
+                    self.cfg.behavior.continued_conversation_affinity_step,
+                    message.guild,
+                    detail="kontynuował rozmowę po wypowiedzi Muchy",
+                    source_trace=source_trace,
+                    brain_reward=0.025,
+                )
+
         normalized_message = OnlineLanguage.normalize(
             message.content
         ).lower()
@@ -1138,6 +1192,9 @@ class MuchaClient(discord.Client):
                         language_amount * 0.5,
                     )
             brain_amount = min(0.20, language_amount * 0.35)
+            affinity_delta = float(
+                self.cfg.behavior.phrase_reuse_affinity_step
+            )
             event = "PHRASE_REUSE"
             detail = phrase_text
         else:
@@ -1172,6 +1229,9 @@ class MuchaClient(discord.Client):
                 if unique_users >= 2
                 else "WORD_REUSE"
             )
+            affinity_delta = float(
+                self.cfg.behavior.word_reuse_affinity_step
+            ) + min(0.010, max(0, unique_users - 1) * 0.002)
             detail = (
                 f"{matched_word} • {unique_users} osób"
                 if matched_word
@@ -1207,6 +1267,18 @@ class MuchaClient(discord.Client):
             matched_trace.action,
             f"{event.lower()} • {detail}",
             message.guild,
+        )
+        await self._grant_positive_social(
+            message.author,
+            event + "_AFFINITY",
+            {
+                "WORD_REUSE": "social:user-reused-word",
+                "PHRASE_REUSE": "social:user-reused-phrase",
+                "MULTI_USER_CONFIRM": "social:repeated-positive-contact",
+            }.get(event, "social:positive-contact"),
+            affinity_delta,
+            message.guild,
+            detail=detail,
         )
         self._record_action(
             "social_learn",
