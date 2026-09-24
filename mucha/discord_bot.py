@@ -570,6 +570,10 @@ class MuchaClient(discord.Client):
             1.0,
             float(self.cfg.behavior.positive_contact_cooldown_seconds),
         )
+        if event == "VOICE_STAY":
+            cooldown = max(cooldown, 600.0)
+        elif event == "TTS_STAY":
+            cooldown = max(cooldown, 300.0)
         cooldown_key = (member.id, event)
         last = self._social_positive_last.get(cooldown_key, 0.0)
         if now - last < cooldown:
@@ -1849,7 +1853,26 @@ class MuchaClient(discord.Client):
 
         async with self._brain_lock:
             self.brain.inject_text(message.content, message.author.id, mentioned)
-            if user_affinity >= 0.15:
+            familiar_threshold = float(
+                self.cfg.behavior.familiar_affinity_threshold
+            )
+            if user_affinity >= familiar_threshold:
+                self.brain.inject(
+                    "social:familiar-user",
+                    min(1.0, 0.35 + abs(user_affinity)),
+                    128,
+                )
+                self.brain.inject(
+                    f"social:familiar-user:{message.author.id}",
+                    min(1.0, 0.30 + abs(user_affinity)),
+                    96,
+                )
+            if user_affinity >= 0.35:
+                self.brain.inject(
+                    "social:liked-user",
+                    min(1.0, user_affinity),
+                    128,
+                )
                 self.brain.inject(
                     f"social:liked-user:{message.author.id}",
                     min(1.0, user_affinity),
@@ -2157,6 +2180,28 @@ class MuchaClient(discord.Client):
             "id",
             None,
         )
+
+        if (
+            not member.bot
+            and changed_channel
+            and after.channel is not None
+            and my_channel is not None
+            and after.channel.id == my_channel.id
+            and self._chaser_panic_remaining(member.guild.id, now) <= 0.0
+        ):
+            await self._grant_positive_social(
+                member,
+                "VOICE_JOIN_ME",
+                "social:user-joined-my-voice",
+                self.cfg.behavior.voice_join_affinity_step,
+                member.guild,
+                detail=f"wszedł na {after.channel.name}",
+            )
+            self._schedule_voice_social_stay(
+                member.guild,
+                member,
+                after.channel.id,
+            )
 
         if (
             not member.bot
@@ -2800,6 +2845,15 @@ class MuchaClient(discord.Client):
                 self.cfg.voice.tts_volume,
             )
             vc.play(source)
+            self._schedule_tts_social_stay(
+                guild,
+                vc.channel.id,
+                [
+                    member.id
+                    for member in vc.channel.members
+                    if not member.bot
+                ],
+            )
             asyncio.create_task(
                 self._verify_voice_playback(vc, "tts")
             )
@@ -2926,6 +2980,20 @@ class MuchaClient(discord.Client):
         for guild in self.guilds:
             try:
                 await self._voice_decision(guild)
+                vc = guild.voice_client
+                if (
+                    vc is not None
+                    and vc.is_connected()
+                    and vc.channel is not None
+                    and self._chaser_panic_remaining(guild.id) <= 0.0
+                ):
+                    for member in vc.channel.members:
+                        if not member.bot:
+                            self._schedule_voice_social_stay(
+                                guild,
+                                member,
+                                vc.channel.id,
+                            )
             except Exception:
                 log.exception("Błąd autonomii voice na serwerze %s", guild.id)
 
