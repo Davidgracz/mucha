@@ -106,6 +106,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="metric"><span>Tryb języka</span><strong id="language-mode">—</strong></div>
       <div class="metric"><span>Wiadomości</span><strong id="language-messages">—</strong></div>
       <div class="metric"><span>Przejścia znaków</span><strong id="language-transitions">—</strong></div>
+      <div class="metric"><span>Bootstrap ze starej pamięci</span><strong id="language-bootstrap">—</strong></div>
       <div class="metric"><span>Gotowa pisać</span><strong id="ready">—</strong></div>
       <div class="metric"><span>Voice</span><strong id="voice">—</strong></div>
       <div class="metric"><span>Stan</span><strong id="paused">—</strong></div>
@@ -374,6 +375,7 @@ async function update(){
     $("language-mode").textContent=ld.mode||"characters";
     $("language-messages").textContent=nfmt(ld.messages||0);
     $("language-transitions").textContent=nfmt(ld.transitions||0);
+    $("language-bootstrap").textContent=nfmt(ld.legacy_bootstrap_chars||0)+" znaków / "+nfmt(ld.legacy_bootstrap_items||0)+" elementów";
     $("ready").textContent=s.language_ready?"TAK":"nie";$("voice").textContent=s.voice||"poza voice";
     $("paused").textContent=s.paused?"PAUZA":"aktywny";$("event").textContent=s.last_event||"—";$("lastaction").textContent=s.last_action||"—";
     renderActions(s.scores||{});
