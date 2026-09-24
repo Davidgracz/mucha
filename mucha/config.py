@@ -42,6 +42,12 @@ class VoiceConfig:
     maximum_dwell_seconds: int = 300
     overstay_punish_amount: float = 0.5
     overstay_punish_interval_seconds: int = 60
+    threat_ramp_seconds: int = 120
+    threat_magnitude: float = 1.2
+    threat_move_boost: float = 0.28
+    threat_affinity_relaxation: float = 0.18
+    threat_escape_reward: float = 0.35
+    threat_steps: int = 3
     move_threshold: float = 0.67
     join_threshold: float = 0.72
     leave_threshold: float = 0.82
