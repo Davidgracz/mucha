@@ -171,11 +171,15 @@ class WebDashboard:
         host: str,
         port: int,
         auto_open: bool = True,
+        refresh_ms: int = 500,
+        history_points: int = 180,
     ):
         self.snapshot_provider = snapshot_provider
         self.host = host
         self.port = int(port)
         self.auto_open = bool(auto_open)
+        self.refresh_ms = max(100, int(refresh_ms))
+        self.history_points = max(30, int(history_points))
         self.runner: web.AppRunner | None = None
         self.site: web.TCPSite | None = None
 
@@ -203,7 +207,9 @@ class WebDashboard:
             self.site = None
 
     async def _index(self, request: web.Request) -> web.Response:
-        return web.Response(text=HTML, content_type="text/html")
+        html = HTML.replace("const maxHistory=180;", f"const maxHistory={self.history_points};")
+        html = html.replace("setInterval(update,500);", f"setInterval(update,{self.refresh_ms});")
+        return web.Response(text=html, content_type="text/html")
 
     async def _state(self, request: web.Request) -> web.Response:
         snap = await self.snapshot_provider()
