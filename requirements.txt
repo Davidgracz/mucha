@@ -8,3 +8,4 @@ aiohttp>=3.12,<4
 emoji==2.16.0
 pyttsx3>=2.98,<3
 piper-tts>=1.4,<2
+tomli-w>=1.2,<2
