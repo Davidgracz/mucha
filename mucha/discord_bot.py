@@ -4,6 +4,7 @@ import asyncio
 import logging
 import math
 import random
+import shutil
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -320,6 +321,19 @@ class MuchaClient(discord.Client):
         log.info("Zalogowano jako %s", self.user)
         log.info("Connectome: %s neuronów, %s połączeń", self.connectome.n_neurons, self.connectome.matrix.nnz)
         log.info("Źródło: %s", m.get("source", "unknown"))
+        ffmpeg_cfg = self.cfg.voice.ffmpeg_executable
+        ffmpeg_found = (
+            str(Path(ffmpeg_cfg).resolve())
+            if Path(ffmpeg_cfg).is_file()
+            else shutil.which(ffmpeg_cfg)
+        )
+        if ffmpeg_found:
+            log.info("FFmpeg audio: %s", ffmpeg_found)
+        else:
+            log.error(
+                "FFmpeg nie znaleziony: %s — TTS i rare audio nie zagrają",
+                ffmpeg_cfg,
+            )
         self.console_ui.start()
         if self.cfg.console_ui.mode != "off" and not self.console_loop.is_running():
             self.console_loop.start()
