@@ -78,6 +78,10 @@ class MuchaClient(discord.Client):
         self._last_overstay_punish: dict[int, float] = {}
         self._deadly_voice_until: dict[tuple[int, int], float] = {}
         self._voice_last_visit: dict[tuple[int, int], float] = {}
+        self._chaser_follow_state: dict[tuple[int, int], dict] = {}
+        self._chaser_confirmed: dict[int, int] = {}
+        self._chaser_panic_until: dict[int, float] = {}
+        self._chaser_escape_tasks: dict[int, asyncio.Task] = {}
         self._random_audio_missing_warned = False
         self._audio_debug: dict = {
             "status": "STARTUP",
@@ -190,12 +194,252 @@ class MuchaClient(discord.Client):
         guild_id: int,
         channel_id: int,
         now: float | None = None,
+        seconds: float | None = None,
     ) -> float:
         now = time.monotonic() if now is None else now
-        seconds = max(1.0, float(self.cfg.voice.deadly_channel_seconds))
-        expiry = now + seconds
-        self._deadly_voice_until[(int(guild_id), int(channel_id))] = expiry
+        duration = max(
+            1.0,
+            float(
+                self.cfg.voice.deadly_channel_seconds
+                if seconds is None
+                else seconds
+            ),
+        )
+        key = (int(guild_id), int(channel_id))
+        expiry = max(
+            self._deadly_voice_until.get(key, 0.0),
+            now + duration,
+        )
+        self._deadly_voice_until[key] = expiry
         return expiry
+
+    def _chaser_panic_remaining(
+        self,
+        guild_id: int,
+        now: float | None = None,
+    ) -> float:
+        now = time.monotonic() if now is None else now
+        expiry = self._chaser_panic_until.get(int(guild_id), 0.0)
+        remaining = max(0.0, expiry - now)
+        if remaining <= 0.0:
+            self._chaser_panic_until.pop(int(guild_id), None)
+            return 0.0
+        return remaining
+
+    def _chaser_is_named(self, member: discord.Member) -> bool:
+        configured = int(self.cfg.voice.chaser_bot_id)
+        if configured > 0 and member.id == configured:
+            return True
+        hint = self.cfg.voice.chaser_name_hint.strip().lower()
+        if not hint:
+            return False
+        return hint in member.display_name.lower() or hint in member.name.lower()
+
+    def _register_chaser_encounter(
+        self,
+        member: discord.Member,
+        channel: discord.VoiceChannel,
+        now: float,
+    ) -> tuple[bool, int]:
+        key = (member.guild.id, member.id)
+        state = self._chaser_follow_state.get(key, {})
+        last = float(state.get("last", 0.0))
+        hits = int(state.get("hits", 0))
+        window = max(
+            1.0,
+            float(self.cfg.voice.chaser_follow_window_seconds),
+        )
+        if now - last > window:
+            hits = 0
+        hits += 1
+        self._chaser_follow_state[key] = {
+            "hits": hits,
+            "last": now,
+            "channel_id": channel.id,
+        }
+
+        already_confirmed = (
+            self._chaser_confirmed.get(member.guild.id) == member.id
+        )
+        confirmed = bool(
+            already_confirmed
+            or self._chaser_is_named(member)
+            or hits >= max(1, int(self.cfg.voice.chaser_confirm_hits))
+        )
+        if confirmed:
+            self._chaser_confirmed[member.guild.id] = member.id
+
+        panic_seconds = (
+            float(self.cfg.voice.chaser_panic_seconds)
+            if confirmed
+            else float(self.cfg.voice.chaser_suspicion_seconds)
+        )
+        self._chaser_panic_until[member.guild.id] = max(
+            self._chaser_panic_until.get(member.guild.id, 0.0),
+            now + max(1.0, panic_seconds),
+        )
+        self._mark_deadly_voice_channel(
+            member.guild.id,
+            channel.id,
+            now,
+            seconds=float(self.cfg.voice.chaser_channel_avoid_seconds),
+        )
+        return confirmed, hits
+
+    def _schedule_chaser_escape(
+        self,
+        guild: discord.Guild,
+        predator_id: int,
+        learning_trace: tuple,
+    ) -> None:
+        existing = self._chaser_escape_tasks.get(guild.id)
+        if existing is not None and not existing.done():
+            return
+
+        task = asyncio.create_task(
+            self._escape_from_chaser(
+                guild.id,
+                predator_id,
+                learning_trace,
+            )
+        )
+        self._chaser_escape_tasks[guild.id] = task
+
+        def clear(done_task: asyncio.Task, guild_id: int = guild.id) -> None:
+            if self._chaser_escape_tasks.get(guild_id) is done_task:
+                self._chaser_escape_tasks.pop(guild_id, None)
+
+        task.add_done_callback(clear)
+
+    async def _escape_from_chaser(
+        self,
+        guild_id: int,
+        predator_id: int,
+        learning_trace: tuple,
+    ) -> None:
+        delay_min = max(
+            0.0,
+            float(self.cfg.voice.chaser_escape_delay_min_seconds),
+        )
+        delay_max = max(
+            delay_min,
+            float(self.cfg.voice.chaser_escape_delay_max_seconds),
+        )
+        await asyncio.sleep(self.random.uniform(delay_min, delay_max))
+
+        guild = self.get_guild(guild_id)
+        if guild is None:
+            return
+        vc = guild.voice_client
+        me = guild.me
+        if vc is None or not vc.is_connected() or vc.channel is None or me is None:
+            return
+
+        current = vc.channel
+        now = time.monotonic()
+        clean: list[tuple[discord.VoiceChannel, list[discord.Member]]] = []
+        fallback: list[tuple[discord.VoiceChannel, list[discord.Member]]] = []
+
+        for ch in guild.voice_channels:
+            if ch.id == current.id:
+                continue
+            if (
+                self.cfg.voice.exclude_afk_channel
+                and guild.afk_channel
+                and ch.id == guild.afk_channel.id
+            ):
+                continue
+            perms = ch.permissions_for(me)
+            if not perms.view_channel or not perms.connect:
+                continue
+            if any(m.id == predator_id for m in ch.members):
+                continue
+
+            humans = [m for m in ch.members if not m.bot]
+            if not humans and not self.cfg.voice.include_empty_channels:
+                continue
+            item = (ch, humans)
+            fallback.append(item)
+            if self._deadly_voice_remaining(guild.id, ch.id, now) <= 0.0:
+                clean.append(item)
+
+        candidates = clean or fallback
+        if not candidates:
+            self._record_action(
+                "chaser_trapped",
+                f"brak kanału ucieczki z {current.name}",
+                guild,
+            )
+            return
+
+        async with self._brain_lock:
+            affinities = {
+                ch.id: self.brain.channel_affinity(guild.id, ch.id)
+                for ch, _ in candidates
+            }
+
+        target, _ = self._choose_voice_target(
+            guild,
+            candidates,
+            affinities,
+            now,
+            current_id=current.id,
+        )
+        if target is None:
+            return
+
+        try:
+            await vc.move_to(target)
+            self.voice_arrived[guild.id] = now
+            self._mark_voice_visit(guild.id, target.id, now)
+
+            reward = max(
+                0.0,
+                min(1.0, float(self.cfg.voice.chaser_escape_reward)),
+            )
+            async with self._brain_lock:
+                if reward > 0.0:
+                    self.brain.reward(
+                        reward,
+                        action="voice_move",
+                        trace=learning_trace,
+                    )
+                    self.brain.step(1)
+
+            self._last_brain_event = (
+                f"CHASER • ucieczka {current.name} → {target.name}"
+            )
+            self._last_brain_action = (
+                f"PANIC ESCAPE → {target.name}"
+            )
+            self._set_reinforceable(
+                guild,
+                "voice_move",
+                learning_trace,
+                f"chaser escape {current.name} → {target.name}",
+            )
+            self._record_action(
+                "chaser_escape",
+                f"{current.name} → {target.name}",
+                guild,
+            )
+            if reward > 0.0:
+                self._record_reward(
+                    reward,
+                    "voice_move",
+                    "Mucha Chaser escape",
+                    guild,
+                )
+        except (
+            discord.Forbidden,
+            discord.HTTPException,
+            asyncio.TimeoutError,
+        ) as exc:
+            self._record_action(
+                "chaser_escape_error",
+                f"{type(exc).__name__}: {exc}",
+                guild,
+            )
 
     def _mark_voice_visit(
         self,
@@ -579,10 +823,86 @@ class MuchaClient(discord.Client):
         after_name = getattr(after.channel, "name", "poza voice")
         self._last_brain_event = f"VOICE • {member.display_name}: {before_name} → {after_name}"
         key = f"voice-change:{member.id}:{getattr(before.channel, 'id', 0)}:{getattr(after.channel, 'id', 0)}"
+
+        predator_encounter = False
+        confirmed_chaser = False
+        chaser_hits = 0
+        now = time.monotonic()
+        vc = member.guild.voice_client
+        my_channel = (
+            vc.channel
+            if vc and vc.is_connected() and vc.channel is not None
+            else None
+        )
+        changed_channel = getattr(before.channel, "id", None) != getattr(
+            after.channel,
+            "id",
+            None,
+        )
+
+        if (
+            self.cfg.voice.chaser_enabled
+            and member.bot
+            and changed_channel
+            and after.channel is not None
+            and my_channel is not None
+            and after.channel.id == my_channel.id
+        ):
+            predator_encounter = True
+            confirmed_chaser, chaser_hits = self._register_chaser_encounter(
+                member,
+                after.channel,
+                now,
+            )
+
         async with self._brain_lock:
             self.brain.inject(key, 0.65, 64)
             self.brain.inject(f"voice-user:{member.id}", 0.35, 48)
-            self.brain.step(1)
+            if predator_encounter:
+                magnitude = float(self.cfg.voice.chaser_threat_magnitude)
+                if not confirmed_chaser:
+                    magnitude *= 0.55
+                self.brain.inject(
+                    "internal:predator-chaser",
+                    magnitude,
+                    192,
+                )
+                self.brain.inject(
+                    f"voice:predator:{member.guild.id}:{member.id}",
+                    magnitude,
+                    160,
+                )
+                self.brain.inject(
+                    f"voice:danger-channel:{member.guild.id}:{after.channel.id}",
+                    magnitude * 0.8,
+                    128,
+                )
+                self.brain.step(3)
+                learning_trace = self.brain.capture_learning_trace()
+            else:
+                self.brain.step(1)
+                learning_trace = None
+
+        if predator_encounter and learning_trace is not None:
+            state = "CONFIRMED" if confirmed_chaser else "SUSPECT"
+            self._last_brain_event = (
+                f"CHASER {state} • {member.display_name} • "
+                f"{after.channel.name} • hit {chaser_hits}"
+            )
+            self._last_brain_action = (
+                f"PANIC • {member.display_name} wykryty"
+            )
+            self._record_action(
+                "chaser_detected",
+                f"{state} {member.display_name} • hit {chaser_hits} • "
+                f"{after.channel.name}",
+                member.guild,
+            )
+            self._schedule_chaser_escape(
+                member.guild,
+                member.id,
+                learning_trace,
+            )
 
     @tasks.loop(seconds=5)
     async def idle_loop(self):
