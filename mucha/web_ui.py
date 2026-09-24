@@ -17,8 +17,103 @@ from aiohttp import web
 log = logging.getLogger("mucha.web")
 
 SnapshotProvider = Callable[[], Awaitable[dict]]
+ConfigProvider = Callable[[], dict]
+ConfigUpdater = Callable[[dict], dict]
 
-LOGIN_HTML = r"""<!doctype html>
+LOGIN_CONFIG_HTML = r"""<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mucha — Konfiguracja</title>
+<style>
+:root{--bg:#080d12;--panel:#101720;--panel2:#0b1219;--line:#233143;--txt:#eef5fc;--muted:#8291a2;--a:#58dac4;--good:#55d98c;--bad:#ff7272}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#080d12,#0b1118);color:var(--txt);font-family:Inter,system-ui,"Segoe UI",sans-serif}
+main{max-width:1450px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}
+h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#c6d2df;text-decoration:none;border:1px solid var(--line);background:#0e161f;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:var(--a);border-color:var(--a);color:#06110e;font-weight:800}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;min-width:0}.card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:#aebdca}.fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}.field{background:var(--panel2);border:1px solid #1d2a39;border-radius:11px;padding:10px}.field label{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}.field input[type=number]{width:100%;border:1px solid #263749;background:#071019;color:var(--txt);border-radius:8px;padding:8px}.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.channels{display:flex;flex-direction:column;gap:6px;max-height:430px;overflow:auto}.channel{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:8px;background:var(--panel2);border:1px solid #1d2a39;border-radius:9px}.channel small{color:var(--muted)}button{border:0;border-radius:11px;padding:11px 16px;background:var(--a);color:#06110e;font-weight:800;cursor:pointer}.bar{position:sticky;bottom:12px;margin-top:14px;background:rgba(10,16,23,.94);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:center;backdrop-filter:blur(10px)}#status{font-size:12px;color:var(--muted)}.ok{color:var(--good)!important}.bad{color:var(--bad)!important}
+@media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
+</style></head><body><main>
+<div class="top"><div><h1>⚙ Konfiguracja Muchy</h1><div class="sub">Zmiany są zapisywane do config.toml i stosowane na żywo.</div></div>
+<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
+<div class="grid">
+<div class="card"><h2>Zachowanie i relacje</h2><div class="fields" id="behavior-fields"></div></div>
+<div class="card"><h2>Voice / TTS</h2><div class="fields" id="voice-fields"></div></div>
+<div class="card"><h2>Wykluczone kanały tekstowe</h2><div class="channels" id="text-channels"></div></div>
+<div class="card"><h2>Wykluczone kanały Voice</h2><div class="channels" id="voice-channels"></div></div>
+</div>
+<div class="bar"><div id="status">Ładowanie konfiguracji…</div><button id="save">Zapisz konfigurację</button></div>
+</main><script>
+const $=id=>document.getElementById(id);
+let state=null;
+const fields={
+ behavior:[
+  ["speak_threshold","Próg mówienia","number",0.01],
+  ["reaction_threshold","Próg reakcji","number",0.01],
+  ["reaction_cooldown_seconds","Cooldown reakcji [s]","number",1],
+  ["social_learning_enabled","Social learning","bool"],
+  ["social_window_seconds","Okno uczenia społecznego [s]","number",10],
+  ["word_reuse_reward","Reward za powtórzone słowo","number",0.01],
+  ["phrase_reuse_reward","Reward za powtórzoną frazę","number",0.01],
+  ["direct_reply_reward","Reward za reply","number",0.01],
+  ["self_repeat_penalty","Kara za self-repeat","number",0.01],
+  ["user_affinity_positive_step","Affinity + za reakcję","number",0.01],
+  ["user_affinity_negative_step","Affinity - za reakcję","number",0.01],
+  ["user_avoid_threshold","Próg unikania użytkownika","number",0.01],
+  ["ignore_disliked_users_text","Nie odpisuj nielubianym","bool"],
+  ["avoid_disliked_users_on_voice","Omijaj nielubianych na VC","bool"]
+ ],
+ voice:[
+  ["poll_seconds","Voice poll [s]","number",1],
+  ["minimum_dwell_seconds","Minimum dwell [s]","number",1],
+  ["maximum_dwell_seconds","Maximum dwell [s]","number",1],
+  ["move_threshold","Próg move","number",0.01],
+  ["join_threshold","Próg join","number",0.01],
+  ["leave_threshold","Próg leave","number",0.01],
+  ["include_empty_channels","Uwzględniaj puste VC","bool"],
+  ["tts_enabled","TTS włączony","bool"],
+  ["tts_interval_seconds","TTS interval [s]","number",1],
+  ["tts_volume","Głośność TTS","number",0.05],
+  ["random_audio_enabled","Rare audio","bool"]
+ ]
+};
+function renderField(section,[key,label,type,step]){
+ const value=state[section][key];
+ if(type==="bool")return '<div class="field toggle"><label for="'+section+'-'+key+'">'+label+'</label><input id="'+section+'-'+key+'" type="checkbox" '+(value?'checked':'')+'></div>';
+ return '<div class="field"><label for="'+section+'-'+key+'">'+label+'</label><input id="'+section+'-'+key+'" type="number" step="'+(step||1)+'" value="'+value+'"></div>';
+}
+function renderChannels(kind){
+ const root=$(kind+"-channels"), items=state.channels[kind]||[];
+ root.innerHTML=items.map(ch=>'<label class="channel"><input type="checkbox" data-'+kind+'="'+ch.id+'" '+(ch.blocked?'checked':'')+'><div><b>'+esc(ch.name)+'</b><br><small>'+esc(ch.guild)+'</small></div><small>'+ch.id+'</small></label>').join("")||"<small>Brak kanałów.</small>";
+}
+function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+async function load(){
+ const r=await fetch("/api/config",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);state=await r.json();
+ $("behavior-fields").innerHTML=fields.behavior.map(f=>renderField("behavior",f)).join("");
+ $("voice-fields").innerHTML=fields.voice.map(f=>renderField("voice",f)).join("");
+ renderChannels("text");renderChannels("voice");$("status").textContent="Gotowe.";
+}
+function collect(){
+ const out={behavior:{},voice:{}};
+ for(const section of ["behavior","voice"])for(const [key,,type] of fields[section]){
+  const el=$(section+"-"+key);out[section][key]=type==="bool"?el.checked:Number(el.value);
+ }
+ out.blocked_text_channel_ids=[...document.querySelectorAll("[data-text]:checked")].map(x=>Number(x.dataset.text));
+ out.blocked_voice_channel_ids=[...document.querySelectorAll("[data-voice]:checked")].map(x=>Number(x.dataset.voice));
+ return out;
+}
+$("save").onclick=async()=>{
+ $("save").disabled=true;$("status").textContent="Zapisywanie…";$("status").className="";
+ try{
+  const r=await fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(collect())});
+  const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||("HTTP "+r.status));
+  state=d.config;$("status").textContent="Zapisano: "+(d.changed||[]).join(", ");$("status").className="ok";
+  renderChannels("text");renderChannels("voice");
+ }catch(e){$("status").textContent="Błąd: "+e.message;$("status").className="bad"}
+ finally{$("save").disabled=false}
+};
+load().catch(e=>{$("status").textContent="Błąd ładowania: "+e.message;$("status").className="bad"});
+</script></body></html>"""
+
+HTML = r"""<!doctype html>
 <html lang="pl">
 <head>
 <meta charset="utf-8">
@@ -94,7 +189,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
 <body><main>
 <div class="top">
   <div class="brand"><div class="logo">🪰</div><div><h1>Mucha Control Center</h1><div class="sub">VPS • Discord • Connectome • Chaser • Audio</div></div></div>
-  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
+  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
@@ -282,6 +377,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <a href="/" style="color:#c5d3e1;text-decoration:none;border:1px solid var(--line);background:#0f161f;border-radius:10px;padding:7px 10px;font-size:12px">🏠 Przegląd</a>
       <a href="/details" style="color:#07110e;text-decoration:none;border:1px solid var(--accent);background:var(--accent);border-radius:10px;padding:7px 10px;font-size:12px;font-weight:700">📋 Szczegóły</a>
+      <a href="/config" style="color:#c5d3e1;text-decoration:none;border:1px solid var(--line);background:#0f161f;border-radius:10px;padding:7px 10px;font-size:12px">⚙ Konfiguracja</a>
       <div class="badges">
       <div class="badge"><span class="dot"></span><span id="live">LIVE</span></div>
       <div class="badge" id="backend">backend: —</div>
@@ -343,6 +439,33 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       </div>
       <div class="reason" id="learn-summary">Czekam na pierwszy reward…</div>
       <div id="learning-impact"></div>
+    </div>
+
+    <div class="card span2">
+      <h2>Social Learning / Relacje</h2>
+      <div class="learning-grid">
+        <div class="kpi"><small>ostatni sygnał</small><strong id="social-event">—</strong></div>
+        <div class="kpi"><small>szczegół</small><strong id="social-detail">—</strong></div>
+        <div class="kpi"><small>reward</small><strong id="social-amount">—</strong></div>
+        <div class="kpi"><small>próg unikania</small><strong id="social-threshold">—</strong></div>
+      </div>
+      <div class="reason" id="social-last">Czekam na pierwszy sygnał społeczny…</div>
+      <div class="events">
+        <div class="event">
+          <small>Relacje z użytkownikami</small>
+          <table>
+            <thead><tr><th>Użytkownik</th><th>Affinity</th><th>👍</th><th>👎</th><th>Status</th></tr></thead>
+            <tbody id="social-users"></tbody>
+          </table>
+        </div>
+        <div class="event">
+          <small>Najlepiej utrwalone słowa</small>
+          <table>
+            <thead><tr><th>Słowo</th><th>Potw.</th><th>Osoby</th><th>Reward</th></tr></thead>
+            <tbody id="social-words"></tbody>
+          </table>
+        </div>
+      </div>
     </div>
 
     <div class="card">
@@ -543,6 +666,36 @@ function renderLearning(l){
     (Number(n.activation)>=0?"+":"")+Number(n.activation).toFixed(4)+'</td></tr>'
   ).join("");
 }
+function renderSocial(s){
+  const d=s.social_debug||{}, settings=s.social_settings||{};
+  const amount=Number(d.amount||0);
+  $("social-event").textContent=d.event||"—";
+  $("social-detail").textContent=d.detail||"—";
+  $("social-amount").textContent=(amount>=0?"+":"")+amount.toFixed(2);
+  $("social-amount").className=amount>0?"ok":amount<0?"no":"";
+  const threshold=Number(settings.user_avoid_threshold??-0.35);
+  $("social-threshold").textContent=threshold.toFixed(2);
+  $("social-last").innerHTML=d.user_name
+    ? '<b>'+esc(d.user_name)+'</b> • affinity '+Number(d.affinity||0).toFixed(2)+' • '+esc(d.event||"—")
+    : esc(d.event||"Czekam na pierwszy sygnał społeczny…");
+
+  $("social-users").innerHTML=(s.user_affinities||[]).slice(0,12).map(u=>{
+    const a=Number(u.affinity||0);
+    const status=a<=threshold?"OMIJA":a>=0.35?"LUBI":a>=0.1?"SYMPATIA":"NEUTRAL";
+    const cls=a<=threshold?"no":a>=0.1?"ok":"";
+    return '<tr><td>'+esc(u.display_name||u.user_id)+'</td>'+
+      '<td class="'+cls+'">'+(a>=0?"+":"")+a.toFixed(2)+'</td>'+
+      '<td>'+nfmt(u.positive_reactions||0)+'</td>'+
+      '<td>'+nfmt(u.negative_reactions||0)+'</td>'+
+      '<td class="'+cls+'">'+status+'</td></tr>';
+  }).join("")||'<tr><td colspan="5">Brak relacji.</td></tr>';
+
+  $("social-words").innerHTML=(s.word_feedback||[]).slice(0,12).map(w=>
+    '<tr><td>'+esc(w.word)+'</td><td>'+nfmt(w.confirmations||0)+'</td>'+
+    '<td>'+nfmt(w.unique_users||0)+'</td><td class="ok">'+
+    Number(w.reward||0).toFixed(2)+'</td></tr>'
+  ).join("")||'<tr><td colspan="4">Brak potwierdzonych słów.</td></tr>';
+}
 function renderReaction(r){
   r=r||{};
   $("reaction-score").textContent=Number(r.score||0).toFixed(3)+" / "+Number(r.threshold||0).toFixed(3);
@@ -667,6 +820,7 @@ async function update(){
     renderActions(s.scores||{});
     renderReaction(s.reaction_debug||{});
     renderLearning(s.learning_debug||{});
+    renderSocial(s);
     renderActionHistory(s.action_history||[]);
     renderGuildLearningContext(s.guild_learning_context||[]);
     drawRewardChart(s.reward_history||[],d.reward_trace);
@@ -698,6 +852,8 @@ class WebDashboard:
         auth_password_env: str = "MUCHA_DASHBOARD_PASSWORD",
         session_hours: int = 168,
         chaser_status_file: str = "/opt/mucha-chaser/state/chaser_status.json",
+        config_provider: ConfigProvider | None = None,
+        config_updater: ConfigUpdater | None = None,
     ):
         self.snapshot_provider = snapshot_provider
         self.host = host
@@ -711,6 +867,8 @@ class WebDashboard:
         self.auth_password = os.getenv(self.auth_password_env, "")
         self.session_hours = max(1, int(session_hours))
         self.chaser_status_file = Path(chaser_status_file)
+        self.config_provider = config_provider
+        self.config_updater = config_updater
         self.runner: web.AppRunner | None = None
         self.site: web.TCPSite | None = None
         self._bind_host = self.host
@@ -780,12 +938,15 @@ class WebDashboard:
         app = web.Application(middlewares=[self._auth_middleware])
         app.router.add_get("/", self._index)
         app.router.add_get("/details", self._details)
+        app.router.add_get("/config", self._config_page)
         app.router.add_get("/brain", self._brain)
         app.router.add_get("/login", self._login_get)
         app.router.add_post("/login", self._login_post)
         app.router.add_get("/logout", self._logout)
         app.router.add_get("/api/state", self._state)
         app.router.add_get("/api/overview", self._overview)
+        app.router.add_get("/api/config", self._config_get)
+        app.router.add_post("/api/config", self._config_post)
         app.router.add_get("/health", self._health)
 
         self.runner = web.AppRunner(app, access_log=None)
@@ -817,6 +978,36 @@ class WebDashboard:
             f"setInterval(update,{self.refresh_ms});",
         )
         return web.Response(text=html, content_type="text/html")
+
+    async def _config_page(self, request: web.Request) -> web.Response:
+        return web.Response(text=CONFIG_HTML, content_type="text/html")
+
+    async def _config_get(self, request: web.Request) -> web.Response:
+        if self.config_provider is None:
+            raise web.HTTPServiceUnavailable(text="config provider unavailable")
+        return web.json_response(
+            self.config_provider(),
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
+
+    async def _config_post(self, request: web.Request) -> web.Response:
+        if self.config_updater is None:
+            raise web.HTTPServiceUnavailable(text="config updater unavailable")
+        try:
+            payload = await request.json()
+            if not isinstance(payload, dict):
+                raise ValueError("JSON musi być obiektem")
+            result = self.config_updater(payload)
+            return web.json_response(
+                result,
+                dumps=lambda x: json.dumps(x, ensure_ascii=False),
+            )
+        except (ValueError, TypeError, OSError) as exc:
+            return web.json_response(
+                {"ok": False, "error": str(exc)},
+                status=400,
+                dumps=lambda x: json.dumps(x, ensure_ascii=False),
+            )
 
     async def _brain(self, request: web.Request) -> web.StreamResponse:
         raise web.HTTPFound("/details")
