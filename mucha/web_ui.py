@@ -195,6 +195,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       </div>
       <div class="metric"><span>FFmpeg</span><strong id="audio-ffmpeg">—</strong></div>
       <div class="metric"><span>Rozmiar pliku</span><strong id="audio-size">—</strong></div>
+      <div class="metric"><span>Discord playback</span><strong id="audio-playing">—</strong></div>
+      <div class="metric"><span>Voice state</span><strong id="audio-vstate">—</strong></div>
       <div class="metric"><span>Tekst TTS</span><strong id="audio-text">—</strong></div>
       <div class="reason" id="audio-error">Brak błędów audio.</div>
     </div>
@@ -240,6 +242,12 @@ function renderAudioDebug(a){
   $("audio-file").textContent=a.file||"—";
   $("audio-ffmpeg").textContent=a.ffmpeg||"—";
   $("audio-size").textContent=nfmt(a.file_size||0)+" B";
+  $("audio-playing").textContent=(a.playing==null?"—":(a.playing?"PLAYING":"STOPPED"))+
+    " / "+(a.connected==null?"—":(a.connected?"CONNECTED":"DISCONNECTED"));
+  $("audio-vstate").textContent=
+    "mute="+Boolean(a.server_muted)+
+    " deaf="+Boolean(a.server_deafened)+
+    " suppress="+Boolean(a.suppressed);
   $("audio-text").textContent=a.text||"—";
   const err=a.error||"";
   $("audio-error").innerHTML=err
