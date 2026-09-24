@@ -102,6 +102,17 @@ class BehaviorConfig:
     reaction_cooldown_seconds: int = 20
     reaction_candidate_sample: int = 64
     save_every_seconds: int = 45
+    social_learning_enabled: bool = True
+    social_window_seconds: int = 900
+    word_reuse_reward: float = 0.20
+    phrase_reuse_reward: float = 0.35
+    direct_reply_reward: float = 0.10
+    self_repeat_penalty: float = 0.10
+    user_affinity_positive_step: float = 0.08
+    user_affinity_negative_step: float = 0.12
+    user_avoid_threshold: float = -0.35
+    ignore_disliked_users_text: bool = True
+    avoid_disliked_users_on_voice: bool = True
 
 
 @dataclass(slots=True)
