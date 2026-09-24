@@ -1059,6 +1059,18 @@ class MuchaClient(discord.Client):
                 if extra:
                     row.update(extra)
             target_aff = affinities[target.id]
+            target_exploration = float(
+                exploration.get(target.id, {}).get(
+                    "exploration_score",
+                    target_aff,
+                )
+            )
+            current_exploration, _, _, _ = self._voice_exploration_score(
+                guild.id,
+                current.id,
+                current_aff,
+                now,
+            )
             effective_move_score = min(
                 1.0,
                 scores["voice_move"]
@@ -1068,23 +1080,26 @@ class MuchaClient(discord.Client):
                 float(self.cfg.voice.move_margin)
                 - threat_level * float(self.cfg.voice.threat_affinity_relaxation)
             )
-            required_aff = current_aff + effective_margin
+            required_exploration = current_exploration + effective_margin
 
             debug["escape_target"] = target.name
             debug["effective_move_score"] = effective_move_score
             debug["effective_move_margin"] = effective_margin
+            debug["target_exploration_score"] = target_exploration
+            debug["current_exploration_score"] = current_exploration
 
             if (
                 effective_move_score >= self.cfg.voice.move_threshold
-                and target_aff >= required_aff
+                and target_exploration >= required_exploration
             ):
                 debug["decision"] = f"UCIECZKA → {target.name}"
                 debug["reason"] = (
                     f"threat {threat_level:.2f}; move "
                     f"{scores['voice_move']:.3f}+"
                     f"{threat_level * float(self.cfg.voice.threat_move_boost):.3f}"
-                    f"={effective_move_score:.3f}; affinity "
-                    f"{target_aff:.3f} ≥ wymagane {required_aff:.3f}"
+                    f"={effective_move_score:.3f}; explore "
+                    f"{target_exploration:.3f} ≥ "
+                    f"{required_exploration:.3f}; affinity {target_aff:.3f}"
                 )
                 try:
                     await vc.move_to(target)
@@ -1244,13 +1259,27 @@ class MuchaClient(discord.Client):
             self._voice_debug[guild.id] = debug
             return
 
-        required_aff = current_aff + self.cfg.voice.move_margin
-        if target_aff < required_aff:
+        target_exploration = float(
+            exploration.get(target.id, {}).get(
+                "exploration_score",
+                target_aff,
+            )
+        )
+        current_exploration, _, _, _ = self._voice_exploration_score(
+            guild.id,
+            current.id,
+            current_aff,
+            now,
+        )
+        required_exploration = (
+            current_exploration + float(self.cfg.voice.move_margin)
+        )
+        if target_exploration < required_exploration:
             debug["decision"] = "ZOSTAJĘ"
             debug["reason"] = (
-                f"affinity {target.name}={target_aff:.3f} < wymagane "
-                f"{required_aff:.3f} (current {current_aff:.3f} + margin "
-                f"{self.cfg.voice.move_margin:.3f})"
+                f"explore {target.name}={target_exploration:.3f} < wymagane "
+                f"{required_exploration:.3f}; affinity "
+                f"{target_aff:.3f}/{current_aff:.3f}"
             )
             self._voice_debug[guild.id] = debug
             return
@@ -1258,7 +1287,8 @@ class MuchaClient(discord.Client):
         debug["decision"] = f"MOVE → {target.name}"
         debug["reason"] = (
             f"voice_move {scores['voice_move']:.3f} ≥ {self.cfg.voice.move_threshold:.3f}; "
-            f"affinity {target_aff:.3f} > {current_aff:.3f}"
+            f"explore {target_exploration:.3f} > {current_exploration:.3f}; "
+            f"affinity {target_aff:.3f}"
         )
         try:
             await vc.move_to(target)
