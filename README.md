@@ -612,3 +612,36 @@ Dashboard `/config` pozwala bez ręcznej edycji TOML:
 - ustawiać próg unikania użytkowników.
 
 Zmiany z zakładki Konfiguracja są zapisywane do `config.toml` i dla obsługiwanych opcji stosowane od razu.
+
+
+### Naturalne pozytywne sygnały
+
+Affinity nie wymaga ręcznego klikania reakcji. Małe dodatnie zmiany powstają także podczas zwykłej interakcji:
+
+- reply do wiadomości Muchy,
+- mention `@Mucha`,
+- kontynuowanie rozmowy w tym samym kanale krótko po wypowiedzi Muchy,
+- powtórzenie słowa lub frazy użytej przez Muchę,
+- wejście użytkownika na kanał voice, na którym jest Mucha,
+- pozostanie z Muchą na voice przez określony czas,
+- pozostanie na kanale po wypowiedzi TTS.
+
+Te zdarzenia generują osobne bodźce connectome, między innymi:
+
+```text
+social:user-replied
+social:user-mentioned-me
+social:user-continued-conversation
+social:user-reused-word
+social:user-reused-phrase
+social:user-joined-my-voice
+social:user-stayed-with-me
+social:user-stayed-after-tts
+social:repeated-positive-contact
+social:familiar-user
+social:liked-user
+```
+
+Naturalne plusy mają cooldown, więc spamowanie jednego zachowania nie pozwala szybko nabić affinity. Długie wspólne siedzenie na voice jest dodatkowo ograniczone do maksymalnie jednego przyrostu co 10 minut, a pozostanie po TTS do jednego przyrostu co 5 minut.
+
+Po kilku różnych pozytywnych kontaktach connectome dostaje `social:repeated-positive-contact`. Po przekroczeniu `familiar_affinity_threshold` dostaje również `social:familiar-user`, a przy wysokim affinity `social:liked-user`.
