@@ -64,7 +64,10 @@ class VoiceConfig:
     tts_interval_seconds: int = 10
     tts_rate: int = 185
     tts_volume: float = 0.9
-    tts_voice_name: str = ""
+    tts_engine: str = "piper"
+    tts_piper_model: str = "voices/pl_PL-gosia-medium.onnx"
+    tts_piper_length_scale: float = 1.0
+    tts_voice_name: str = "pl"
     tts_max_chars: int = 180
     chaser_enabled: bool = True
     chaser_bot_id: int = 0
