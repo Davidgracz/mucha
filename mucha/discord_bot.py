@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import math
 import random
 import time
 from dataclasses import dataclass
@@ -72,6 +73,7 @@ class MuchaClient(discord.Client):
         self._last_reaction: dict[int, float] = {}
         self._last_overstay_punish: dict[int, float] = {}
         self._deadly_voice_until: dict[tuple[int, int], float] = {}
+        self._voice_last_visit: dict[tuple[int, int], float] = {}
         self._unicode_emojis = [
             char
             for char, data in emoji_lib.EMOJI_DATA.items()
@@ -177,6 +179,100 @@ class MuchaClient(discord.Client):
         expiry = now + seconds
         self._deadly_voice_until[(int(guild_id), int(channel_id))] = expiry
         return expiry
+
+    def _mark_voice_visit(
+        self,
+        guild_id: int,
+        channel_id: int,
+        now: float | None = None,
+    ) -> None:
+        now = time.monotonic() if now is None else now
+        self._voice_last_visit[(int(guild_id), int(channel_id))] = now
+
+    def _voice_exploration_score(
+        self,
+        guild_id: int,
+        channel_id: int,
+        affinity: float,
+        now: float,
+    ) -> tuple[float, float | None, float, float]:
+        memory = max(1.0, float(self.cfg.voice.exploration_memory_seconds))
+        last = self._voice_last_visit.get((int(guild_id), int(channel_id)))
+        if last is None:
+            age = None
+            novelty = 1.0
+            recent = 0.0
+        else:
+            age = max(0.0, now - last)
+            novelty = min(1.0, age / memory)
+            recent = max(0.0, 1.0 - age / memory)
+
+        score = (
+            float(affinity)
+            + float(self.cfg.voice.exploration_novelty_bonus) * novelty
+            - float(self.cfg.voice.exploration_recent_penalty) * recent
+        )
+        return score, age, novelty, recent
+
+    def _choose_voice_target(
+        self,
+        guild: discord.Guild,
+        candidates: list[tuple[discord.VoiceChannel, list[discord.Member]]],
+        affinities: dict[int, float],
+        now: float,
+        current_id: int | None = None,
+    ) -> tuple[discord.VoiceChannel | None, dict[int, dict]]:
+        scored: list[tuple[discord.VoiceChannel, float]] = []
+        debug_scores: dict[int, dict] = {}
+
+        for ch, _ in candidates:
+            if current_id is not None and ch.id == current_id:
+                continue
+            affinity = float(affinities.get(ch.id, 0.5))
+            score, age, novelty, recent = self._voice_exploration_score(
+                guild.id,
+                ch.id,
+                affinity,
+                now,
+            )
+            scored.append((ch, score))
+            debug_scores[ch.id] = {
+                "exploration_score": score,
+                "visit_age": age,
+                "novelty": novelty,
+                "recent_penalty_factor": recent,
+            }
+
+        if not scored:
+            return None, debug_scores
+
+        # Softmax-like sampling: affinity still matters, but fresh/rarely visited
+        # channels can win instead of repeatedly selecting the same deterministic max.
+        temperature = max(
+            0.03,
+            float(self.cfg.voice.exploration_temperature),
+        )
+        best = max(score for _, score in scored)
+        weights = [
+            math.exp(max(-20.0, min(20.0, (score - best) / temperature)))
+            for _, score in scored
+        ]
+
+        # If there are many options, guarantee that several candidates retain a
+        # meaningful chance instead of collapsing onto one or two channels.
+        min_candidates = max(1, int(self.cfg.voice.exploration_min_candidates))
+        if len(scored) >= min_candidates:
+            floor = max(weights) * 0.08
+            weights = [max(w, floor) for w in weights]
+
+        total = sum(weights)
+        pick = self.random.random() * total
+        upto = 0.0
+        for (ch, _), weight in zip(scored, weights):
+            upto += weight
+            if upto >= pick:
+                return ch, debug_scores
+        return scored[-1][0], debug_scores
 
     def _reaction_candidates(self, guild: discord.Guild) -> tuple[list[tuple[str, object]], int]:
         """Sample from the full Unicode emoji set plus usable custom guild emoji."""
@@ -635,6 +731,8 @@ class MuchaClient(discord.Client):
         vc = guild.voice_client
         current = vc.channel if vc and vc.is_connected() else None
         arrived = self.voice_arrived.get(guild.id, now)
+        if current is not None:
+            self._voice_last_visit.setdefault((guild.id, current.id), arrived)
         dwell_elapsed = max(0.0, now - arrived)
         dwell_remaining = max(0.0, self.cfg.voice.minimum_dwell_seconds - dwell_elapsed)
 
@@ -714,6 +812,9 @@ class MuchaClient(discord.Client):
                 "deadly": deadly,
                 "deadly_remaining": deadly_remaining,
                 "affinity": None,
+                "exploration_score": None,
+                "visit_age": None,
+                "novelty": None,
                 "current": bool(current and current.id == ch.id),
                 "status": "OK" if eligible else (
                     f"☠ ŚMIERTELNE {deadly_remaining:.0f}s" if deadly else
@@ -778,16 +879,33 @@ class MuchaClient(discord.Client):
                 self._voice_debug[guild.id] = debug
                 return
 
-            target = max(channels, key=lambda x: affinities[x[0].id])[0]
+            target, exploration = self._choose_voice_target(
+                guild,
+                channels,
+                affinities,
+                now,
+                current_id=None,
+            )
+            if target is None:
+                debug["decision"] = "NIE WCHODZĘ"
+                debug["reason"] = "brak celu po filtrach eksploracji"
+                self._voice_debug[guild.id] = debug
+                return
+            for row in debug["channels"]:
+                extra = exploration.get(row["id"])
+                if extra:
+                    row.update(extra)
             target_aff = affinities[target.id]
             debug["decision"] = f"JOIN → {target.name}"
             debug["reason"] = (
                 f"voice_join {join:.3f} ≥ {self.cfg.voice.join_threshold:.3f}; "
-                f"najwyższe affinity {target_aff:.3f}"
+                f"affinity {target_aff:.3f}; eksploracja "
+                f"{exploration.get(target.id, {}).get('exploration_score', target_aff):.3f}"
             )
             try:
                 await target.connect(self_deaf=True)
                 self.voice_arrived[guild.id] = now
+                self._mark_voice_visit(guild.id, target.id, now)
                 self._last_overstay_punish.pop(guild.id, None)
                 self._last_brain_action = f"VOICE JOIN → {target.name}"
                 async with self._brain_lock:
@@ -924,7 +1042,22 @@ class MuchaClient(discord.Client):
             if item[0].id != current.id
         ]
         if threat_active and alternatives:
-            target, _ = max(alternatives, key=lambda x: affinities[x[0].id])
+            target, exploration = self._choose_voice_target(
+                guild,
+                alternatives,
+                affinities,
+                now,
+                current_id=current.id,
+            )
+            if target is None:
+                debug["decision"] = "ZAGROŻONA • BRAK CELU"
+                debug["reason"] = "brak dostępnego innego kanału po filtrach"
+                self._voice_debug[guild.id] = debug
+                return
+            for row in debug["channels"]:
+                extra = exploration.get(row["id"])
+                if extra:
+                    row.update(extra)
             target_aff = affinities[target.id]
             effective_move_score = min(
                 1.0,
@@ -956,6 +1089,7 @@ class MuchaClient(discord.Client):
                 try:
                     await vc.move_to(target)
                     self.voice_arrived[guild.id] = now
+                    self._mark_voice_visit(guild.id, target.id, now)
                     self._last_overstay_punish.pop(guild.id, None)
                     self._mark_deadly_voice_channel(
                         guild.id,
@@ -1077,7 +1211,22 @@ class MuchaClient(discord.Client):
             self._voice_debug[guild.id] = debug
             return
 
-        target, _ = max(channels, key=lambda x: affinities[x[0].id])
+        target, exploration = self._choose_voice_target(
+            guild,
+            channels,
+            affinities,
+            now,
+            current_id=current.id,
+        )
+        if target is None:
+            debug["decision"] = "ZOSTAJĘ"
+            debug["reason"] = "brak innego dostępnego kanału po filtrach"
+            self._voice_debug[guild.id] = debug
+            return
+        for row in debug["channels"]:
+            extra = exploration.get(row["id"])
+            if extra:
+                row.update(extra)
         target_aff = affinities[target.id]
 
         if target.id == current.id:
@@ -1114,6 +1263,7 @@ class MuchaClient(discord.Client):
         try:
             await vc.move_to(target)
             self.voice_arrived[guild.id] = now
+            self._mark_voice_visit(guild.id, target.id, now)
             self._last_overstay_punish.pop(guild.id, None)
             self._last_brain_action = f"VOICE MOVE → {target.name}"
             async with self._brain_lock:
