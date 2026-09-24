@@ -10,6 +10,8 @@ plasticity_decay = 0.998
 max_bias = 0.35
 steps_per_event = 3
 idle_steps = 1
+backend = "auto"
+gpu_device = 0
 
 [language]
 database = "state/language.sqlite3"
@@ -45,3 +47,11 @@ command_prefix = "!mucha "
 mode = "dashboard"
 refresh_seconds = 1.0
 top_neurons = 8
+
+[web_ui]
+enabled = true
+host = "127.0.0.1"
+port = 8765
+auto_open = true
+refresh_ms = 500
+history_points = 180
