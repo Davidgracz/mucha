@@ -431,6 +431,7 @@ class MuchaClient(discord.Client):
                 f"{current.name} → {target.name}",
                 guild,
             )
+            await self._play_chaser_scream(guild, vc)
             if reward > 0.0:
                 self._record_reward(
                     reward,
@@ -1143,6 +1144,107 @@ class MuchaClient(discord.Client):
                 pass
 
         return path.is_file() and path.stat().st_size > 44
+
+    async def _play_chaser_scream(
+        self,
+        guild: discord.Guild,
+        vc: discord.VoiceClient,
+    ) -> None:
+        if (
+            not self.cfg.voice.chaser_scream_enabled
+            or not vc.is_connected()
+            or vc.channel is None
+        ):
+            return
+
+        source_path = Path(self.cfg.voice.chaser_scream_file)
+        scream_text = self.cfg.voice.chaser_scream_text.strip() or "AAAAAAAA!"
+        using_file = source_path.is_file()
+
+        if not using_file:
+            source_path = (
+                Path("state")
+                / "tts"
+                / f"chaser_scream_{guild.id}.wav"
+            )
+            ok = await asyncio.to_thread(
+                self._synthesize_tts_file,
+                scream_text,
+                source_path,
+            )
+            if not ok:
+                self._record_action(
+                    "chaser_scream_error",
+                    "nie udało się wygenerować fallback TTS",
+                    guild,
+                )
+                return
+
+        try:
+            if vc.is_playing():
+                vc.stop()
+
+            async with self._brain_lock:
+                self.brain.inject("internal:panic-scream", 1.6, 128)
+                self.brain.inject(
+                    f"voice:panic-scream:guild:{guild.id}",
+                    1.1,
+                    96,
+                )
+                self.brain.step(1)
+
+            source = self._make_voice_source(
+                source_path,
+                self.cfg.voice.chaser_scream_volume,
+            )
+            vc.play(source)
+            asyncio.create_task(
+                self._verify_voice_playback(vc, "chaser_scream")
+            )
+
+            self._audio_debug.update({
+                "status": "PLAYING",
+                "stage": "chaser_scream",
+                "error": "",
+                "guild": guild.name,
+                "channel": getattr(vc.channel, "name", "voice"),
+                "file": str(source_path),
+                "file_size": (
+                    source_path.stat().st_size
+                    if source_path.is_file()
+                    else 0
+                ),
+                "text": "" if using_file else scream_text,
+                "updated_at": time.time(),
+            })
+            self._record_action(
+                "chaser_scream",
+                (
+                    f"{getattr(vc.channel, 'name', 'voice')} • "
+                    + (
+                        source_path.name
+                        if using_file
+                        else f"TTS {scream_text}"
+                    )
+                ),
+                guild,
+            )
+        except Exception as exc:
+            self._audio_debug.update({
+                "status": "ERROR",
+                "stage": "chaser_scream",
+                "error": f"{type(exc).__name__}: {exc}",
+                "updated_at": time.time(),
+            })
+            self._record_action(
+                "chaser_scream_error",
+                f"{type(exc).__name__}: {exc}",
+                guild,
+            )
+            log.exception(
+                "Nie udało się odtworzyć krzyku po ucieczce na serwerze %s",
+                guild.id,
+            )
 
     @tasks.loop(seconds=10)
     async def tts_loop(self):
