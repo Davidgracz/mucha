@@ -283,3 +283,29 @@ device: NVIDIA ...
 ```
 
 Stan `brain_state.npz` pozostaje przenośny między CPU i GPU, bo przy zapisie jest konwertowany do zwykłych tablic NumPy.
+
+
+## Learning / Reaction telemetry
+
+Web UI pokazuje teraz pełny ślad uczenia i autonomicznych reakcji:
+
+- **Learning Debug** — ostatni reward, target action, liczba zmienionych neuronów, max/mean delta bias,
+- **before → after** dla wszystkich readoutów zachowania,
+- **Top changed neurons** z FlyWire `root_id`, delta bias i bieżącą aktywacją,
+- **Plasticity** — średni/max bias, liczba dodatnich/ujemnych neuronów i histogram,
+- **Reward timeline** — reward trace oraz znaczniki nagród/kar,
+- **Action History** — wiadomości, reakcje, voice join/move/leave i reward,
+- **Reaction Debug** — `react` vs próg, wybrane emoji, target, decyzja i cooldown,
+- **Voice Debug** — progi, permissions, affinity kanałów oraz dokładny powód decyzji.
+
+Reward dla wiadomości jest przypisywany do zapisanej aktywności neuronów z chwili wysłania wiadomości oraz do akcji `speak`. Manualne `!mucha reward` / `!mucha punish` wzmacniają lub osłabiają ostatnią akcję możliwą do nagrodzenia (np. voice join/move, react albo speak).
+
+Mucha może autonomicznie dodawać reakcje do wiadomości. Zachowanie kontrolują:
+
+```toml
+[behavior]
+reaction_threshold = 0.73
+reaction_cooldown_seconds = 20
+```
+
+Do reakcji bot potrzebuje Discord permission **Add Reactions**.
