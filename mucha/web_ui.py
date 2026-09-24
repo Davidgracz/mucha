@@ -226,6 +226,9 @@ function renderVoiceDebug(items){
     const s=v.scores||{};
     const channels=(v.channels||[]).map(ch=>{
       const aff=ch.affinity==null?"—":Number(ch.affinity).toFixed(3);
+      const explore=ch.exploration_score==null?"—":Number(ch.exploration_score).toFixed(3);
+      const novelty=ch.novelty==null?"—":(Number(ch.novelty)*100).toFixed(0)+"%";
+      const visitAge=ch.visit_age==null?"never":Number(ch.visit_age).toFixed(0)+"s";
       const status=ch.eligible?"OK":ch.status;
       const cls=ch.eligible?"ok":(ch.status==="AFK"?"warn":"no");
       return '<tr>'+
@@ -234,6 +237,9 @@ function renderVoiceDebug(items){
         '<td class="'+(ch.view?"ok":"no")+'">'+(ch.view?"YES":"NO")+'</td>'+
         '<td class="'+(ch.connect?"ok":"no")+'">'+(ch.connect?"YES":"NO")+'</td>'+
         '<td>'+aff+'</td>'+
+        '<td>'+explore+'</td>'+
+        '<td>'+novelty+'</td>'+
+        '<td>'+visitAge+'</td>'+
         '<td class="'+cls+'">'+esc(status)+'</td>'+
       '</tr>';
     }).join("");
@@ -255,7 +261,7 @@ function renderVoiceDebug(items){
       '<div class="voice-pill"><small>escape target</small><strong>'+esc(v.escape_target||"—")+'</strong></div>'+
     '</div>'+
     '<div class="reason"><b>'+esc(v.decision||"—")+'</b> — '+esc(v.reason||"—")+'</div>'+
-    '<table><thead><tr><th>Kanał</th><th>Ludzie</th><th>View</th><th>Connect</th><th>Affinity</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table>';
+    '<table><thead><tr><th>Kanał</th><th>Ludzie</th><th>View</th><th>Connect</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table>';
   }).join('<div style="height:14px"></div>');
 }
 function renderLearning(l){
