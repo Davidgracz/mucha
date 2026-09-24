@@ -701,7 +701,7 @@ class MuchaClient(discord.Client):
             message.content
         ).lower()
         correction_match = re.search(
-            r'\\bnie\s+["„]?([^\s"”„,.;:!?]{2,})["”]?'
+            r'\bnie\s+["„]?([^\s"”„,.;:!?]{2,})["”]?'
             r'\s*,?\s*(?:tylko|ale)\s+'
             r'["„]?([^\s"”„,.;:!?]{2,})["”]?',
             normalized_message,
