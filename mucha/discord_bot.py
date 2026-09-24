@@ -7,6 +7,7 @@ import time
 from dataclasses import dataclass
 
 import discord
+import emoji as emoji_lib
 from discord.ext import tasks
 
 from .brain import FlyBrain
@@ -69,6 +70,12 @@ class MuchaClient(discord.Client):
             "cooldown_remaining": 0.0,
         }
         self._last_reaction: dict[int, float] = {}
+        self._last_overstay_punish: dict[int, float] = {}
+        self._unicode_emojis = [
+            char
+            for char, data in emoji_lib.EMOJI_DATA.items()
+            if data.get("status") == emoji_lib.STATUS["fully_qualified"]
+        ]
         self._action_history: list[dict] = []
         self._reward_history: list[dict] = []
         self._last_reinforceable: tuple[str, tuple] | None = None
@@ -104,6 +111,27 @@ class MuchaClient(discord.Client):
         })
         if len(self._reward_history) > 120:
             del self._reward_history[:-120]
+
+    def _reaction_candidates(self, guild: discord.Guild) -> tuple[list[tuple[str, object]], int]:
+        """Sample from the full Unicode emoji set plus usable custom guild emoji."""
+        sample_size = max(8, int(self.cfg.behavior.reaction_candidate_sample))
+        custom = [e for e in guild.emojis if e.available]
+        custom_slots = min(len(custom), min(16, max(2, sample_size // 4)))
+        unicode_slots = max(1, sample_size - custom_slots)
+
+        if len(self._unicode_emojis) <= unicode_slots:
+            unicode_sample = list(self._unicode_emojis)
+        else:
+            unicode_sample = self.random.sample(self._unicode_emojis, unicode_slots)
+
+        if len(custom) <= custom_slots:
+            custom_sample = custom
+        else:
+            custom_sample = self.random.sample(custom, custom_slots)
+
+        candidates: list[tuple[str, object]] = [(x, x) for x in unicode_sample]
+        candidates.extend((str(e), e) for e in custom_sample)
+        return candidates, len(self._unicode_emojis) + len(custom)
 
     async def setup_hook(self) -> None:
         self.idle_loop.change_interval(seconds=self.cfg.behavior.idle_tick_seconds)
@@ -179,31 +207,63 @@ class MuchaClient(discord.Client):
             "guild_id": message.guild.id,
         }
         if scores["react"] >= self.cfg.behavior.reaction_threshold and react_cooldown <= 0.0:
-            emojis = ["👍", "❤️", "😂", "👀", "🤔", "🔥", "🪰", "😮", "😢"]
+            candidates, pool_total = self._reaction_candidates(message.guild)
             async with self._brain_lock:
-                emoji_scores = {
-                    emoji: self.brain.readout("reaction-emoji:" + emoji, 96)
-                    for emoji in emojis
-                }
+                ranked = sorted(
+                    (
+                        (
+                            label,
+                            reaction_obj,
+                            self.brain.readout("reaction-emoji:" + label, 96),
+                        )
+                        for label, reaction_obj in candidates
+                    ),
+                    key=lambda item: item[2],
+                    reverse=True,
+                )
                 learning_trace = self.brain.capture_learning_trace()
-            emoji = max(emoji_scores, key=emoji_scores.get)
-            self._reaction_debug["emoji_scores"] = emoji_scores
-            self._reaction_debug["emoji"] = emoji
+
+            self._reaction_debug["pool_total"] = pool_total
+            self._reaction_debug["candidates_evaluated"] = len(ranked)
+            self._reaction_debug["top_candidates"] = [
+                {"emoji": label, "score": float(score)}
+                for label, _, score in ranked[:10]
+            ]
             self._reaction_debug["decision"] = "PRÓBUJĘ REAKCJI"
-            try:
-                await message.add_reaction(emoji)
+
+            chosen_label = None
+            last_http_error = None
+            for label, reaction_obj, _ in ranked[: min(10, len(ranked))]:
+                try:
+                    await message.add_reaction(reaction_obj)
+                    chosen_label = label
+                    break
+                except discord.Forbidden:
+                    self._reaction_debug["decision"] = "BRAK UPRAWNIEŃ"
+                    break
+                except discord.HTTPException as exc:
+                    last_http_error = exc
+                    continue
+
+            if chosen_label is not None:
                 self._last_reaction[message.guild.id] = now
+                self._reaction_debug["emoji"] = chosen_label
                 self._reaction_debug["decision"] = "REAKCJA DODANA"
                 self._reaction_debug["cooldown_remaining"] = float(
                     self.cfg.behavior.reaction_cooldown_seconds
                 )
-                self._last_brain_action = f"REACTION → {emoji} • #{channel_name}"
+                self._last_brain_action = f"REACTION → {chosen_label} • #{channel_name}"
                 self._last_reinforceable = ("react", learning_trace)
-                self._record_action("react", f"{emoji} → #{channel_name} / {message.author.display_name}")
-            except discord.Forbidden:
-                self._reaction_debug["decision"] = "BRAK UPRAWNIEŃ"
-            except discord.HTTPException as exc:
-                self._reaction_debug["decision"] = f"BŁĄD DISCORD: {type(exc).__name__}"
+                self._record_action(
+                    "react",
+                    f"{chosen_label} → #{channel_name} / {message.author.display_name}",
+                )
+            elif self._reaction_debug["decision"] != "BRAK UPRAWNIEŃ":
+                self._reaction_debug["decision"] = (
+                    f"EMOJI ODRZUCONE: {type(last_http_error).__name__}"
+                    if last_http_error is not None
+                    else "BRAK KANDYDATÓW"
+                )
         elif react_cooldown > 0.0:
             self._reaction_debug["decision"] = "COOLDOWN"
         else:
@@ -487,7 +547,14 @@ class MuchaClient(discord.Client):
             "leave_threshold": self.cfg.voice.leave_threshold,
             "move_margin": self.cfg.voice.move_margin,
             "minimum_dwell_seconds": self.cfg.voice.minimum_dwell_seconds,
+            "maximum_dwell_seconds": self.cfg.voice.maximum_dwell_seconds,
+            "dwell_elapsed": dwell_elapsed,
             "dwell_remaining": dwell_remaining,
+            "overstay_seconds": max(
+                0.0,
+                dwell_elapsed - self.cfg.voice.maximum_dwell_seconds,
+            ),
+            "overstay_punished": False,
             "scores": {},
             "channels": [],
             "checked_at": time.time(),
@@ -574,6 +641,7 @@ class MuchaClient(discord.Client):
             try:
                 await target.connect(self_deaf=True)
                 self.voice_arrived[guild.id] = now
+                self._last_overstay_punish.pop(guild.id, None)
                 self._last_brain_action = f"VOICE JOIN → {target.name}"
                 async with self._brain_lock:
                     learning_trace = self.brain.capture_learning_trace()
@@ -600,6 +668,55 @@ class MuchaClient(discord.Client):
             self._voice_debug[guild.id] = debug
             return
 
+        max_dwell = max(
+            float(self.cfg.voice.minimum_dwell_seconds),
+            float(self.cfg.voice.maximum_dwell_seconds),
+        )
+        if dwell_elapsed >= max_dwell:
+            last_punish = self._last_overstay_punish.get(guild.id, 0.0)
+            punish_interval = max(
+                float(self.cfg.voice.poll_seconds),
+                float(self.cfg.voice.overstay_punish_interval_seconds),
+            )
+            if now - last_punish >= punish_interval:
+                punish_amount = max(
+                    0.0,
+                    min(1.0, float(self.cfg.voice.overstay_punish_amount)),
+                )
+                async with self._brain_lock:
+                    learning_trace = self.brain.capture_learning_trace()
+                    self.brain.reward(
+                        -punish_amount,
+                        action="stay",
+                        trace=learning_trace,
+                    )
+                    self.brain.step(1)
+                    scores = self.brain.action_scores()
+                    affinities = {
+                        ch.id: self.brain.channel_affinity(guild.id, ch.id)
+                        for ch, _ in channels
+                    }
+                self._last_overstay_punish[guild.id] = now
+                debug["overstay_punished"] = True
+                debug["overstay_punish_amount"] = -punish_amount
+                debug["scores"].update({
+                    "voice_join": scores["voice_join"],
+                    "voice_move": scores["voice_move"],
+                    "voice_leave": scores["voice_leave"],
+                    "stay": scores["stay"],
+                })
+                for row in debug["channels"]:
+                    if row["id"] in affinities:
+                        row["affinity"] = affinities[row["id"]]
+                self._record_reward(-punish_amount, "stay", "voice overstay")
+                self._record_action(
+                    "punish",
+                    f"-{punish_amount:.2f} stay • {current.name} • {dwell_elapsed:.0f}s",
+                )
+                self._last_brain_event = (
+                    f"VOICE OVERSTAY • {current.name} • punish -{punish_amount:.2f}"
+                )
+
         if scores["voice_leave"] >= self.cfg.voice.leave_threshold:
             old_name = getattr(current, "name", "voice")
             debug["decision"] = f"LEAVE ← {old_name}"
@@ -610,6 +727,7 @@ class MuchaClient(discord.Client):
             try:
                 await vc.disconnect(force=False)
                 self.voice_arrived[guild.id] = now
+                self._last_overstay_punish.pop(guild.id, None)
                 self._last_brain_action = f"VOICE LEAVE ← {old_name}"
                 async with self._brain_lock:
                     learning_trace = self.brain.capture_learning_trace()
@@ -661,6 +779,7 @@ class MuchaClient(discord.Client):
         try:
             await vc.move_to(target)
             self.voice_arrived[guild.id] = now
+            self._last_overstay_punish.pop(guild.id, None)
             self._last_brain_action = f"VOICE MOVE → {target.name}"
             async with self._brain_lock:
                 learning_trace = self.brain.capture_learning_trace()
