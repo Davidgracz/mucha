@@ -175,3 +175,31 @@ Po połączeniu z Discordem Mucha zawsze ustawia dostępność na **online**. Co
 Wybór stanu wynika z aktualnych readoutów connectome (`speak`, `explore`, `voice_join`, `voice_move`, `stay`, `react`). Status pokazuje też bieżącą średnią aktywność i liczbę neuronów z aktywacją powyżej 0.1.
 
 **Uwaga:** ustawienie `online` nie utrzymuje bota przy życiu. Jeśli program `bot.py` przestanie działać albo komputer/hosting zostanie wyłączony, Discord pokaże Muchę jako offline.
+
+
+## Konsolowy dashboard mózgu
+
+Mucha ma teraz live UI w terminalu. Domyślnie działa tryb:
+
+```toml
+[console_ui]
+mode = "dashboard"
+refresh_seconds = 1.0
+top_neurons = 8
+```
+
+Dostępne tryby:
+
+- `dashboard` — pełny odświeżany panel z aktywnością mózgu, readoutami, językiem, voice i top neuronami,
+- `simple` — jedna linia diagnostyczna co odświeżenie,
+- `off` — wyłącza UI i zostawia zwykłe logi.
+
+Dashboard pokazuje m.in. liczbę aktywnych neuronów, średnią i maksymalną aktywację, reward trace, tick symulacji, wszystkie readouty zachowania, ostatni bodziec, ostatnią akcję, stan języka i bieżący kanał voice.
+
+Przy prawdziwym FlyWire tabela **Top aktywnych neuronów** pokazuje rzeczywiste `root_id` z datasetu FAFB. W demo-connectome są to tylko sztuczne identyfikatory.
+
+Po `git pull` doinstaluj zależność UI:
+
+```powershell
+python -m pip install -r requirements.txt
+```
