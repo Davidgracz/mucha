@@ -78,6 +78,28 @@ class OnlineLanguage:
                 k TEXT PRIMARY KEY,
                 v INTEGER NOT NULL
             );
+
+            CREATE TABLE IF NOT EXISTS social_user_affinity(
+                user_id INTEGER PRIMARY KEY,
+                display_name TEXT NOT NULL DEFAULT '',
+                affinity REAL NOT NULL DEFAULT 0,
+                positive_reactions INTEGER NOT NULL DEFAULT 0,
+                negative_reactions INTEGER NOT NULL DEFAULT 0,
+                updated_at REAL NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS social_word_feedback(
+                word TEXT PRIMARY KEY,
+                confirmations INTEGER NOT NULL DEFAULT 0,
+                reward REAL NOT NULL DEFAULT 0,
+                updated_at REAL NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS social_word_user(
+                word TEXT NOT NULL,
+                user_id INTEGER NOT NULL,
+                PRIMARY KEY(word,user_id)
+            );
             """
         )
         self.db.commit()
@@ -512,6 +534,160 @@ class OnlineLanguage:
             )
 
         self.db.commit()
+
+    def reinforce_text(self, text: str, amount: float) -> None:
+        chars = self.characters(text)
+        if not chars:
+            return
+        seq = [START_A, START_B] + chars
+        trigrams = [
+            (a, b, c)
+            for a, b, c in zip(seq, seq[1:], seq[2:])
+        ]
+        self.reinforce(trigrams, amount)
+
+    def get_user_affinity(self, user_id: int) -> float:
+        row = self.db.execute(
+            "SELECT affinity FROM social_user_affinity WHERE user_id=?",
+            (int(user_id),),
+        ).fetchone()
+        return float(row[0]) if row else 0.0
+
+    def adjust_user_affinity(
+        self,
+        user_id: int,
+        display_name: str,
+        delta: float,
+        reaction_kind: str | None = None,
+    ) -> float:
+        user_id = int(user_id)
+        delta = max(-1.0, min(1.0, float(delta)))
+        positive = 1 if reaction_kind == "positive" else 0
+        negative = 1 if reaction_kind == "negative" else 0
+        self.db.execute(
+            """
+            INSERT INTO social_user_affinity(
+                user_id, display_name, affinity,
+                positive_reactions, negative_reactions, updated_at
+            ) VALUES(?,?,?,?,?,strftime('%s','now'))
+            ON CONFLICT(user_id) DO UPDATE SET
+                display_name=excluded.display_name,
+                affinity=MAX(-1.0, MIN(1.0, social_user_affinity.affinity + excluded.affinity)),
+                positive_reactions=social_user_affinity.positive_reactions + excluded.positive_reactions,
+                negative_reactions=social_user_affinity.negative_reactions + excluded.negative_reactions,
+                updated_at=excluded.updated_at
+            """,
+            (
+                user_id,
+                str(display_name)[:120],
+                delta,
+                positive,
+                negative,
+            ),
+        )
+        self.db.commit()
+        return self.get_user_affinity(user_id)
+
+    def user_affinities(self, limit: int = 50) -> list[dict]:
+        rows = self.db.execute(
+            """
+            SELECT user_id, display_name, affinity,
+                   positive_reactions, negative_reactions, updated_at
+            FROM social_user_affinity
+            ORDER BY affinity DESC, updated_at DESC
+            LIMIT ?
+            """,
+            (max(1, min(200, int(limit))),),
+        ).fetchall()
+        return [
+            {
+                "user_id": int(user_id),
+                "display_name": str(display_name or user_id),
+                "affinity": float(affinity),
+                "positive_reactions": int(positive),
+                "negative_reactions": int(negative),
+                "updated_at": float(updated_at),
+            }
+            for (
+                user_id,
+                display_name,
+                affinity,
+                positive,
+                negative,
+                updated_at,
+            ) in rows
+        ]
+
+    def record_word_feedback(
+        self,
+        word: str,
+        user_id: int,
+        amount: float,
+    ) -> dict:
+        normalized = self.normalize(word).lower().strip()
+        if not normalized or " " in normalized:
+            return {}
+        amount = max(-1.0, min(1.0, float(amount)))
+        self.db.execute(
+            """
+            INSERT INTO social_word_feedback(word, confirmations, reward, updated_at)
+            VALUES(?,1,?,strftime('%s','now'))
+            ON CONFLICT(word) DO UPDATE SET
+                confirmations=social_word_feedback.confirmations+1,
+                reward=MAX(-2.0, MIN(2.0, social_word_feedback.reward+excluded.reward)),
+                updated_at=excluded.updated_at
+            """,
+            (normalized, amount),
+        )
+        self.db.execute(
+            "INSERT OR IGNORE INTO social_word_user(word,user_id) VALUES(?,?)",
+            (normalized, int(user_id)),
+        )
+        self.db.commit()
+        row = self.db.execute(
+            """
+            SELECT f.confirmations, f.reward, f.updated_at,
+                   COUNT(u.user_id)
+            FROM social_word_feedback f
+            LEFT JOIN social_word_user u ON u.word=f.word
+            WHERE f.word=?
+            GROUP BY f.word
+            """,
+            (normalized,),
+        ).fetchone()
+        if not row:
+            return {}
+        return {
+            "word": normalized,
+            "confirmations": int(row[0]),
+            "reward": float(row[1]),
+            "unique_users": int(row[3]),
+            "updated_at": float(row[2]),
+        }
+
+    def top_word_feedback(self, limit: int = 20) -> list[dict]:
+        rows = self.db.execute(
+            """
+            SELECT f.word, f.confirmations, f.reward, f.updated_at,
+                   COUNT(u.user_id) AS unique_users
+            FROM social_word_feedback f
+            LEFT JOIN social_word_user u ON u.word=f.word
+            GROUP BY f.word
+            ORDER BY unique_users DESC, f.confirmations DESC, f.reward DESC
+            LIMIT ?
+            """,
+            (max(1, min(100, int(limit))),),
+        ).fetchall()
+        return [
+            {
+                "word": str(word),
+                "confirmations": int(confirmations),
+                "reward": float(reward),
+                "unique_users": int(unique_users),
+                "updated_at": float(updated_at),
+            }
+            for word, confirmations, reward, updated_at, unique_users in rows
+        ]
 
     def close(self) -> None:
         self.db.close()
