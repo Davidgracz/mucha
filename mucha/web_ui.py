@@ -54,7 +54,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .learning-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:12px}
 .kpi{background:#0c131b;border:1px solid #1d2936;border-radius:12px;padding:11px;min-width:0}
 .kpi small{display:block;color:var(--muted);margin-bottom:6px}.kpi strong{font-size:16px;word-break:break-word}
-.impact-row{display:grid;grid-template-columns:110px 1fr 62px;gap:8px;align-items:center;margin:7px 0}
+.impact-row{display:grid;grid-template-columns:110px 1fr 150px;gap:8px;align-items:center;margin:7px 0}
 .impact-track{height:8px;background:#0a1017;border-radius:999px;overflow:hidden;border:1px solid #1e2a37;position:relative}
 .impact-zero{position:absolute;left:50%;top:0;bottom:0;width:1px;background:#536274}
 .impact-fill-pos,.impact-fill-neg{position:absolute;top:0;height:100%}
@@ -151,6 +151,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="metric"><span>Max |bias|</span><strong id="bias-max">—</strong></div>
       <div class="metric"><span>Dodatnie neurony</span><strong id="bias-pos">—</strong></div>
       <div class="metric"><span>Ujemne neurony</span><strong id="bias-neg">—</strong></div>
+      <canvas id="bias-chart" width="520" height="150" aria-label="Histogram plastic bias" style="height:150px;margin-top:12px"></canvas>
     </div>
 
     <div class="card span2">
@@ -243,15 +244,17 @@ function renderLearning(l){
   $("learn-summary").innerHTML='<b>'+esc(l.action||"brak targetu")+'</b> • średnie Δ bias: '+
     (Number(l.mean_delta||0)>=0?"+":"")+Number(l.mean_delta||0).toExponential(3);
 
-  const impact=l.impact||{};
+  const impact=l.impact||{}, before=l.before||{}, after=l.after||{};
   const maxAbs=Math.max(.001,...Object.values(impact).map(v=>Math.abs(Number(v))));
   $("learning-impact").innerHTML=actionOrder.map(k=>{
-    const v=Number(impact[k]||0), pct=Math.min(50,Math.abs(v)/maxAbs*50);
+    const v=Number(impact[k]||0), b=Number(before[k]||0), a=Number(after[k]||0);
+    const pct=Math.min(50,Math.abs(v)/maxAbs*50);
     const bar=v>=0
       ?'<div class="impact-fill-pos" style="width:'+pct+'%"></div>'
       :'<div class="impact-fill-neg" style="width:'+pct+'%"></div>';
     return '<div class="impact-row"><div>'+k+'</div><div class="impact-track"><div class="impact-zero"></div>'+bar+
-      '</div><div class="'+(v>0?"ok":v<0?"no":"")+'">'+(v>=0?"+":"")+v.toFixed(3)+'</div></div>';
+      '</div><div class="'+(v>0?"ok":v<0?"no":"")+'" title="'+b.toFixed(3)+' → '+a.toFixed(3)+'">'+
+      b.toFixed(3)+'→'+a.toFixed(3)+' '+(v>=0?"+":"")+v.toFixed(3)+'</div></div>';
   }).join("");
 
   $("changed-neurons").innerHTML=(l.top_changed||[]).slice(0,10).map(n=>
@@ -276,6 +279,20 @@ function renderActionHistory(items){
     return '<div class="log-item"><div class="log-time">'+t+'</div><div class="log-kind">'+esc(x.kind||"")+
       '</div><div>'+esc(x.detail||"")+'</div></div>';
   }).join("");
+}
+function drawBiasHistogram(hist){
+  const c=$("bias-chart"),ctx=c.getContext("2d"),w=c.width,h=c.height;
+  ctx.clearRect(0,0,w,h);ctx.fillStyle="#0c1219";ctx.fillRect(0,0,w,h);
+  const counts=(hist&&hist.counts)||[];
+  if(!counts.length)return;
+  const max=Math.max(1,...counts);
+  const bw=w/counts.length;
+  counts.forEach((v,i)=>{
+    const bh=(Number(v)/max)*(h-18);
+    ctx.fillStyle=i<Math.floor(counts.length/2)?"#ff6b6b":i===Math.floor(counts.length/2)?"#8290a0":"#54d98c";
+    ctx.fillRect(i*bw+1,h-bh-8,Math.max(1,bw-2),bh);
+  });
+  ctx.strokeStyle="#536274";ctx.beginPath();ctx.moveTo(w/2,0);ctx.lineTo(w/2,h);ctx.stroke();
 }
 const rewardHistory=[];
 function drawRewardChart(events,currentTrace){
@@ -335,6 +352,7 @@ async function update(){
     $("bias-max").textContent=Number(d.bias_max_abs||0).toExponential(3);
     $("bias-pos").textContent=nfmt(d.bias_positive||0);
     $("bias-neg").textContent=nfmt(d.bias_negative||0);
+    drawBiasHistogram(d.bias_hist||{});
     $("language").textContent=nfmt(s.language_tokens)+" / "+nfmt(s.language_unique);
     $("ready").textContent=s.language_ready?"TAK":"nie";$("voice").textContent=s.voice||"poza voice";
     $("paused").textContent=s.paused?"PAUZA":"aktywny";$("event").textContent=s.last_event||"—";$("lastaction").textContent=s.last_action||"—";
