@@ -6,6 +6,7 @@ import math
 import random
 import time
 from dataclasses import dataclass
+from pathlib import Path
 
 import discord
 import emoji as emoji_lib
@@ -74,6 +75,7 @@ class MuchaClient(discord.Client):
         self._last_overstay_punish: dict[int, float] = {}
         self._deadly_voice_until: dict[tuple[int, int], float] = {}
         self._voice_last_visit: dict[tuple[int, int], float] = {}
+        self._random_audio_missing_warned = False
         self._unicode_emojis = [
             char
             for char, data in emoji_lib.EMOJI_DATA.items()
@@ -303,6 +305,8 @@ class MuchaClient(discord.Client):
         self.presence_loop.start()
         if self.cfg.voice.enabled:
             self.voice_loop.start()
+            if self.cfg.voice.random_audio_enabled:
+                self.random_audio_loop.start()
 
     async def on_ready(self):
         m = self.connectome.metadata
@@ -698,6 +702,82 @@ class MuchaClient(discord.Client):
 
     @presence_loop.before_loop
     async def before_presence(self):
+        await self.wait_until_ready()
+
+    @tasks.loop(seconds=1)
+    async def random_audio_loop(self):
+        await self.wait_until_ready()
+        if self.paused or not self.cfg.voice.random_audio_enabled:
+            return
+
+        candidates = [
+            vc for vc in self.voice_clients
+            if vc.is_connected()
+            and vc.channel is not None
+            and not vc.is_playing()
+        ]
+        if not candidates:
+            return
+
+        audio_path = Path(self.cfg.voice.random_audio_file)
+        if not audio_path.is_file():
+            if not self._random_audio_missing_warned:
+                log.warning("Brak pliku losowego audio: %s", audio_path)
+                self._random_audio_missing_warned = True
+            return
+
+        self._random_audio_missing_warned = False
+        denominator = max(
+            1,
+            int(self.cfg.voice.random_audio_chance_denominator),
+        )
+        if self.random.randrange(denominator) != 0:
+            return
+
+        vc = self.random.choice(candidates)
+        guild = vc.guild
+        channel_name = getattr(vc.channel, "name", "voice")
+
+        try:
+            source = discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    str(audio_path),
+                    executable=self.cfg.voice.ffmpeg_executable,
+                ),
+                volume=max(
+                    0.0,
+                    min(2.0, float(self.cfg.voice.random_audio_volume)),
+                ),
+            )
+            async with self._brain_lock:
+                self.brain.inject("internal:rare-audio", 1.0, 128)
+                self.brain.inject(
+                    f"voice:rare-audio:guild:{guild.id}",
+                    0.65,
+                    96,
+                )
+                self.brain.step(2)
+
+            vc.play(source)
+            self._last_brain_event = (
+                f"RARE AUDIO • {guild.name} • {channel_name}"
+            )
+            self._last_brain_action = (
+                f"AUDIO 1/{denominator} → {guild.name}/{channel_name}"
+            )
+            self._record_action(
+                "rare_audio",
+                f"1/{denominator} → {channel_name} • {audio_path.name}",
+                guild,
+            )
+        except Exception:
+            log.exception(
+                "Nie udało się odtworzyć losowego audio na serwerze %s",
+                guild.id,
+            )
+
+    @random_audio_loop.before_loop
+    async def before_random_audio(self):
         await self.wait_until_ready()
 
     @tasks.loop(seconds=15)
