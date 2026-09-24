@@ -1,0 +1,42 @@
+[brain]
+connectome_dir = "data/connectome"
+state_file = "state/brain_state.npz"
+seed = 67
+leak = 0.86
+propagation_gain = 0.72
+noise = 0.018
+plasticity_lr = 0.0025
+plasticity_decay = 0.998
+max_bias = 0.35
+steps_per_event = 3
+idle_steps = 1
+
+[language]
+database = "state/language.sqlite3"
+min_tokens_before_speaking = 450
+min_unique_tokens_before_speaking = 80
+max_generated_tokens = 28
+spontaneous_text = true
+reply_cooldown_seconds = 35
+spontaneous_cooldown_seconds = 180
+learn_from_bots = false
+
+[voice]
+enabled = true
+poll_seconds = 15
+minimum_dwell_seconds = 60
+move_threshold = 0.67
+join_threshold = 0.72
+leave_threshold = 0.82
+move_margin = 0.05
+include_empty_channels = true
+exclude_afk_channel = true
+
+[behavior]
+idle_tick_seconds = 5
+speak_threshold = 0.70
+reaction_threshold = 0.73
+save_every_seconds = 45
+
+[discord]
+command_prefix = "!mucha "
