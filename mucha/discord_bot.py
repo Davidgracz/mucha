@@ -10,6 +10,7 @@ from pathlib import Path
 
 import discord
 import emoji as emoji_lib
+import pyttsx3
 from discord.ext import tasks
 
 from .brain import FlyBrain
@@ -54,6 +55,7 @@ class MuchaClient(discord.Client):
         self.last_reply: dict[int, float] = {}
         self.last_spontaneous: dict[int, float] = {}
         self.last_text_channel: dict[int, int] = {}
+        self.last_text_context: dict[int, str] = {}
         self.voice_arrived: dict[int, float] = {}
         self.sent: dict[int, SentTrace] = {}
         self.paused = False
@@ -300,6 +302,9 @@ class MuchaClient(discord.Client):
     async def setup_hook(self) -> None:
         self.idle_loop.change_interval(seconds=self.cfg.behavior.idle_tick_seconds)
         self.voice_loop.change_interval(seconds=self.cfg.voice.poll_seconds)
+        self.tts_loop.change_interval(
+            seconds=max(1, self.cfg.voice.tts_interval_seconds)
+        )
         self.console_loop.change_interval(seconds=max(0.25, self.cfg.console_ui.refresh_seconds))
         self.idle_loop.start()
         self.presence_loop.start()
@@ -307,6 +312,8 @@ class MuchaClient(discord.Client):
             self.voice_loop.start()
             if self.cfg.voice.random_audio_enabled:
                 self.random_audio_loop.start()
+            if self.cfg.voice.tts_enabled:
+                self.tts_loop.start()
 
     async def on_ready(self):
         m = self.connectome.metadata
@@ -346,6 +353,7 @@ class MuchaClient(discord.Client):
         blocked_text = self._is_text_channel_blocked(message.channel)
         if not blocked_text:
             self.last_text_channel[message.guild.id] = message.channel.id
+        self.last_text_context[message.guild.id] = message.content
         self.language.learn(message.content)
         mentioned = self.user in message.mentions if self.user else False
         channel_name = getattr(message.channel, "name", str(message.channel.id))
@@ -702,6 +710,132 @@ class MuchaClient(discord.Client):
 
     @presence_loop.before_loop
     async def before_presence(self):
+        await self.wait_until_ready()
+
+    def _synthesize_tts_file(self, text: str, path: Path) -> bool:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            pass
+
+        engine = pyttsx3.init()
+        try:
+            engine.setProperty("rate", int(self.cfg.voice.tts_rate))
+            wanted = self.cfg.voice.tts_voice_name.strip().lower()
+            if wanted:
+                for voice in engine.getProperty("voices"):
+                    name = str(getattr(voice, "name", "")).lower()
+                    voice_id = str(getattr(voice, "id", "")).lower()
+                    if wanted in name or wanted in voice_id:
+                        engine.setProperty("voice", voice.id)
+                        break
+            engine.save_to_file(text, str(path))
+            engine.runAndWait()
+        finally:
+            try:
+                engine.stop()
+            except Exception:
+                pass
+
+        return path.is_file() and path.stat().st_size > 44
+
+    @tasks.loop(seconds=10)
+    async def tts_loop(self):
+        await self.wait_until_ready()
+        if (
+            self.paused
+            or not self.cfg.voice.tts_enabled
+            or not self.language.ready()
+        ):
+            return
+
+        candidates = [
+            vc for vc in self.voice_clients
+            if vc.is_connected()
+            and vc.channel is not None
+            and not vc.is_playing()
+        ]
+        if not candidates:
+            return
+
+        vc = self.random.choice(candidates)
+        guild = vc.guild
+        channel_name = getattr(vc.channel, "name", "voice")
+
+        async with self._brain_lock:
+            self.brain.inject(
+                f"voice:tts-opportunity:guild:{guild.id}",
+                0.18,
+                64,
+            )
+            self.brain.step(1)
+            scores = self.brain.action_scores()
+            learning_trace = self.brain.capture_learning_trace()
+
+        if scores["speak"] < self.cfg.behavior.speak_threshold:
+            return
+
+        context = self.last_text_context.get(guild.id, "")
+        text_out, trigrams = self.language.generate(
+            context=context,
+            arousal=scores["explore"],
+        )
+        if not text_out:
+            return
+
+        text_out = text_out[: max(8, int(self.cfg.voice.tts_max_chars))].strip()
+        if not text_out:
+            return
+
+        wav_path = Path("state") / "tts" / f"{guild.id}.wav"
+        try:
+            ok = await asyncio.to_thread(
+                self._synthesize_tts_file,
+                text_out,
+                wav_path,
+            )
+            if not ok or vc.is_playing() or not vc.is_connected():
+                return
+
+            source = discord.PCMVolumeTransformer(
+                discord.FFmpegPCMAudio(
+                    str(wav_path),
+                    executable=self.cfg.voice.ffmpeg_executable,
+                ),
+                volume=max(
+                    0.0,
+                    min(2.0, float(self.cfg.voice.tts_volume)),
+                ),
+            )
+            vc.play(source)
+
+            self._last_brain_event = (
+                f"TTS • {guild.name} • {channel_name}"
+            )
+            self._last_brain_action = (
+                f"TTS SPEAK → {guild.name}/{channel_name}: "
+                f"{text_out[:80]}"
+            )
+            self._set_reinforceable(
+                guild,
+                "speak",
+                learning_trace,
+                f"TTS → {channel_name}: {text_out[:80]}",
+            )
+            self._record_action(
+                "tts_speak",
+                f"{channel_name}: {text_out[:120]}",
+                guild,
+            )
+        except Exception:
+            log.exception(
+                "Nie udało się wygenerować lub odtworzyć TTS na serwerze %s",
+                guild.id,
+            )
+
+    @tts_loop.before_loop
+    async def before_tts(self):
         await self.wait_until_ready()
 
     @tasks.loop(seconds=1)
