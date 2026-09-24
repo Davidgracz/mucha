@@ -50,6 +50,11 @@ class VoiceConfig:
     threat_steps: int = 3
     deadly_channel_seconds: int = 600
     deadly_threat_magnitude: float = 1.6
+    exploration_memory_seconds: int = 1800
+    exploration_novelty_bonus: float = 0.32
+    exploration_recent_penalty: float = 0.38
+    exploration_temperature: float = 0.18
+    exploration_min_candidates: int = 3
     move_threshold: float = 0.67
     join_threshold: float = 0.72
     leave_threshold: float = 0.82
