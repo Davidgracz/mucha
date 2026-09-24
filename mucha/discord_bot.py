@@ -129,6 +129,11 @@ class MuchaClient(discord.Client):
             auto_open=cfg.web_ui.auto_open,
             refresh_ms=cfg.web_ui.refresh_ms,
             history_points=cfg.web_ui.history_points,
+            auth_enabled=cfg.web_ui.auth_enabled,
+            auth_username=cfg.web_ui.auth_username,
+            auth_password_env=cfg.web_ui.auth_password_env,
+            session_hours=cfg.web_ui.session_hours,
+            chaser_status_file=cfg.web_ui.chaser_status_file,
         )
 
     def _record_action(
