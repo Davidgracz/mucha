@@ -48,38 +48,55 @@ NEGATIVE_REACTION_WEIGHT = {
 # Natural-language rejection aimed at Mucha. Severity is 0..1 and controls
 # both social affinity damage and the negative reward of the triggering trace.
 VERBAL_REJECTION_PATTERNS: tuple[tuple[re.Pattern[str], str, float], ...] = (
-    (re.compile(r"\\bwypierdal(?:aj|ać|ac)?\\b", re.I), "wypierdalaj", 1.00),
-    (re.compile(r"\\bspierdal(?:aj|ać|ac)?\\b", re.I), "spierdalaj", 1.00),
-    (re.compile(r"\\bodpierdol\\s*(?:się|sie)?\\b", re.I), "odpierdol się", 1.00),
-    (re.compile(r"\\bpierdol\\s*(?:się|sie)\\b", re.I), "pierdol się", 0.95),
-    (re.compile(r"\\bjeb\\s*(?:się|sie)\\b", re.I), "jeb się", 0.95),
-    (re.compile(r"\\bzamknij\\s+(?:mordę|morde|ryj|pysk)\\b", re.I), "zamknij mordę", 0.95),
-    (re.compile(r"\\bstul\\s+(?:mordę|morde|ryj|pysk)\\b", re.I), "stul pysk", 0.95),
-    (re.compile(r"\\bprzestań\\s+pierdolić\\b", re.I), "przestań pierdolić", 0.90),
-    (re.compile(r"\\bprzestan\\s+pierdolic\\b", re.I), "przestań pierdolić", 0.90),
-    (re.compile(r"\\bnie\\s+pierdol\\b", re.I), "nie pierdol", 0.85),
-    (re.compile(r"\\bskończ\\s+pierdolić\\b", re.I), "skończ pierdolić", 0.85),
-    (re.compile(r"\\bskoncz\\s+pierdolic\\b", re.I), "skończ pierdolić", 0.85),
-    (re.compile(r"\\bcicho\\s+kurwa\\b", re.I), "cicho kurwa", 0.85),
-    (re.compile(r"\\bkurwa\\s+(?:cicho|zamknij\\s+się|zamknij\\s+sie)\\b", re.I), "kurwa cicho", 0.85),
-    (re.compile(r"\\bco\\s+ty\\s+pierdolisz\\b", re.I), "co ty pierdolisz", 0.75),
-    (re.compile(r"\\bale\\s+pierdolisz\\b", re.I), "ale pierdolisz", 0.70),
-    (re.compile(r"\\bzamknij\\s+(?:się|sie)\\b", re.I), "zamknij się", 0.70),
-    (re.compile(r"\\bweź\\s+się\\s+zamknij\\b", re.I), "weź się zamknij", 0.75),
-    (re.compile(r"\\bwez\\s+sie\\s+zamknij\\b", re.I), "weź się zamknij", 0.75),
-    (re.compile(r"\\bnie\\s+odzywaj\\s+(?:się|sie)\\b", re.I), "nie odzywaj się", 0.70),
-    (re.compile(r"\\bzamilcz\\b", re.I), "zamilcz", 0.65),
-    (re.compile(r"\\bjapa\\b", re.I), "japa", 0.65),
-    (re.compile(r"\\bstul\\s+się\\b", re.I), "stul się", 0.65),
-    (re.compile(r"\\bstul\\s+sie\\b", re.I), "stul się", 0.65),
-    (re.compile(r"\\bprzestań\\b", re.I), "przestań", 0.45),
-    (re.compile(r"\\bprzestan\\b", re.I), "przestań", 0.45),
-    (re.compile(r"\\bdaj\\s+spokój\\b", re.I), "daj spokój", 0.35),
-    (re.compile(r"\\bdaj\\s+spokoj\\b", re.I), "daj spokój", 0.35),
-    (re.compile(r"\\bgłupia\\s+mucha\\b", re.I), "głupia mucha", 0.55),
-    (re.compile(r"\\bglupia\\s+mucha\\b", re.I), "głupia mucha", 0.55),
-    (re.compile(r"\\bdebilna\\s+mucha\\b", re.I), "debilna mucha", 0.70),
-    (re.compile(r"\\bidiotyczna\\s+mucha\\b", re.I), "idiotyczna mucha", 0.65),
+    (re.compile(r"\bwypierdal(?:aj|ać|ac)?\b", re.I), "wypierdalaj", 1.00),
+    (re.compile(r"\bspierdal(?:aj|ać|ac)?\b", re.I), "spierdalaj", 1.00),
+    (re.compile(r"\bodpierdol\s*(?:się|sie)?\b", re.I), "odpierdol się", 1.00),
+    (re.compile(r"\bpierdol\s*(?:się|sie)\b", re.I), "pierdol się", 0.95),
+    (re.compile(r"\bjeb\s*(?:się|sie)\b", re.I), "jeb się", 0.95),
+    (re.compile(r"\bzamknij\s+(?:mordę|morde|ryj|pysk)\b", re.I), "zamknij mordę", 0.95),
+    (re.compile(r"\bstul\s+(?:mordę|morde|ryj|pysk)\b", re.I), "stul pysk", 0.95),
+    (re.compile(r"\bprzestań\s+pierdolić\b", re.I), "przestań pierdolić", 0.90),
+    (re.compile(r"\bprzestan\s+pierdolic\b", re.I), "przestań pierdolić", 0.90),
+    (re.compile(r"\bnie\s+pierdol\b", re.I), "nie pierdol", 0.85),
+    (re.compile(r"\bskończ\s+pierdolić\b", re.I), "skończ pierdolić", 0.85),
+    (re.compile(r"\bskoncz\s+pierdolic\b", re.I), "skończ pierdolić", 0.85),
+    (re.compile(r"\bcicho\s+kurwa\b", re.I), "cicho kurwa", 0.85),
+    (re.compile(r"\bkurwa\s+(?:cicho|zamknij\s+się|zamknij\s+sie)\b", re.I), "kurwa cicho", 0.85),
+    (re.compile(r"\bco\s+ty\s+pierdolisz\b", re.I), "co ty pierdolisz", 0.75),
+    (re.compile(r"\bale\s+pierdolisz\b", re.I), "ale pierdolisz", 0.70),
+    (re.compile(r"\bzamknij\s+(?:się|sie)\b", re.I), "zamknij się", 0.70),
+    (re.compile(r"\bweź\s+się\s+zamknij\b", re.I), "weź się zamknij", 0.75),
+    (re.compile(r"\bwez\s+sie\s+zamknij\b", re.I), "weź się zamknij", 0.75),
+    (re.compile(r"\bnie\s+odzywaj\s+(?:się|sie)\b", re.I), "nie odzywaj się", 0.70),
+    (re.compile(r"\bzamilcz\b", re.I), "zamilcz", 0.65),
+    (re.compile(r"\bjapa\b", re.I), "japa", 0.65),
+    (re.compile(r"\bstul\s+się\b", re.I), "stul się", 0.65),
+    (re.compile(r"\bstul\s+sie\b", re.I), "stul się", 0.65),
+    (re.compile(r"\bprzestań\b", re.I), "przestań", 0.45),
+    (re.compile(r"\bprzestan\b", re.I), "przestań", 0.45),
+    (re.compile(r"\bdaj\s+spokój\b", re.I), "daj spokój", 0.35),
+    (re.compile(r"\bdaj\s+spokoj\b", re.I), "daj spokój", 0.35),
+    (re.compile(r"\bgłupia\s+mucha\b", re.I), "głupia mucha", 0.55),
+    (re.compile(r"\bglupia\s+mucha\b", re.I), "głupia mucha", 0.55),
+    (re.compile(r"\bdebilna\s+mucha\b", re.I), "debilna mucha", 0.70),
+    (re.compile(r"\bidiotyczna\s+mucha\b", re.I), "idiotyczna mucha", 0.65),
+    (re.compile(r"\bzamknij\s+kurwa\s+(?:mordę|morde|ryj|pysk|japę|jape)\b", re.I), "zamknij kurwa mordę", 1.00),
+    (re.compile(r"\bstul\s+kurwa\s+(?:mordę|morde|ryj|pysk|japę|jape)\b", re.I), "stul kurwa pysk", 1.00),
+    (re.compile(r"\bstul\s+(?:japę|jape)\b", re.I), "stul japę", 0.90),
+    (re.compile(r"\bzamknij\s+(?:japę|jape)\b", re.I), "zamknij japę", 0.90),
+    (re.compile(r"\b(?:jebana|pierdolona)\s+mucha\b", re.I), "jebana/pierdolona mucha", 0.90),
+    (re.compile(r"\bjebać\s+muchę\b", re.I), "jebać muchę", 1.00),
+    (re.compile(r"\bjebac\s+muche\b", re.I), "jebać muchę", 1.00),
+    (re.compile(r"\bgówno\s+(?:gadasz|mówisz|piszesz)\b", re.I), "gówno gadasz", 0.85),
+    (re.compile(r"\bgowno\s+(?:gadasz|mowisz|piszesz)\b", re.I), "gówno gadasz", 0.85),
+    (re.compile(r"\b(?:co|ale)\s+za\s+gówno\b", re.I), "co za gówno", 0.80),
+    (re.compile(r"\b(?:co|ale)\s+za\s+gowno\b", re.I), "co za gówno", 0.80),
+    (re.compile(r"\bty\s+(?:debilu|idioto|idiotko|kretynie)\b", re.I), "obraźliwe wyzwisko", 0.80),
+    (re.compile(r"\bty\s+(?:kurwo|szmato)\b", re.I), "mocne wyzwisko", 1.00),
+    (re.compile(r"\b(?:debilna|jebana|pierdolona)\s+botka\b", re.I), "obraźliwe określenie bota", 0.90),
+    (re.compile(r"\b(?:weź|wez)\s+wypierdalaj\b", re.I), "weź wypierdalaj", 1.00),
+    (re.compile(r"\bwypierdalaj\s+stąd\b", re.I), "wypierdalaj stąd", 1.00),
+    (re.compile(r"\bspierdalaj\s+(?:stąd|mi\s+stąd)\b", re.I), "spierdalaj stąd", 1.00),
 )
 
 
@@ -523,7 +540,7 @@ class MuchaClient(discord.Client):
         if self.user is not None and self.user in message.mentions:
             return True
         normalized = OnlineLanguage.normalize(message.content).lower()
-        return bool(re.search(r"\\bmucha\\b", normalized, flags=re.UNICODE))
+        return bool(re.search(r"\bmucha\b", normalized, flags=re.UNICODE))
 
     async def _apply_social_message_feedback(
         self,
@@ -684,9 +701,9 @@ class MuchaClient(discord.Client):
             message.content
         ).lower()
         correction_match = re.search(
-            r'\\bnie\\s+["„]?([^\\s"”„,.;:!?]{2,})["”]?'
-            r'\\s*,?\\s*(?:tylko|ale)\\s+'
-            r'["„]?([^\\s"”„,.;:!?]{2,})["”]?',
+            r'\\bnie\s+["„]?([^\s"”„,.;:!?]{2,})["”]?'
+            r'\s*,?\s*(?:tylko|ale)\s+'
+            r'["„]?([^\s"”„,.;:!?]{2,})["”]?',
             normalized_message,
             flags=re.UNICODE,
         )
