@@ -96,10 +96,10 @@ class MuchaClient(discord.Client):
 
     async def close(self) -> None:
         try:
+            await self.web_ui.stop()
+            self.console_ui.stop()
             self.brain.save()
             self.language.close()
-            self.console_ui.stop()
-            await self.web_ui.stop()
         finally:
             await super().close()
 
