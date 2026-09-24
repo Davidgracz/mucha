@@ -48,6 +48,8 @@ class VoiceConfig:
     threat_affinity_relaxation: float = 0.18
     threat_escape_reward: float = 0.35
     threat_steps: int = 3
+    deadly_channel_seconds: int = 600
+    deadly_threat_magnitude: float = 1.6
     move_threshold: float = 0.67
     join_threshold: float = 0.72
     leave_threshold: float = 0.82
@@ -69,6 +71,7 @@ class BehaviorConfig:
 @dataclass(slots=True)
 class DiscordConfig:
     command_prefix: str = "!mucha "
+    blocked_text_channel_ids: tuple[int, ...] = ()
 
 
 @dataclass(slots=True)
@@ -124,7 +127,11 @@ def load_config(path: str | Path = "config.toml") -> Config:
         l.pop("max_generated_tokens", None)
     v = raw["voice"]
     beh = raw["behavior"]
-    d = raw["discord"]
+    d = dict(raw["discord"])
+    if "blocked_text_channel_ids" in d:
+        d["blocked_text_channel_ids"] = tuple(
+            int(x) for x in d["blocked_text_channel_ids"]
+        )
     cui = raw.get("console_ui", {})
     wui = raw.get("web_ui", {})
 
