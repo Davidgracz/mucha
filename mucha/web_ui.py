@@ -51,9 +51,24 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .reason{padding:11px 12px;border-radius:12px;background:#0c131b;border:1px solid #1d2936;margin-bottom:12px}
 .reason b{color:var(--accent)}
 .ok{color:var(--good)}.no{color:var(--bad)}.warn{color:var(--warn)}
+.learning-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:12px}
+.kpi{background:#0c131b;border:1px solid #1d2936;border-radius:12px;padding:11px;min-width:0}
+.kpi small{display:block;color:var(--muted);margin-bottom:6px}.kpi strong{font-size:16px;word-break:break-word}
+.impact-row{display:grid;grid-template-columns:110px 1fr 62px;gap:8px;align-items:center;margin:7px 0}
+.impact-track{height:8px;background:#0a1017;border-radius:999px;overflow:hidden;border:1px solid #1e2a37;position:relative}
+.impact-zero{position:absolute;left:50%;top:0;bottom:0;width:1px;background:#536274}
+.impact-fill-pos,.impact-fill-neg{position:absolute;top:0;height:100%}
+.impact-fill-pos{left:50%;background:var(--good)}.impact-fill-neg{right:50%;background:var(--bad)}
+.log-list{display:flex;flex-direction:column;gap:7px;max-height:300px;overflow:auto}
+.log-item{display:grid;grid-template-columns:74px 88px 1fr;gap:8px;padding:8px 10px;background:#0c131b;border:1px solid #1d2936;border-radius:10px;font-size:12px}
+.log-time{color:var(--muted)}.log-kind{color:var(--accent);font-weight:700;text-transform:uppercase}
+.reaction-emoji{font-size:30px;line-height:1}
+.legend{display:flex;gap:15px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}
+.legend span::before{content:"";display:inline-block;width:10px;height:3px;margin-right:5px;vertical-align:middle;border-radius:2px}
+.legend .reward-line::before{background:var(--warn)}.legend .trace-line::before{background:var(--accent)}
 @media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.span3{grid-column:span 2}}
-@media(max-width:900px){.voice-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.events{grid-template-columns:1fr}.voice-summary{grid-template-columns:1fr}}
+@media(max-width:900px){.voice-summary,.learning-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.events{grid-template-columns:1fr}.voice-summary,.learning-grid{grid-template-columns:1fr}.log-item{grid-template-columns:62px 72px 1fr}}
 </style>
 </head>
 <body>
@@ -104,6 +119,54 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
         <div class="event"><small>bodziec</small><div id="event">—</div></div>
         <div class="event"><small>akcja</small><div id="lastaction">—</div></div>
       </div>
+    </div>
+
+    <div class="card span2">
+      <h2>Learning Debug</h2>
+      <div class="learning-grid">
+        <div class="kpi"><small>ostatni reward</small><strong id="learn-reward">—</strong></div>
+        <div class="kpi"><small>target action</small><strong id="learn-action">—</strong></div>
+        <div class="kpi"><small>zmienione neurony</small><strong id="learn-count">—</strong></div>
+        <div class="kpi"><small>max |Δ bias|</small><strong id="learn-max">—</strong></div>
+      </div>
+      <div class="reason" id="learn-summary">Czekam na pierwszy reward…</div>
+      <div id="learning-impact"></div>
+    </div>
+
+    <div class="card">
+      <h2>Reaction Debug</h2>
+      <div class="learning-grid" style="grid-template-columns:1fr 1fr">
+        <div class="kpi"><small>react / próg</small><strong id="reaction-score">—</strong></div>
+        <div class="kpi"><small>emoji</small><strong class="reaction-emoji" id="reaction-emoji">—</strong></div>
+      </div>
+      <div class="metric"><span>Decyzja</span><strong id="reaction-decision">—</strong></div>
+      <div class="metric"><span>Cel</span><strong id="reaction-target">—</strong></div>
+      <div class="metric"><span>Cooldown</span><strong id="reaction-cooldown">—</strong></div>
+    </div>
+
+    <div class="card">
+      <h2>Plasticity</h2>
+      <div class="metric"><span>Średni bias</span><strong id="bias-mean">—</strong></div>
+      <div class="metric"><span>Średni |bias|</span><strong id="bias-mean-abs">—</strong></div>
+      <div class="metric"><span>Max |bias|</span><strong id="bias-max">—</strong></div>
+      <div class="metric"><span>Dodatnie neurony</span><strong id="bias-pos">—</strong></div>
+      <div class="metric"><span>Ujemne neurony</span><strong id="bias-neg">—</strong></div>
+    </div>
+
+    <div class="card span2">
+      <h2>Reward timeline</h2>
+      <canvas id="reward-chart" width="1000" height="220" aria-label="Historia reward trace"></canvas>
+      <div class="legend"><span class="trace-line">reward trace</span><span class="reward-line">zdarzenie reward</span></div>
+    </div>
+
+    <div class="card span2">
+      <h2>Action History</h2>
+      <div class="log-list" id="action-history"><div class="reason">Brak akcji.</div></div>
+    </div>
+
+    <div class="card">
+      <h2>Top changed neurons</h2>
+      <table><thead><tr><th>root_id</th><th>Δ bias</th><th>activation</th></tr></thead><tbody id="changed-neurons"></tbody></table>
     </div>
 
     <div class="card span3">
@@ -169,6 +232,78 @@ function renderVoiceDebug(items){
     '<table><thead><tr><th>Kanał</th><th>Ludzie</th><th>View</th><th>Connect</th><th>Affinity</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table>';
   }).join('<div style="height:14px"></div>');
 }
+function renderLearning(l){
+  l=l||{};
+  const amount=Number(l.amount||0);
+  $("learn-reward").textContent=(amount>=0?"+":"")+amount.toFixed(2);
+  $("learn-reward").className=amount>0?"ok":amount<0?"no":"";
+  $("learn-action").textContent=l.action||"global / brak";
+  $("learn-count").textContent=nfmt(l.changed_neurons||0);
+  $("learn-max").textContent=Number(l.max_delta||0).toExponential(3);
+  $("learn-summary").innerHTML='<b>'+esc(l.action||"brak targetu")+'</b> • średnie Δ bias: '+
+    (Number(l.mean_delta||0)>=0?"+":"")+Number(l.mean_delta||0).toExponential(3);
+
+  const impact=l.impact||{};
+  const maxAbs=Math.max(.001,...Object.values(impact).map(v=>Math.abs(Number(v))));
+  $("learning-impact").innerHTML=actionOrder.map(k=>{
+    const v=Number(impact[k]||0), pct=Math.min(50,Math.abs(v)/maxAbs*50);
+    const bar=v>=0
+      ?'<div class="impact-fill-pos" style="width:'+pct+'%"></div>'
+      :'<div class="impact-fill-neg" style="width:'+pct+'%"></div>';
+    return '<div class="impact-row"><div>'+k+'</div><div class="impact-track"><div class="impact-zero"></div>'+bar+
+      '</div><div class="'+(v>0?"ok":v<0?"no":"")+'">'+(v>=0?"+":"")+v.toFixed(3)+'</div></div>';
+  }).join("");
+
+  $("changed-neurons").innerHTML=(l.top_changed||[]).slice(0,10).map(n=>
+    '<tr><td>'+esc(n.root_id)+'</td><td class="'+(Number(n.delta)>=0?"ok":"no")+'">'+
+    (Number(n.delta)>=0?"+":"")+Number(n.delta).toExponential(3)+'</td><td>'+
+    (Number(n.activation)>=0?"+":"")+Number(n.activation).toFixed(4)+'</td></tr>'
+  ).join("");
+}
+function renderReaction(r){
+  r=r||{};
+  $("reaction-score").textContent=Number(r.score||0).toFixed(3)+" / "+Number(r.threshold||0).toFixed(3);
+  $("reaction-emoji").textContent=r.emoji||"—";
+  $("reaction-decision").textContent=r.decision||"—";
+  $("reaction-target").textContent=r.target||"—";
+  $("reaction-cooldown").textContent=Number(r.cooldown_remaining||0).toFixed(1)+" s";
+}
+function renderActionHistory(items){
+  const root=$("action-history");
+  if(!Array.isArray(items)||!items.length){root.innerHTML='<div class="reason">Brak akcji.</div>';return}
+  root.innerHTML=items.slice().reverse().map(x=>{
+    const t=new Date(Number(x.time||0)*1000).toLocaleTimeString("pl-PL");
+    return '<div class="log-item"><div class="log-time">'+t+'</div><div class="log-kind">'+esc(x.kind||"")+
+      '</div><div>'+esc(x.detail||"")+'</div></div>';
+  }).join("");
+}
+const rewardHistory=[];
+function drawRewardChart(events,currentTrace){
+  const c=$("reward-chart"),ctx=c.getContext("2d"),w=c.width,h=c.height;
+  ctx.clearRect(0,0,w,h);ctx.fillStyle="#0c1219";ctx.fillRect(0,0,w,h);
+  ctx.strokeStyle="#1d2a37";ctx.lineWidth=1;
+  const mid=h/2;ctx.beginPath();ctx.moveTo(0,mid);ctx.lineTo(w,mid);ctx.stroke();
+  const data=(events||[]).slice(-80);
+  if(data.length){
+    const minT=data[0].time,maxT=Math.max(minT+1,data[data.length-1].time);
+    data.forEach(e=>{
+      const x=((e.time-minT)/(maxT-minT))*w;
+      const amt=Number(e.amount||0);
+      ctx.strokeStyle="#f2c14e";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,mid);
+      ctx.lineTo(x,mid-(amt*(h*.32)));ctx.stroke();
+      ctx.fillStyle=amt>=0?"#54d98c":"#ff6b6b";ctx.beginPath();ctx.arc(x,mid-(amt*(h*.32)),3,0,Math.PI*2);ctx.fill();
+    });
+  }
+  rewardHistory.push(Number(currentTrace||0));while(rewardHistory.length>maxHistory)rewardHistory.shift();
+  if(rewardHistory.length>1){
+    ctx.strokeStyle="#55d3c3";ctx.lineWidth=2;ctx.beginPath();
+    rewardHistory.forEach((v,i)=>{
+      const x=i/(Math.max(1,maxHistory-1))*w;
+      const y=mid-(Math.max(-2,Math.min(2,v))/2)*(h*.42);
+      i?ctx.lineTo(x,y):ctx.moveTo(x,y);
+    });ctx.stroke();
+  }
+}
 function draw(){
   const c=$("chart"),ctx=c.getContext("2d"),w=c.width,h=c.height;
   ctx.clearRect(0,0,w,h);ctx.fillStyle="#0c1219";ctx.fillRect(0,0,w,h);
@@ -195,10 +330,19 @@ async function update(){
     $("active").textContent=nfmt(d.active_abs_gt_0_1);$("mean").textContent=fmt(d.mean_abs,5);
     $("max").textContent=fmt(d.max_abs,5);$("reward").textContent=(d.reward_trace>=0?"+":"")+fmt(d.reward_trace,4);
     $("ticks").textContent=nfmt(d.ticks);
+    $("bias-mean").textContent=(Number(d.bias_mean||0)>=0?"+":"")+Number(d.bias_mean||0).toExponential(3);
+    $("bias-mean-abs").textContent=Number(d.bias_mean_abs||0).toExponential(3);
+    $("bias-max").textContent=Number(d.bias_max_abs||0).toExponential(3);
+    $("bias-pos").textContent=nfmt(d.bias_positive||0);
+    $("bias-neg").textContent=nfmt(d.bias_negative||0);
     $("language").textContent=nfmt(s.language_tokens)+" / "+nfmt(s.language_unique);
     $("ready").textContent=s.language_ready?"TAK":"nie";$("voice").textContent=s.voice||"poza voice";
     $("paused").textContent=s.paused?"PAUZA":"aktywny";$("event").textContent=s.last_event||"—";$("lastaction").textContent=s.last_action||"—";
     renderActions(s.scores||{});
+    renderReaction(s.reaction_debug||{});
+    renderLearning(s.learning_debug||{});
+    renderActionHistory(s.action_history||[]);
+    drawRewardChart(s.reward_history||[],d.reward_trace);
     renderVoiceDebug(s.voice_debug||[]);
     $("top").innerHTML=(s.top_neurons||[]).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+x[0]+'</td><td>'+(x[1]>=0?"+":"")+Number(x[1]).toFixed(5)+'</td><td>'+Math.abs(x[1]).toFixed(5)+'</td></tr>').join("");
     history.push({mean:Number(d.mean_abs),max:Number(d.max_abs)});while(history.length>maxHistory)history.shift();draw();
