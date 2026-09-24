@@ -14,6 +14,7 @@ from .config import Config
 from .connectome import Connectome
 from .console_ui import ConsoleBrainUI
 from .language import OnlineLanguage
+from .web_ui import WebDashboard
 
 log = logging.getLogger("mucha")
 
@@ -60,6 +61,14 @@ class MuchaClient(discord.Client):
             mode=cfg.console_ui.mode,
             top_neurons=cfg.console_ui.top_neurons,
         )
+        self.web_ui = WebDashboard(
+            snapshot_provider=self._console_snapshot,
+            host=cfg.web_ui.host,
+            port=cfg.web_ui.port,
+            auto_open=cfg.web_ui.auto_open,
+            refresh_ms=cfg.web_ui.refresh_ms,
+            history_points=cfg.web_ui.history_points,
+        )
 
     async def setup_hook(self) -> None:
         self.idle_loop.change_interval(seconds=self.cfg.behavior.idle_tick_seconds)
@@ -78,6 +87,11 @@ class MuchaClient(discord.Client):
         self.console_ui.start()
         if self.cfg.console_ui.mode != "off" and not self.console_loop.is_running():
             self.console_loop.start()
+        if self.cfg.web_ui.enabled:
+            try:
+                await self.web_ui.start()
+            except OSError:
+                log.exception("Nie udało się uruchomić Web UI na %s:%s", self.cfg.web_ui.host, self.cfg.web_ui.port)
         await self._update_presence()
 
     async def close(self) -> None:
@@ -85,6 +99,7 @@ class MuchaClient(discord.Client):
             self.brain.save()
             self.language.close()
             self.console_ui.stop()
+            await self.web_ui.stop()
         finally:
             await super().close()
 
