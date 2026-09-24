@@ -25,9 +25,9 @@ class BrainConfig:
 @dataclass(slots=True)
 class LanguageConfig:
     database: Path
-    min_tokens_before_speaking: int = 450
-    min_unique_tokens_before_speaking: int = 80
-    max_generated_tokens: int = 28
+    min_chars_before_speaking: int = 1200
+    min_unique_chars_before_speaking: int = 18
+    max_generated_chars: int = 220
     spontaneous_text: bool = True
     reply_cooldown_seconds: int = 35
     spontaneous_cooldown_seconds: int = 180
@@ -99,7 +99,23 @@ def load_config(path: str | Path = "config.toml") -> Config:
         raw = tomllib.load(f)
 
     b = raw["brain"]
-    l = raw["language"]
+    l = dict(raw["language"])
+    # Backward compatibility with pre-character language configs.
+    if "min_chars_before_speaking" not in l:
+        legacy = int(l.pop("min_tokens_before_speaking", 450))
+        l["min_chars_before_speaking"] = max(600, legacy * 3)
+    else:
+        l.pop("min_tokens_before_speaking", None)
+    if "min_unique_chars_before_speaking" not in l:
+        l.pop("min_unique_tokens_before_speaking", None)
+        l["min_unique_chars_before_speaking"] = 18
+    else:
+        l.pop("min_unique_tokens_before_speaking", None)
+    if "max_generated_chars" not in l:
+        legacy_max = int(l.pop("max_generated_tokens", 28))
+        l["max_generated_chars"] = max(80, legacy_max * 7)
+    else:
+        l.pop("max_generated_tokens", None)
     v = raw["voice"]
     beh = raw["behavior"]
     d = raw["discord"]
