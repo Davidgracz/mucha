@@ -603,15 +603,37 @@ class MuchaClient(discord.Client):
                 min(1.0, float(self.cfg.behavior.word_reuse_reward)),
             )
             self.language.reinforce_text(matched_word or "", language_amount)
+            feedback_info = {}
             if matched_word:
-                self.language.record_word_feedback(
+                feedback_info = self.language.record_word_feedback(
                     matched_word,
                     message.author.id,
                     language_amount,
                 )
-            brain_amount = min(0.15, language_amount * 0.35)
-            event = "WORD_REUSE"
-            detail = matched_word or ""
+            unique_users = int(feedback_info.get("unique_users", 1))
+            confirmation_bonus = min(
+                0.10,
+                max(0, unique_users - 1) * 0.02,
+            )
+            if confirmation_bonus > 0.0 and matched_word:
+                self.language.reinforce_text(
+                    matched_word,
+                    confirmation_bonus,
+                )
+            brain_amount = min(
+                0.20,
+                language_amount * 0.35 + confirmation_bonus * 0.5,
+            )
+            event = (
+                "MULTI_USER_CONFIRM"
+                if unique_users >= 2
+                else "WORD_REUSE"
+            )
+            detail = (
+                f"{matched_word} • {unique_users} osób"
+                if matched_word
+                else ""
+            )
 
         if brain_amount > 0.0:
             async with self._brain_lock:
@@ -1506,6 +1528,22 @@ class MuchaClient(discord.Client):
         )
 
         if (
+            not member.bot
+            and changed_channel
+            and after.channel is not None
+            and my_channel is not None
+            and after.channel.id == my_channel.id
+            and self.cfg.behavior.avoid_disliked_users_on_voice
+            and self._is_disliked_user(member.id)
+            and self._chaser_panic_remaining(member.guild.id, now) <= 0.0
+        ):
+            self._last_brain_event = (
+                f"SOCIAL AVOID • {member.display_name} wszedł na "
+                f"{after.channel.name}"
+            )
+            asyncio.create_task(self._voice_decision(member.guild))
+
+        if (
             self.cfg.voice.chaser_enabled
             and member.bot
             and changed_channel
@@ -2030,6 +2068,12 @@ class MuchaClient(discord.Client):
             and vc.channel is not None
             and not vc.is_playing()
             and self._chaser_panic_remaining(vc.guild.id) <= 0.0
+            and not (
+                self.cfg.behavior.avoid_disliked_users_on_voice
+                and self._disliked_members(
+                    [m for m in vc.channel.members if not m.bot]
+                )
+            )
         ]
         if not candidates:
             return
