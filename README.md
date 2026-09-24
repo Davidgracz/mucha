@@ -203,3 +203,83 @@ Po `git pull` doinstaluj zależność UI:
 ```powershell
 python -m pip install -r requirements.txt
 ```
+
+
+## Graficzny Web UI
+
+Po uruchomieniu Muchy lokalny panel otwiera się automatycznie pod:
+
+```text
+http://127.0.0.1:8765
+```
+
+Panel pokazuje na żywo:
+
+- aktywne neurony, średnią i maksymalną aktywację,
+- readouty `speak/react/voice_join/voice_move/voice_leave/explore/stay`,
+- reward trace i tick runtime,
+- stan języka i voice,
+- ostatni bodziec oraz ostatnią akcję,
+- top aktywnych neuronów z `root_id` FlyWire,
+- aktywny backend obliczeń i nazwę urządzenia,
+- historię aktywności na wykresie.
+
+Konfiguracja:
+
+```toml
+[web_ui]
+enabled = true
+host = "127.0.0.1"
+port = 8765
+auto_open = true
+refresh_ms = 500
+history_points = 180
+```
+
+Domyślnie panel jest dostępny tylko lokalnie. Nie ustawiaj `host = "0.0.0.0"` na komputerze wystawionym do Internetu bez dodatkowego uwierzytelniania/firewalla.
+
+## GPU / CUDA
+
+Mucha potrafi używać NVIDIA CUDA do propagacji sparse connectome. W `config.toml`:
+
+```toml
+[brain]
+backend = "auto"
+gpu_device = 0
+```
+
+Tryby:
+
+- `auto` — próbuje CUDA, a gdy CuPy/GPU jest niedostępne wraca do CPU,
+- `cuda` — wymaga działającej CUDA; błąd przy starcie, jeśli GPU nie działa,
+- `cpu` — wymusza NumPy/SciPy.
+
+### Instalacja GPU na Windows
+
+Najprościej:
+
+```bat
+install_gpu_windows.bat
+```
+
+albo ręcznie w aktywnym venv:
+
+```powershell
+python -m pip install -r requirements-gpu.txt
+python tools\check_gpu.py
+```
+
+Jeśli test pokaże kartę NVIDIA i `CuPy test: OK`, uruchom:
+
+```powershell
+python bot.py
+```
+
+W GUI i konsoli powinieneś wtedy zobaczyć:
+
+```text
+backend: CUDA
+device: NVIDIA ...
+```
+
+Stan `brain_state.npz` pozostaje przenośny między CPU i GPU, bo przy zapisie jest konwertowany do zwykłych tablic NumPy.
