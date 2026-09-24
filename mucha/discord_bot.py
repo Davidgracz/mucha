@@ -759,13 +759,34 @@ class MuchaClient(discord.Client):
         volume: float,
     ) -> discord.AudioSource:
         volume = max(0.0, min(2.0, float(volume)))
-        return discord.FFmpegOpusAudio(
+        pcm = discord.FFmpegPCMAudio(
             str(path),
             executable=self.cfg.voice.ffmpeg_executable,
-            bitrate=96,
-            codec="libopus",
-            options=f"-vn -filter:a volume={volume}",
+            options="-vn -ar 48000 -ac 2",
         )
+        return discord.PCMVolumeTransformer(
+            pcm,
+            volume=volume,
+        )
+
+    async def _verify_voice_playback(
+        self,
+        vc: discord.VoiceClient,
+        label: str,
+    ) -> None:
+        await asyncio.sleep(0.35)
+        self._audio_debug.update({
+            "playing": bool(vc.is_playing()),
+            "connected": bool(vc.is_connected()),
+            "stage": "playing_check",
+            "status": "PLAYING" if vc.is_playing() else "STOPPED",
+            "error": (
+                ""
+                if vc.is_playing()
+                else f"{label}: Discord nie raportuje aktywnego playbacku po 350 ms"
+            ),
+            "updated_at": time.time(),
+        })
 
     def _synthesize_tts_file(self, text: str, path: Path) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
@@ -891,6 +912,9 @@ class MuchaClient(discord.Client):
                 self.cfg.voice.tts_volume,
             )
             vc.play(source)
+            asyncio.create_task(
+                self._verify_voice_playback(vc, "tts")
+            )
             self._audio_debug.update({
                 "status": "PLAYING",
                 "stage": "vc.play",
@@ -981,6 +1005,9 @@ class MuchaClient(discord.Client):
                 self.brain.step(2)
 
             vc.play(source)
+            asyncio.create_task(
+                self._verify_voice_playback(vc, "rare_audio")
+            )
             self._last_brain_event = (
                 f"RARE AUDIO • {guild.name} • {channel_name}"
             )
@@ -1705,9 +1732,13 @@ class MuchaClient(discord.Client):
 
             wav_path = Path("state") / "tts" / f"{message.guild.id}.wav"
             test_text = "Test głosu Muchy."
+            voice_state = message.guild.me.voice if message.guild.me else None
             self._audio_debug.update({
                 "status": "TEST",
                 "stage": "synthesize",
+                "server_muted": bool(getattr(voice_state, "mute", False)),
+                "server_deafened": bool(getattr(voice_state, "deaf", False)),
+                "suppressed": bool(getattr(voice_state, "suppress", False)),
                 "error": "",
                 "guild": message.guild.name,
                 "channel": vc.channel.name,
@@ -1744,6 +1775,9 @@ class MuchaClient(discord.Client):
                     self.cfg.voice.tts_volume,
                 )
                 vc.play(source)
+                asyncio.create_task(
+                    self._verify_voice_playback(vc, "audiotest")
+                )
                 self._audio_debug.update({
                     "status": "PLAYING",
                     "stage": "vc.play",
