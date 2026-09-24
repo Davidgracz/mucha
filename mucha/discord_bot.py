@@ -52,11 +52,13 @@ class MuchaClient(discord.Client):
         self.paused = False
         self._last_save = time.monotonic()
         self._brain_lock = asyncio.Lock()
+        self._last_presence_text: str | None = None
 
     async def setup_hook(self) -> None:
         self.idle_loop.change_interval(seconds=self.cfg.behavior.idle_tick_seconds)
         self.voice_loop.change_interval(seconds=self.cfg.voice.poll_seconds)
         self.idle_loop.start()
+        self.presence_loop.start()
         if self.cfg.voice.enabled:
             self.voice_loop.start()
 
@@ -65,6 +67,7 @@ class MuchaClient(discord.Client):
         log.info("Zalogowano jako %s", self.user)
         log.info("Connectome: %s neuronów, %s połączeń", self.connectome.n_neurons, self.connectome.matrix.nnz)
         log.info("Źródło: %s", m.get("source", "unknown"))
+        await self._update_presence()
 
     async def close(self) -> None:
         try:
@@ -178,6 +181,77 @@ class MuchaClient(discord.Client):
 
     @idle_loop.before_loop
     async def before_idle(self):
+        await self.wait_until_ready()
+
+    def _presence_from_brain(self, scores: dict[str, float], diag: dict[str, float | int]) -> tuple[discord.ActivityType, str]:
+        """Translate current connectome readouts into a Discord presence.
+
+        The labels are only human-readable names for neuronal readouts; the
+        winning state and activity value come from the live connectome.
+        """
+        mean_abs = float(diag["mean_abs"])
+        active = int(diag["active_abs_gt_0_1"])
+
+        candidates = {
+            "speak": scores["speak"],
+            "explore": scores["explore"],
+            "voice": max(scores["voice_join"], scores["voice_move"]),
+            "stay": scores["stay"],
+            "react": scores["react"],
+        }
+        dominant = max(candidates, key=candidates.get)
+        strength = candidates[dominant]
+
+        if dominant == "voice":
+            activity_type = discord.ActivityType.listening
+            label = "nasłuchuje kanałów"
+        elif dominant == "speak":
+            activity_type = discord.ActivityType.listening
+            label = "uczy się rozmów"
+        elif dominant == "explore":
+            activity_type = discord.ActivityType.watching
+            label = "eksploruje serwer"
+        elif dominant == "react":
+            activity_type = discord.ActivityType.watching
+            label = "obserwuje reakcje"
+        else:
+            activity_type = discord.ActivityType.watching
+            label = "przetwarza bodźce"
+
+        text = f"🧠 {label} • a={mean_abs:.3f} • {active:,} aktywnych"
+        if strength >= 0.85:
+            text = "⚡ " + text[2:]
+        return activity_type, text[:128]
+
+    async def _update_presence(self) -> None:
+        if not self.is_ready():
+            return
+        async with self._brain_lock:
+            scores = self.brain.action_scores()
+            diag = self.brain.diagnostics()
+
+        activity_type, text = self._presence_from_brain(scores, diag)
+        if text == self._last_presence_text:
+            return
+
+        activity = discord.Activity(type=activity_type, name=text)
+        try:
+            await self.change_presence(
+                status=discord.Status.online,
+                activity=activity,
+                afk=False,
+            )
+            self._last_presence_text = text
+        except discord.HTTPException:
+            log.exception("Nie udało się zaktualizować statusu Discord")
+
+    @tasks.loop(seconds=30)
+    async def presence_loop(self):
+        await self.wait_until_ready()
+        await self._update_presence()
+
+    @presence_loop.before_loop
+    async def before_presence(self):
         await self.wait_until_ready()
 
     @tasks.loop(seconds=15)
