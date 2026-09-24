@@ -356,3 +356,32 @@ Mucha nadal używa jednego wspólnego connectome na wszystkich serwerach, ale ko
 - jeśli na bieżącym serwerze nie ma jeszcze akcji do nagrodzenia, komenda nie wykonuje globalnego rewardu,
 - voice join/move/leave, speak, react i overstay `stay` aktualizują własny kontekst danego serwera,
 - Web UI pokazuje sekcję **Server Learning Context** z ostatnią nagradzalną akcją każdego serwera.
+
+
+## Voice threat / escape
+
+Po przekroczeniu `voice.maximum_dwell_seconds` Mucha nie dostaje już tylko kary za `stay`. Connectome otrzymuje osobny bodziec sensoryczny zagrożenia związany z aktualnym guild i kanałem.
+
+Zagrożenie zaczyna się od lekkiego poziomu i narasta do 100%. Wraz z nim:
+
+- do connectome trafiają bodźce `internal:threat:voice-overstay`, guild threat i channel threat,
+- `stay` nadal jest okresowo karane,
+- rośnie efektywny impuls do `voice_move`,
+- wymagane affinity nowego kanału jest stopniowo poluzowywane,
+- podczas zagrożenia wybierany jest najlepszy **inny** kanał, nawet gdy aktualny kanał nadal ma najwyższe affinity,
+- udana ucieczka wzmacnia `voice_move` małym dodatnim rewardem i resetuje czas pobytu.
+
+Konfiguracja bazowa:
+
+```toml
+[voice]
+maximum_dwell_seconds = 300
+threat_ramp_seconds = 120
+threat_magnitude = 1.2
+threat_move_boost = 0.28
+threat_affinity_relaxation = 0.18
+threat_escape_reward = 0.35
+threat_steps = 3
+```
+
+Voice Debug pokazuje poziom zagrożenia, magnitude bodźca, efektywny move score, efektywny margin oraz aktualny escape target.
