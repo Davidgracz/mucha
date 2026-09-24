@@ -142,6 +142,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="metric"><span>Decyzja</span><strong id="reaction-decision">—</strong></div>
       <div class="metric"><span>Cel</span><strong id="reaction-target">—</strong></div>
       <div class="metric"><span>Cooldown</span><strong id="reaction-cooldown">—</strong></div>
+      <div class="metric"><span>Pula emoji</span><strong id="reaction-pool">—</strong></div>
+      <div class="metric"><span>Ocenione teraz</span><strong id="reaction-evaluated">—</strong></div>
+      <div class="footer" id="reaction-top">—</div>
     </div>
 
     <div class="card">
@@ -222,12 +225,17 @@ function renderVoiceDebug(items){
         '<td class="'+cls+'">'+esc(status)+'</td>'+
       '</tr>';
     }).join("");
+    const overstay=Number(v.overstay_seconds||0);
+    const punished=Boolean(v.overstay_punished);
     return '<div class="voice-summary">'+
       '<div class="voice-pill"><small>serwer / kanał</small><strong>'+esc(v.guild)+' / '+esc(v.current||"poza voice")+'</strong></div>'+
       '<div class="voice-pill"><small>voice_join</small><strong>'+Number(s.voice_join??0).toFixed(3)+' / '+Number(v.join_threshold??0).toFixed(3)+'</strong></div>'+
       '<div class="voice-pill"><small>voice_move</small><strong>'+Number(s.voice_move??0).toFixed(3)+' / '+Number(v.move_threshold??0).toFixed(3)+'</strong></div>'+
       '<div class="voice-pill"><small>voice_leave</small><strong>'+Number(s.voice_leave??0).toFixed(3)+' / '+Number(v.leave_threshold??0).toFixed(3)+'</strong></div>'+
-      '<div class="voice-pill"><small>dwell remaining</small><strong>'+Number(v.dwell_remaining??0).toFixed(1)+' s</strong></div>'+
+      '<div class="voice-pill"><small>czas na kanale / limit</small><strong>'+Number(v.dwell_elapsed??0).toFixed(0)+' / '+Number(v.maximum_dwell_seconds??0).toFixed(0)+' s</strong></div>'+
+      '<div class="voice-pill"><small>minimum dwell</small><strong>'+Number(v.dwell_remaining??0).toFixed(1)+' s</strong></div>'+
+      '<div class="voice-pill"><small>overstay</small><strong class="'+(overstay>0?"no":"ok")+'">'+overstay.toFixed(0)+' s</strong></div>'+
+      '<div class="voice-pill"><small>kara w tym cyklu</small><strong class="'+(punished?"no":"")+'">'+(punished?Number(v.overstay_punish_amount||0).toFixed(2):"nie")+'</strong></div>'+
     '</div>'+
     '<div class="reason"><b>'+esc(v.decision||"—")+'</b> — '+esc(v.reason||"—")+'</div>'+
     '<table><thead><tr><th>Kanał</th><th>Ludzie</th><th>View</th><th>Connect</th><th>Affinity</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table>';
@@ -270,6 +278,11 @@ function renderReaction(r){
   $("reaction-decision").textContent=r.decision||"—";
   $("reaction-target").textContent=r.target||"—";
   $("reaction-cooldown").textContent=Number(r.cooldown_remaining||0).toFixed(1)+" s";
+  $("reaction-pool").textContent=nfmt(r.pool_total||0);
+  $("reaction-evaluated").textContent=nfmt(r.candidates_evaluated||0);
+  $("reaction-top").textContent=(r.top_candidates||[]).slice(0,6).map(x=>
+    (x.emoji||"—")+" "+Number(x.score||0).toFixed(3)
+  ).join("   ");
 }
 function renderActionHistory(items){
   const root=$("action-history");
