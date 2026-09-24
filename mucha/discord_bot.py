@@ -1379,6 +1379,9 @@ class MuchaClient(discord.Client):
         now = time.monotonic()
         vc = guild.voice_client
         current = vc.channel if vc and vc.is_connected() else None
+        chaser_remaining = self._chaser_panic_remaining(guild.id, now)
+        chaser_id = self._chaser_confirmed.get(guild.id)
+        chaser_active = chaser_remaining > 0.0
         arrived = self.voice_arrived.get(guild.id, now)
         if current is not None:
             self._voice_last_visit.setdefault((guild.id, current.id), arrived)
@@ -1415,6 +1418,9 @@ class MuchaClient(discord.Client):
             "overstay_punished": False,
             "threat_active": threat_active,
             "threat_level": threat_level,
+            "chaser_active": chaser_active,
+            "chaser_remaining": chaser_remaining,
+            "chaser_id": chaser_id,
             "threat_magnitude": 0.0,
             "effective_move_score": None,
             "effective_move_margin": None,
@@ -1442,9 +1448,15 @@ class MuchaClient(discord.Client):
                 now,
             )
             deadly = deadly_remaining > 0.0
+            chaser_here = bool(
+                chaser_active
+                and chaser_id
+                and any(m.id == chaser_id for m in ch.members)
+            )
             eligible = bool(
                 not is_afk
                 and not deadly
+                and not chaser_here
                 and view_ok
                 and connect_ok
                 and include_ok
@@ -1460,12 +1472,14 @@ class MuchaClient(discord.Client):
                 "eligible": eligible,
                 "deadly": deadly,
                 "deadly_remaining": deadly_remaining,
+                "chaser_here": chaser_here,
                 "affinity": None,
                 "exploration_score": None,
                 "visit_age": None,
                 "novelty": None,
                 "current": bool(current and current.id == ch.id),
                 "status": "OK" if eligible else (
+                    "🕷 CHASER" if chaser_here else
                     f"☠ ŚMIERTELNE {deadly_remaining:.0f}s" if deadly else
                     "AFK" if is_afk else
                     "BRAK VIEW" if not view_ok else
@@ -1476,6 +1490,33 @@ class MuchaClient(discord.Client):
             debug["channels"].append(row)
             if eligible:
                 channels.append((ch, humans))
+
+        if (
+            chaser_active
+            and chaser_id
+            and current is not None
+            and any(m.id == chaser_id for m in current.members)
+        ):
+            async with self._brain_lock:
+                magnitude = float(self.cfg.voice.chaser_threat_magnitude)
+                self.brain.inject("internal:predator-chaser", magnitude, 192)
+                self.brain.inject(
+                    f"voice:predator:{guild.id}:{chaser_id}",
+                    magnitude,
+                    160,
+                )
+                self.brain.step(2)
+                chaser_trace = self.brain.capture_learning_trace()
+            self._schedule_chaser_escape(
+                guild,
+                chaser_id,
+                chaser_trace,
+            )
+            debug["decision"] = "CHASE • UCIEKAM"
+            debug["reason"] = (
+                f"Chaser {chaser_id} jest na obecnym kanale; "
+                f"panic {chaser_remaining:.1f}s"
+            )
 
         if not channels:
             debug["decision"] = "NIE WCHODZĘ"
