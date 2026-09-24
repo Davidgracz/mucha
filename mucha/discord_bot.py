@@ -82,6 +82,7 @@ class MuchaClient(discord.Client):
         self._chaser_confirmed: dict[int, int] = {}
         self._chaser_panic_until: dict[int, float] = {}
         self._chaser_escape_tasks: dict[int, asyncio.Task] = {}
+        self._chaser_scream_tasks: dict[int, asyncio.Task] = {}
         self._random_audio_missing_warned = False
         self._audio_debug: dict = {
             "status": "STARTUP",
@@ -431,7 +432,7 @@ class MuchaClient(discord.Client):
                 f"{current.name} → {target.name}",
                 guild,
             )
-            await self._play_chaser_scream(guild, vc)
+            self._ensure_chaser_scream_loop(guild)
             if reward > 0.0:
                 self._record_reward(
                     reward,
@@ -449,6 +450,67 @@ class MuchaClient(discord.Client):
                 f"{type(exc).__name__}: {exc}",
                 guild,
             )
+
+    def _ensure_chaser_scream_loop(
+        self,
+        guild: discord.Guild,
+    ) -> None:
+        if not self.cfg.voice.chaser_scream_enabled:
+            return
+
+        existing = self._chaser_scream_tasks.get(guild.id)
+        if existing is not None and not existing.done():
+            return
+
+        task = asyncio.create_task(
+            self._chaser_scream_loop(guild.id)
+        )
+        self._chaser_scream_tasks[guild.id] = task
+
+        def clear(
+            done_task: asyncio.Task,
+            guild_id: int = guild.id,
+        ) -> None:
+            if self._chaser_scream_tasks.get(guild_id) is done_task:
+                self._chaser_scream_tasks.pop(guild_id, None)
+
+        task.add_done_callback(clear)
+
+    async def _chaser_scream_loop(self, guild_id: int) -> None:
+        while True:
+            if self._chaser_panic_remaining(guild_id) <= 0.0:
+                return
+
+            guild = self.get_guild(guild_id)
+            if guild is None:
+                return
+
+            vc = guild.voice_client
+            if (
+                vc is None
+                or not vc.is_connected()
+                or vc.channel is None
+            ):
+                await asyncio.sleep(0.1)
+                continue
+
+            if not self.cfg.voice.chaser_scream_enabled:
+                return
+
+            if vc.is_playing():
+                await asyncio.sleep(0.05)
+                continue
+
+            await self._play_chaser_scream(guild, vc)
+
+            await asyncio.sleep(0.05)
+            while (
+                self._chaser_panic_remaining(guild_id) > 0.0
+                and vc.is_connected()
+                and vc.channel is not None
+                and vc.is_playing()
+            ):
+                await asyncio.sleep(0.05)
 
     def _mark_voice_visit(
         self,
@@ -912,6 +974,7 @@ class MuchaClient(discord.Client):
                 member.id,
                 learning_trace,
             )
+            self._ensure_chaser_scream_loop(member.guild)
 
     @tasks.loop(seconds=5)
     async def idle_loop(self):
@@ -1261,6 +1324,7 @@ class MuchaClient(discord.Client):
             if vc.is_connected()
             and vc.channel is not None
             and not vc.is_playing()
+            and self._chaser_panic_remaining(vc.guild.id) <= 0.0
         ]
         if not candidates:
             return
@@ -1397,6 +1461,7 @@ class MuchaClient(discord.Client):
             if vc.is_connected()
             and vc.channel is not None
             and not vc.is_playing()
+            and self._chaser_panic_remaining(vc.guild.id) <= 0.0
         ]
         if not candidates:
             return
