@@ -106,8 +106,13 @@ top_neurons = 8
 
 [web_ui]
 enabled = true
-host = "127.0.0.1"
+host = "0.0.0.0"
 port = 8765
-auto_open = true
+auto_open = false
 refresh_ms = 500
 history_points = 180
+auth_enabled = true
+auth_username = "admin"
+auth_password_env = "MUCHA_DASHBOARD_PASSWORD"
+session_hours = 168
+chaser_status_file = "/opt/mucha-chaser/state/chaser_status.json"
