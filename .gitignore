@@ -1,0 +1,11 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+state/*.npz
+state/*.sqlite3
+state/*.sqlite3-*
+data/connectome/*.npz
+data/connectome/*.npy
+data/connectome/manifest.json
+raw_flywire/
