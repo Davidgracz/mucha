@@ -18,6 +18,8 @@ class BrainConfig:
     max_bias: float = 0.35
     steps_per_event: int = 3
     idle_steps: int = 1
+    backend: str = "auto"
+    gpu_device: int = 0
 
 
 @dataclass(slots=True)
@@ -66,6 +68,16 @@ class ConsoleUIConfig:
 
 
 @dataclass(slots=True)
+class WebUIConfig:
+    enabled: bool = True
+    host: str = "127.0.0.1"
+    port: int = 8765
+    auto_open: bool = True
+    refresh_ms: int = 500
+    history_points: int = 180
+
+
+@dataclass(slots=True)
 class Config:
     brain: BrainConfig
     language: LanguageConfig
@@ -73,6 +85,7 @@ class Config:
     behavior: BehaviorConfig
     discord: DiscordConfig
     console_ui: ConsoleUIConfig
+    web_ui: WebUIConfig
 
 
 def load_config(path: str | Path = "config.toml") -> Config:
@@ -86,6 +99,7 @@ def load_config(path: str | Path = "config.toml") -> Config:
     beh = raw["behavior"]
     d = raw["discord"]
     cui = raw.get("console_ui", {})
+    wui = raw.get("web_ui", {})
 
     return Config(
         brain=BrainConfig(**{**b, "connectome_dir": Path(b["connectome_dir"]), "state_file": Path(b["state_file"])}),
@@ -94,4 +108,5 @@ def load_config(path: str | Path = "config.toml") -> Config:
         behavior=BehaviorConfig(**beh),
         discord=DiscordConfig(**d),
         console_ui=ConsoleUIConfig(**cui),
+        web_ui=WebUIConfig(**wui),
     )
