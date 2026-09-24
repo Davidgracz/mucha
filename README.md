@@ -534,3 +534,41 @@ chaser_escape_reward = 0.25
 ```
 
 `chaser_bot_id = 0` oznacza automatyczne wykrywanie. Jeśli znasz ID bota Mucha Chaser, wpisanie go tutaj daje natychmiastowe rozpoznanie bez oczekiwania na drugi follow.
+
+
+## Publiczny Control Center
+
+Web UI ma teraz chroniony hasłem ekran główny łączący telemetrię Muchy, Chasera i VPS.
+
+Domyślna konfiguracja:
+
+```toml
+[web_ui]
+enabled = true
+host = "0.0.0.0"
+port = 8765
+auto_open = false
+auth_enabled = true
+auth_username = "admin"
+auth_password_env = "MUCHA_DASHBOARD_PASSWORD"
+session_hours = 168
+chaser_status_file = "/opt/mucha-chaser/state/chaser_status.json"
+```
+
+Hasła nie zapisuj w `config.toml`. Ustaw je w lokalnym `.env`:
+
+```env
+MUCHA_DASHBOARD_PASSWORD=TU_MOCNE_HASLO
+```
+
+Jeżeli hasło nie jest ustawione, a host to `0.0.0.0`, aplikacja celowo wraca do `127.0.0.1`, żeby nie wystawić niezabezpieczonego debug panelu do Internetu.
+
+Ścieżki:
+
+- `/` — Control Center: VPS, usługi, Chaser, voice, audio, connectome i logi,
+- `/brain` — pełny dotychczasowy Brain Debug,
+- `/api/overview` — JSON Control Center,
+- `/api/state` — pełny JSON Muchy,
+- `/logout` — wylogowanie.
+
+Mucha Chaser zapisuje live status do `state/chaser_status.json`. Dashboard odczytuje ten plik lokalnie i pokazuje bieżący pościg oraz czas następnej rundy.
