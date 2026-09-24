@@ -71,6 +71,7 @@ class MuchaClient(discord.Client):
         }
         self._last_reaction: dict[int, float] = {}
         self._last_overstay_punish: dict[int, float] = {}
+        self._deadly_voice_until: dict[tuple[int, int], float] = {}
         self._unicode_emojis = [
             char
             for char, data in emoji_lib.EMOJI_DATA.items()
@@ -144,6 +145,39 @@ class MuchaClient(discord.Client):
             "time": time.time(),
         }
 
+    def _is_text_channel_blocked(self, channel: object) -> bool:
+        channel_id = getattr(channel, "id", None)
+        if channel_id is None:
+            return False
+        return int(channel_id) in self.cfg.discord.blocked_text_channel_ids
+
+    def _deadly_voice_remaining(
+        self,
+        guild_id: int,
+        channel_id: int,
+        now: float | None = None,
+    ) -> float:
+        now = time.monotonic() if now is None else now
+        key = (int(guild_id), int(channel_id))
+        expiry = self._deadly_voice_until.get(key, 0.0)
+        remaining = max(0.0, expiry - now)
+        if remaining <= 0.0:
+            self._deadly_voice_until.pop(key, None)
+            return 0.0
+        return remaining
+
+    def _mark_deadly_voice_channel(
+        self,
+        guild_id: int,
+        channel_id: int,
+        now: float | None = None,
+    ) -> float:
+        now = time.monotonic() if now is None else now
+        seconds = max(1.0, float(self.cfg.voice.deadly_channel_seconds))
+        expiry = now + seconds
+        self._deadly_voice_until[(int(guild_id), int(channel_id))] = expiry
+        return expiry
+
     def _reaction_candidates(self, guild: discord.Guild) -> tuple[list[tuple[str, object]], int]:
         """Sample from the full Unicode emoji set plus usable custom guild emoji."""
         sample_size = max(8, int(self.cfg.behavior.reaction_candidate_sample))
@@ -209,7 +243,9 @@ class MuchaClient(discord.Client):
         if message.author.bot and not self.cfg.language.learn_from_bots:
             return
 
-        self.last_text_channel[message.guild.id] = message.channel.id
+        blocked_text = self._is_text_channel_blocked(message.channel)
+        if not blocked_text:
+            self.last_text_channel[message.guild.id] = message.channel.id
         self.language.learn(message.content)
         mentioned = self.user in message.mentions if self.user else False
         channel_name = getattr(message.channel, "name", str(message.channel.id))
@@ -312,7 +348,8 @@ class MuchaClient(discord.Client):
         last = self.last_reply.get(message.guild.id, 0.0)
         urge = scores["speak"] + (0.10 if mentioned else 0.0)
         if (
-            self.language.ready()
+            not blocked_text
+            and self.language.ready()
             and urge >= self.cfg.behavior.speak_threshold
             and now - last >= self.cfg.language.reply_cooldown_seconds
         ):
@@ -320,6 +357,8 @@ class MuchaClient(discord.Client):
             self.last_reply[message.guild.id] = now
 
     async def _send_learned(self, channel: discord.abc.Messageable, context: str, arousal: float):
+        if self._is_text_channel_blocked(channel):
+            return
         text, trigrams = self.language.generate(context=context, arousal=arousal)
         if not text:
             return
@@ -423,7 +462,10 @@ class MuchaClient(discord.Client):
                 continue
             cid = self.last_text_channel.get(guild.id)
             channel = guild.get_channel(cid) if cid else None
-            if isinstance(channel, discord.TextChannel):
+            if (
+                isinstance(channel, discord.TextChannel)
+                and not self._is_text_channel_blocked(channel)
+            ):
                 await self._send_learned(channel, "", scores["explore"])
                 self.last_spontaneous[guild.id] = now
                 break
@@ -647,7 +689,19 @@ class MuchaClient(discord.Client):
             view_ok = bool(perms.view_channel)
             connect_ok = bool(perms.connect)
             include_ok = bool(humans or self.cfg.voice.include_empty_channels)
-            eligible = bool(not is_afk and view_ok and connect_ok and include_ok)
+            deadly_remaining = self._deadly_voice_remaining(
+                guild.id,
+                ch.id,
+                now,
+            )
+            deadly = deadly_remaining > 0.0
+            eligible = bool(
+                not is_afk
+                and not deadly
+                and view_ok
+                and connect_ok
+                and include_ok
+            )
 
             row = {
                 "id": ch.id,
@@ -657,9 +711,12 @@ class MuchaClient(discord.Client):
                 "connect": connect_ok,
                 "afk": is_afk,
                 "eligible": eligible,
+                "deadly": deadly,
+                "deadly_remaining": deadly_remaining,
                 "affinity": None,
                 "current": bool(current and current.id == ch.id),
                 "status": "OK" if eligible else (
+                    f"☠ ŚMIERTELNE {deadly_remaining:.0f}s" if deadly else
                     "AFK" if is_afk else
                     "BRAK VIEW" if not view_ok else
                     "BRAK CONNECT" if not connect_ok else
@@ -679,6 +736,21 @@ class MuchaClient(discord.Client):
         async with self._brain_lock:
             for ch, humans in channels:
                 self.brain.inject_voice_snapshot(guild.id, ch.id, [m.id for m in humans])
+            deadly_duration = max(
+                1.0,
+                float(self.cfg.voice.deadly_channel_seconds),
+            )
+            for row in debug["channels"]:
+                remaining = float(row.get("deadly_remaining", 0.0))
+                if remaining <= 0.0:
+                    continue
+                memory_strength = min(1.0, remaining / deadly_duration)
+                self.brain.inject(
+                    f"voice:deadly-channel:{guild.id}:{row['id']}",
+                    float(self.cfg.voice.deadly_threat_magnitude)
+                    * (0.5 + 0.5 * memory_strength),
+                    128,
+                )
             self.brain.step(2)
             scores = self.brain.action_scores()
             affinities = {
@@ -885,6 +957,22 @@ class MuchaClient(discord.Client):
                     await vc.move_to(target)
                     self.voice_arrived[guild.id] = now
                     self._last_overstay_punish.pop(guild.id, None)
+                    self._mark_deadly_voice_channel(
+                        guild.id,
+                        current.id,
+                        now,
+                    )
+                    for row in debug["channels"]:
+                        if row["id"] == current.id:
+                            row["deadly"] = True
+                            row["deadly_remaining"] = float(
+                                self.cfg.voice.deadly_channel_seconds
+                            )
+                            row["eligible"] = False
+                            row["status"] = (
+                                f"☠ ŚMIERTELNE "
+                                f"{self.cfg.voice.deadly_channel_seconds}s"
+                            )
 
                     escape_reward = max(
                         0.0,
@@ -925,7 +1013,8 @@ class MuchaClient(discord.Client):
                     self._record_action(
                         "escape",
                         f"{current.name} → {target.name} • "
-                        f"threat {threat_level * 100:.0f}%",
+                        f"threat {threat_level * 100:.0f}% • "
+                        f"☠ {self.cfg.voice.deadly_channel_seconds}s",
                         guild,
                     )
                     debug["current"] = target.name
@@ -1048,7 +1137,11 @@ class MuchaClient(discord.Client):
         if not isinstance(message.author, discord.Member) or not message.author.guild_permissions.administrator:
             return
         cmd = message.content[len(self.cfg.discord.command_prefix):].strip().lower()
+        text_blocked = self._is_text_channel_blocked(message.channel)
         if cmd == "status":
+            if text_blocked:
+                await message.add_reaction("🚫")
+                return
             d = self.brain.diagnostics()
             total, unique = self.language.stats()
             lang = self.language.diagnostics()
@@ -1118,4 +1211,7 @@ class MuchaClient(discord.Client):
             )
             await message.add_reaction("👎")
         elif cmd == "help":
+            if text_blocked:
+                await message.add_reaction("🚫")
+                return
             await message.channel.send("`!mucha status` `save` `pause` `resume` `reward` `punish`", allowed_mentions=discord.AllowedMentions.none())
