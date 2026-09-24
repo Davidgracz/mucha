@@ -70,6 +70,9 @@ move_threshold = 0.45
 join_threshold = 0.50
 leave_threshold = 0.62
 move_margin = 0.05
+blocked_voice_channel_ids = [
+  919905503465836594,
+]
 include_empty_channels = true
 exclude_afk_channel = true
 
