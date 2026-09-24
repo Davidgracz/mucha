@@ -415,3 +415,21 @@ Przez ten czas kanał:
 - emituje osobny bodziec `voice:deadly-channel:<guild>:<channel>` do connectome.
 
 Voice Debug pokazuje taki kanał jako `☠ ŚMIERTELNE <sekundy>s`. Po wygaśnięciu pamięci automatycznie wraca do normalnej puli kanałów.
+
+
+## Whole-server voice exploration
+
+Wybór voice target nie jest już deterministycznym `max(affinity)`. Mucha pamięta ostatnie odwiedziny kanałów i łączy affinity connectome z bonusem nowości oraz karą za niedawne odwiedziny.
+
+```toml
+[voice]
+exploration_memory_seconds = 1800
+exploration_novelty_bonus = 0.32
+exploration_recent_penalty = 0.38
+exploration_temperature = 0.18
+exploration_min_candidates = 3
+```
+
+Kanały nigdy nieodwiedzone dostają największy bonus, a świeżo odwiedzone są tymczasowo mniej atrakcyjne. Spośród wszystkich dostępnych kanałów cel jest losowany wagowo zamiast zawsze wybierać ten sam najwyższy wynik. Deadly channels nadal są całkowicie wykluczone.
+
+Voice Debug pokazuje teraz `Affinity`, `Explore`, `Novelty` oraz `Last visit` dla każdego kanału.
