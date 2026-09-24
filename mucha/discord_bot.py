@@ -79,6 +79,18 @@ class MuchaClient(discord.Client):
         self._deadly_voice_until: dict[tuple[int, int], float] = {}
         self._voice_last_visit: dict[tuple[int, int], float] = {}
         self._random_audio_missing_warned = False
+        self._audio_debug: dict = {
+            "status": "STARTUP",
+            "stage": "init",
+            "error": "",
+            "ffmpeg": "",
+            "guild": None,
+            "channel": None,
+            "file": None,
+            "file_size": 0,
+            "text": "",
+            "updated_at": time.time(),
+        }
         self._unicode_emojis = [
             char
             for char, data in emoji_lib.EMOJI_DATA.items()
@@ -329,7 +341,21 @@ class MuchaClient(discord.Client):
         )
         if ffmpeg_found:
             log.info("FFmpeg audio: %s", ffmpeg_found)
+            self._audio_debug.update({
+                "status": "READY",
+                "stage": "ffmpeg",
+                "ffmpeg": ffmpeg_found,
+                "error": "",
+                "updated_at": time.time(),
+            })
         else:
+            self._audio_debug.update({
+                "status": "ERROR",
+                "stage": "ffmpeg",
+                "ffmpeg": ffmpeg_cfg,
+                "error": f"FFmpeg nie znaleziony: {ffmpeg_cfg}",
+                "updated_at": time.time(),
+            })
             log.error(
                 "FFmpeg nie znaleziony: %s — TTS i rare audio nie zagrają",
                 ffmpeg_cfg,
@@ -693,6 +719,7 @@ class MuchaClient(discord.Client):
             "last_action": self._last_brain_action,
             "paused": self.paused,
             "voice_debug": list(self._voice_debug.values()),
+            "audio_debug": dict(self._audio_debug),
             "reaction_debug": reaction_debug,
             "learning_debug": self.brain.learning_diagnostics(),
             "action_history": self._action_history[-40:],
@@ -817,20 +844,59 @@ class MuchaClient(discord.Client):
             return
 
         wav_path = Path("state") / "tts" / f"{guild.id}.wav"
+        self._audio_debug.update({
+            "status": "TTS",
+            "stage": "synthesize",
+            "error": "",
+            "guild": guild.name,
+            "channel": channel_name,
+            "file": str(wav_path),
+            "file_size": 0,
+            "text": text_out,
+            "updated_at": time.time(),
+        })
         try:
             ok = await asyncio.to_thread(
                 self._synthesize_tts_file,
                 text_out,
                 wav_path,
             )
-            if not ok or vc.is_playing() or not vc.is_connected():
+            self._audio_debug["file_size"] = (
+                wav_path.stat().st_size if wav_path.is_file() else 0
+            )
+            if not ok:
+                self._audio_debug.update({
+                    "status": "ERROR",
+                    "stage": "synthesize",
+                    "error": "TTS nie utworzył poprawnego WAV",
+                    "updated_at": time.time(),
+                })
+                return
+            if vc.is_playing() or not vc.is_connected():
+                self._audio_debug.update({
+                    "status": "SKIP",
+                    "stage": "playback",
+                    "error": "VC zajęty albo rozłączony",
+                    "updated_at": time.time(),
+                })
                 return
 
+            self._audio_debug.update({
+                "status": "TTS",
+                "stage": "ffmpeg_source",
+                "updated_at": time.time(),
+            })
             source = self._make_voice_source(
                 wav_path,
                 self.cfg.voice.tts_volume,
             )
             vc.play(source)
+            self._audio_debug.update({
+                "status": "PLAYING",
+                "stage": "vc.play",
+                "error": "",
+                "updated_at": time.time(),
+            })
 
             self._last_brain_event = (
                 f"TTS • {guild.name} • {channel_name}"
@@ -850,7 +916,13 @@ class MuchaClient(discord.Client):
                 f"{channel_name}: {text_out[:120]}",
                 guild,
             )
-        except Exception:
+        except Exception as exc:
+            self._audio_debug.update({
+                "status": "ERROR",
+                "stage": self._audio_debug.get("stage", "tts"),
+                "error": f"{type(exc).__name__}: {exc}",
+                "updated_at": time.time(),
+            })
             log.exception(
                 "Nie udało się wygenerować lub odtworzyć TTS na serwerze %s",
                 guild.id,
@@ -1633,27 +1705,69 @@ class MuchaClient(discord.Client):
 
             wav_path = Path("state") / "tts" / f"{message.guild.id}.wav"
             test_text = "Test głosu Muchy."
+            self._audio_debug.update({
+                "status": "TEST",
+                "stage": "synthesize",
+                "error": "",
+                "guild": message.guild.name,
+                "channel": vc.channel.name,
+                "file": str(wav_path),
+                "file_size": 0,
+                "text": test_text,
+                "updated_at": time.time(),
+            })
             try:
                 ok = await asyncio.to_thread(
                     self._synthesize_tts_file,
                     test_text,
                     wav_path,
                 )
+                self._audio_debug["file_size"] = (
+                    wav_path.stat().st_size if wav_path.is_file() else 0
+                )
                 if not ok:
+                    self._audio_debug.update({
+                        "status": "ERROR",
+                        "stage": "synthesize",
+                        "error": "TTS nie utworzył poprawnego WAV",
+                        "updated_at": time.time(),
+                    })
                     await message.add_reaction("❌")
                     return
+                self._audio_debug.update({
+                    "status": "TEST",
+                    "stage": "ffmpeg_source",
+                    "updated_at": time.time(),
+                })
                 source = self._make_voice_source(
                     wav_path,
                     self.cfg.voice.tts_volume,
                 )
                 vc.play(source)
+                self._audio_debug.update({
+                    "status": "PLAYING",
+                    "stage": "vc.play",
+                    "error": "",
+                    "updated_at": time.time(),
+                })
                 self._record_action(
                     "audio_test",
                     f"{vc.channel.name}: {wav_path}",
                     message.guild,
                 )
                 await message.add_reaction("🔊")
-            except Exception:
+            except Exception as exc:
+                self._audio_debug.update({
+                    "status": "ERROR",
+                    "stage": self._audio_debug.get("stage", "audiotest"),
+                    "error": f"{type(exc).__name__}: {exc}",
+                    "updated_at": time.time(),
+                })
+                self._record_action(
+                    "audio_error",
+                    f"{type(exc).__name__}: {exc}",
+                    message.guild,
+                )
                 log.exception(
                     "Audio test nie powiódł się na serwerze %s",
                     message.guild.id,
