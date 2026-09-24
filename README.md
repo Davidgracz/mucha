@@ -573,3 +573,42 @@ Jeżeli hasło nie jest ustawione, a host to `0.0.0.0`, aplikacja celowo wraca d
 - `/logout` — wylogowanie.
 
 Mucha Chaser zapisuje live status do `state/chaser_status.json`. Dashboard odczytuje ten plik lokalnie i pokazuje bieżący pościg oraz czas następnej rundy.
+
+
+## Social learning i relacje
+
+Mucha utrzymuje trwały profil relacji z użytkownikami w `state/language.sqlite3`.
+
+Affinity użytkownika ma zakres `-1.0 .. +1.0` i zmienia się głównie na podstawie reakcji dodawanych do wiadomości Muchy. Pozytywne reakcje zwiększają affinity, negatywne je zmniejszają. Domyślny próg unikania to `-0.35`.
+
+Gdy affinity użytkownika spadnie poniżej progu:
+
+- Mucha nie odpowiada na jego wiadomości,
+- nie reaguje autonomicznie na jego wiadomości,
+- nie generuje spontanicznej odpowiedzi ani TTS na podstawie jego ostatniej wiadomości,
+- podczas normalnego zachowania voice nie wybiera kanałów z tym użytkownikiem,
+- jeśli taki użytkownik wejdzie na aktualny kanał Muchy, Mucha próbuje przenieść się na inny kanał albo wychodzi z voice.
+
+Unikanie użytkowników jest wyłączane podczas aktywnej ucieczki przed Mucha Chaser. Ucieczka przed Chaserem ma pierwszeństwo i może prowadzić przez kanał z nielubianym użytkownikiem.
+
+Social learning dodatkowo wykrywa:
+
+- bezpośrednie reply do wiadomości Muchy,
+- powtórzenie słowa wygenerowanego przez Muchę,
+- powtórzenie dwu- lub trzysłownej frazy,
+- potwierdzenie tego samego słowa przez różnych użytkowników,
+- silne samopowtórzenia Muchy, które dostają małą karę.
+
+Dashboard `/details` pokazuje relacje, affinity, liczbę pozytywnych i negatywnych reakcji oraz najlepiej utrwalone słowa.
+
+Dashboard `/config` pozwala bez ręcznej edycji TOML:
+
+- wykluczać kanały tekstowe,
+- wykluczać kanały voice,
+- zmieniać progi join/move/leave,
+- zmieniać dwell i voice poll,
+- włączać/wyłączać TTS i rare audio,
+- zmieniać progi i siłę social learning,
+- ustawiać próg unikania użytkowników.
+
+Zmiany z zakładki Konfiguracja są zapisywane do `config.toml` i dla obsługiwanych opcji stosowane od razu.
