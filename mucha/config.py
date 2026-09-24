@@ -52,6 +52,7 @@ class BehaviorConfig:
     idle_tick_seconds: int = 5
     speak_threshold: float = 0.70
     reaction_threshold: float = 0.73
+    reaction_cooldown_seconds: int = 20
     save_every_seconds: int = 45
 
 
