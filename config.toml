@@ -40,3 +40,8 @@ save_every_seconds = 45
 
 [discord]
 command_prefix = "!mucha "
+
+[console_ui]
+mode = "dashboard"
+refresh_seconds = 1.0
+top_neurons = 8
