@@ -55,6 +55,11 @@ class VoiceConfig:
     exploration_recent_penalty: float = 0.38
     exploration_temperature: float = 0.18
     exploration_min_candidates: int = 3
+    random_audio_enabled: bool = True
+    random_audio_file: str = "assets/random_audio.mp3"
+    random_audio_chance_denominator: int = 10000
+    random_audio_volume: float = 0.8
+    ffmpeg_executable: str = "ffmpeg"
     move_threshold: float = 0.67
     join_threshold: float = 0.72
     leave_threshold: float = 0.82
