@@ -82,6 +82,7 @@ class VoiceConfig:
     join_threshold: float = 0.72
     leave_threshold: float = 0.82
     move_margin: float = 0.05
+    blocked_voice_channel_ids: tuple[int, ...] = ()
     include_empty_channels: bool = True
     exclude_afk_channel: bool = True
 
@@ -153,7 +154,11 @@ def load_config(path: str | Path = "config.toml") -> Config:
         l["max_generated_chars"] = max(80, legacy_max * 7)
     else:
         l.pop("max_generated_tokens", None)
-    v = raw["voice"]
+    v = dict(raw["voice"])
+    if "blocked_voice_channel_ids" in v:
+        v["blocked_voice_channel_ids"] = tuple(
+            int(x) for x in v["blocked_voice_channel_ids"]
+        )
     beh = raw["behavior"]
     d = dict(raw["discord"])
     if "blocked_text_channel_ids" in d:
