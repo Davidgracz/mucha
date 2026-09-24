@@ -949,6 +949,7 @@ class MuchaClient(discord.Client):
                 affinity_delta,
                 message.author,
             )
+            return
 
         if (
             not targeted_rejection
