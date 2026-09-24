@@ -60,13 +60,14 @@ class ConsoleBrainUI:
         if self.mode == "simple":
             scores = snap["scores"]
             dominant = max(scores, key=scores.get)
-            self.console.print(
-                f"[MUCHA] active={snap['diag']['active_abs_gt_0_1']:,} "
+            line = (
+                f"MUCHA | active={snap['diag']['active_abs_gt_0_1']:,} "
                 f"mean={snap['diag']['mean_abs']:.4f} "
                 f"reward={snap['diag']['reward_trace']:+.3f} "
                 f"dominant={dominant}:{scores[dominant]:.2f} "
-                f"event={escape(str(snap.get('last_event', '-')))}"
+                f"event={snap.get('last_event', '-')}"
             )
+            self.console.print(Text(line))
             return
 
         if self.live is not None:
