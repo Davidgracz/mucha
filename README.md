@@ -9,7 +9,7 @@ Autonomiczny bot Discord sterowany stanem sieci o topologii **FlyWire FAFB v783*
 - zaczyna z **pustym modelem języka** i uczy się wyłącznie z tekstu na serwerze,
 - nie używa ChatGPT/LLM do generowania tekstu,
 - zapisuje stan mózgu i model języka między restartami,
-- reakcje pod wiadomościami Muchy mogą wzmacniać/osłabiać jej zachowanie i użyte ciągi słów.
+- reakcje pod wiadomościami Muchy mogą wzmacniać/osłabiać jej zachowanie i użyte przejścia znakowe.
 
 ## Co jest biologiczne, a co jest naszym interfejsem
 
@@ -94,18 +94,29 @@ python bot.py
 
 ## 4. Jak uczy się pisać
 
-Model języka jest pusty na pierwszym starcie. Nie ma listy gotowych zdań i nie ma pretreningu.
+Model języka jest pusty na pierwszym starcie. Nie ma słownika, listy gotowych słów, zdań ani pretreningu.
 
-Każda zwykła wiadomość użytkownika aktualizuje online model unigram/bigram/trigram w `state/language.sqlite3`. Surowe wiadomości nie są archiwizowane w tej bazie — przechowywane są statystyki przejść tokenów.
+Każda zwykła wiadomość użytkownika aktualizuje online model przejść **znak po znaku** w `state/language.sqlite3`. Generator nie wybiera gotowych słów z tabeli — każdą wypowiedź składa litera po literze na podstawie wyuczonych przejść znakowych. Dlatego na początku wynik może przypominać bełkot, a wraz z obserwacją większej liczby rozmów powinny pojawiać się coraz bardziej naturalne fragmenty i słowa.
 
-Domyślnie Mucha zacznie w ogóle dopuszczać pisanie dopiero po:
+Stare tabele word-level (`unigram`, `bigram`, `trigram`) mogą pozostać w istniejącej bazie po aktualizacji, ale nowy generator ich nie używa. Nowe uczenie korzysta wyłącznie z tabel `char_*`, które przy pierwszym uruchomieniu są puste.
 
-- 450 zaobserwowanych tokenach,
-- 80 różnych tokenach.
+Domyślnie Mucha dopuści generowanie dopiero po:
 
-To ustawisz w `config.toml`.
+- 1200 zaobserwowanych znakach,
+- 18 różnych znakach.
 
-Jeśli ktoś zareaguje 👍/❤️/😂/🔥/🪰 na wiadomość Muchy, wzmacniane są użyte przez nią trójki tokenów oraz aktualny ślad nagrody w connectome. 👎/😡/🤮/💩/😒 robią odwrotnie.
+Konfiguracja:
+
+```toml
+[language]
+min_chars_before_speaking = 1200
+min_unique_chars_before_speaking = 18
+max_generated_chars = 220
+```
+
+Stary `config.toml` z polami `min_tokens_before_speaking`, `min_unique_tokens_before_speaking` i `max_generated_tokens` jest automatycznie mapowany przy starcie na ustawienia modelu znakowego.
+
+Pozytywny lub negatywny feedback pod wypowiedzią Muchy wzmacnia albo osłabia konkretne trójki znaków użyte podczas generowania oraz odpowiedni ślad uczenia w connectome.
 
 ## 5. Voice
 
@@ -158,7 +169,7 @@ Najważniejsze rozszerzenia, które warto zrobić dalej:
 
 1. pełny biologiczny LIF na parametrach Shiu et al. dla zdarzeń o znaczeniu behawioralnym,
 2. synaptyczna plastyczność jako sparse overlay zamiast tylko persistent neuronal bias,
-3. uczenie małej sieci char/word GRU od zera jako drugi etap języka,
+3. opcjonalna mała sieć char-GRU od zera jako kolejny etap bardziej długiego kontekstu,
 4. dashboard WebSocket pokazujący aktywne regiony/neurony na żywo,
 5. audio voice jako bodziec (VAD/energia/cechy akustyczne) bez rozpoznawania mowy albo opcjonalnie z transkrypcją.
 
