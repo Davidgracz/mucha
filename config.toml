@@ -27,6 +27,9 @@ learn_from_bots = false
 enabled = true
 poll_seconds = 15
 minimum_dwell_seconds = 60
+maximum_dwell_seconds = 300
+overstay_punish_amount = 0.5
+overstay_punish_interval_seconds = 60
 move_threshold = 0.67
 join_threshold = 0.72
 leave_threshold = 0.82
@@ -39,6 +42,7 @@ idle_tick_seconds = 5
 speak_threshold = 0.70
 reaction_threshold = 0.73
 reaction_cooldown_seconds = 20
+reaction_candidate_sample = 64
 save_every_seconds = 45
 
 [discord]
