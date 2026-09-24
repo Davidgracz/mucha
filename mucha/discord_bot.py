@@ -548,6 +548,273 @@ class MuchaClient(discord.Client):
             "updated_at": time.time(),
         }
 
+    async def _grant_positive_social(
+        self,
+        member: discord.Member,
+        event: str,
+        stimulus: str,
+        affinity_delta: float,
+        guild: discord.Guild,
+        detail: str = "",
+        source_trace: SentTrace | None = None,
+        brain_reward: float = 0.0,
+    ) -> float | None:
+        if (
+            not self.cfg.behavior.social_learning_enabled
+            or member.bot
+        ):
+            return None
+
+        now = time.monotonic()
+        cooldown = max(
+            1.0,
+            float(self.cfg.behavior.positive_contact_cooldown_seconds),
+        )
+        cooldown_key = (member.id, event)
+        last = self._social_positive_last.get(cooldown_key, 0.0)
+        if now - last < cooldown:
+            return None
+        self._social_positive_last[cooldown_key] = now
+
+        delta = max(0.0, min(0.25, float(affinity_delta)))
+        if delta <= 0.0:
+            return None
+
+        new_affinity = self.language.adjust_user_affinity(
+            member.id,
+            member.display_name,
+            delta,
+        )
+
+        window = max(
+            cooldown,
+            float(self.cfg.behavior.social_window_seconds),
+        )
+        streak = self._social_positive_streak.get(
+            member.id,
+            {"count": 0, "last": 0.0},
+        )
+        if now - float(streak.get("last", 0.0)) > window:
+            streak = {"count": 0, "last": 0.0}
+        streak["count"] = int(streak.get("count", 0)) + 1
+        streak["last"] = now
+        self._social_positive_streak[member.id] = streak
+
+        repeated_bonus = 0.0
+        if streak["count"] >= 3 and streak["count"] % 3 == 0:
+            repeated_bonus = min(0.006, max(0.002, delta * 0.4))
+            new_affinity = self.language.adjust_user_affinity(
+                member.id,
+                member.display_name,
+                repeated_bonus,
+            )
+
+        async with self._brain_lock:
+            self.brain.inject(stimulus, 0.45, 112)
+            self.brain.inject(
+                f"{stimulus}:user:{member.id}",
+                0.35,
+                80,
+            )
+            if repeated_bonus > 0.0:
+                self.brain.inject(
+                    "social:repeated-positive-contact",
+                    0.60,
+                    128,
+                )
+                self.brain.inject(
+                    f"social:repeated-positive-contact:user:{member.id}",
+                    0.45,
+                    96,
+                )
+            if new_affinity >= float(
+                self.cfg.behavior.familiar_affinity_threshold
+            ):
+                self.brain.inject(
+                    "social:familiar-user",
+                    min(1.0, 0.35 + abs(new_affinity)),
+                    128,
+                )
+                self.brain.inject(
+                    f"social:familiar-user:{member.id}",
+                    min(1.0, 0.30 + abs(new_affinity)),
+                    96,
+                )
+            if new_affinity >= 0.35:
+                self.brain.inject(
+                    "social:liked-user",
+                    min(1.0, new_affinity),
+                    128,
+                )
+                self.brain.inject(
+                    f"social:liked-user:{member.id}",
+                    min(1.0, new_affinity),
+                    96,
+                )
+            reward = max(0.0, min(0.20, float(brain_reward)))
+            if reward > 0.0 and source_trace is not None:
+                self.brain.reward(
+                    reward,
+                    action=source_trace.action,
+                    trace=source_trace.learning_trace,
+                )
+            self.brain.step(1)
+
+        if brain_reward > 0.0 and source_trace is not None:
+            self._record_reward(
+                min(0.20, float(brain_reward)),
+                source_trace.action,
+                event.lower(),
+                guild,
+            )
+
+        suffix = (
+            f" • streak {streak['count']}"
+            + (
+                f" • bonus +{repeated_bonus:.3f}"
+                if repeated_bonus > 0.0
+                else ""
+            )
+        )
+        self._record_action(
+            "positive_social",
+            (
+                f"{event} • {member.display_name} • "
+                f"affinity {new_affinity:+.3f}{suffix}"
+            ),
+            guild,
+        )
+        self._remember_social_event(
+            event,
+            (
+                (detail or stimulus)
+                + f" • affinity {new_affinity:+.3f}"
+                + suffix
+            ),
+            delta + repeated_bonus,
+            member,
+        )
+        return new_affinity
+
+    def _schedule_voice_social_stay(
+        self,
+        guild: discord.Guild,
+        member: discord.Member,
+        channel_id: int,
+    ) -> None:
+        key = (guild.id, member.id)
+        existing = self._voice_social_stay_tasks.get(key)
+        if existing is not None and not existing.done():
+            return
+        task = asyncio.create_task(
+            self._voice_social_stay_after_delay(
+                guild.id,
+                member.id,
+                int(channel_id),
+            )
+        )
+        self._voice_social_stay_tasks[key] = task
+
+        def clear(done_task: asyncio.Task, task_key=key) -> None:
+            if self._voice_social_stay_tasks.get(task_key) is done_task:
+                self._voice_social_stay_tasks.pop(task_key, None)
+
+        task.add_done_callback(clear)
+
+    async def _voice_social_stay_after_delay(
+        self,
+        guild_id: int,
+        user_id: int,
+        channel_id: int,
+    ) -> None:
+        await asyncio.sleep(
+            max(5, int(self.cfg.behavior.voice_stay_seconds))
+        )
+        guild = self.get_guild(guild_id)
+        if guild is None or self._chaser_panic_remaining(guild_id) > 0.0:
+            return
+        member = guild.get_member(user_id)
+        vc = guild.voice_client
+        if (
+            member is None
+            or member.voice is None
+            or member.voice.channel is None
+            or vc is None
+            or not vc.is_connected()
+            or vc.channel is None
+            or member.voice.channel.id != channel_id
+            or vc.channel.id != channel_id
+        ):
+            return
+        await self._grant_positive_social(
+            member,
+            "VOICE_STAY",
+            "social:user-stayed-with-me",
+            self.cfg.behavior.voice_stay_affinity_step,
+            guild,
+            detail=f"{vc.channel.name} • {self.cfg.behavior.voice_stay_seconds}s",
+        )
+
+    def _schedule_tts_social_stay(
+        self,
+        guild: discord.Guild,
+        channel_id: int,
+        user_ids: list[int],
+    ) -> None:
+        for user_id in user_ids:
+            key = (guild.id, int(user_id))
+            existing = self._tts_social_stay_tasks.get(key)
+            if existing is not None and not existing.done():
+                continue
+            task = asyncio.create_task(
+                self._tts_social_stay_after_delay(
+                    guild.id,
+                    int(user_id),
+                    int(channel_id),
+                )
+            )
+            self._tts_social_stay_tasks[key] = task
+
+            def clear(done_task: asyncio.Task, task_key=key) -> None:
+                if self._tts_social_stay_tasks.get(task_key) is done_task:
+                    self._tts_social_stay_tasks.pop(task_key, None)
+
+            task.add_done_callback(clear)
+
+    async def _tts_social_stay_after_delay(
+        self,
+        guild_id: int,
+        user_id: int,
+        channel_id: int,
+    ) -> None:
+        await asyncio.sleep(
+            max(5, int(self.cfg.behavior.tts_stay_seconds))
+        )
+        guild = self.get_guild(guild_id)
+        if guild is None or self._chaser_panic_remaining(guild_id) > 0.0:
+            return
+        member = guild.get_member(user_id)
+        vc = guild.voice_client
+        if (
+            member is None
+            or member.voice is None
+            or member.voice.channel is None
+            or vc is None
+            or not vc.is_connected()
+            or vc.channel is None
+            or member.voice.channel.id != channel_id
+            or vc.channel.id != channel_id
+        ):
+            return
+        await self._grant_positive_social(
+            member,
+            "TTS_STAY",
+            "social:user-stayed-after-tts",
+            self.cfg.behavior.tts_stay_affinity_step,
+            guild,
+            detail=f"{vc.channel.name} • został po TTS",
+        )
+
     @staticmethod
     def _detect_verbal_rejection(text: str) -> tuple[str, float] | None:
         normalized = OnlineLanguage.normalize(text).lower()
