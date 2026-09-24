@@ -78,6 +78,10 @@ class VoiceConfig:
     chaser_channel_avoid_seconds: float = 90.0
     chaser_threat_magnitude: float = 2.2
     chaser_escape_reward: float = 0.25
+    chaser_scream_enabled: bool = True
+    chaser_scream_file: str = "assets/scream.mp3"
+    chaser_scream_volume: float = 1.25
+    chaser_scream_text: str = "AAAAAAAA!"
     move_threshold: float = 0.67
     join_threshold: float = 0.72
     leave_threshold: float = 0.82
