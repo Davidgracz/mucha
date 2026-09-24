@@ -152,6 +152,10 @@ class MuchaClient(discord.Client):
             "cooldown_remaining": 0.0,
         }
         self._last_reaction: dict[int, float] = {}
+        self._social_positive_last: dict[tuple[int, str], float] = {}
+        self._social_positive_streak: dict[int, dict] = {}
+        self._voice_social_stay_tasks: dict[tuple[int, int], asyncio.Task] = {}
+        self._tts_social_stay_tasks: dict[tuple[int, int], asyncio.Task] = {}
         self._social_debug: dict = {
             "event": "BRAK",
             "detail": "",
@@ -228,6 +232,18 @@ class MuchaClient(discord.Client):
             "self_repeat_penalty",
             "user_affinity_positive_step",
             "user_affinity_negative_step",
+            "direct_reply_affinity_step",
+            "mention_affinity_step",
+            "continued_conversation_affinity_step",
+            "word_reuse_affinity_step",
+            "phrase_reuse_affinity_step",
+            "voice_join_affinity_step",
+            "voice_stay_affinity_step",
+            "voice_stay_seconds",
+            "tts_stay_affinity_step",
+            "tts_stay_seconds",
+            "positive_contact_cooldown_seconds",
+            "familiar_affinity_threshold",
             "user_avoid_threshold",
             "ignore_disliked_users_text",
             "avoid_disliked_users_on_voice",
@@ -300,6 +316,18 @@ class MuchaClient(discord.Client):
             ("behavior", "self_repeat_penalty"): (float, 0.0, 1.0),
             ("behavior", "user_affinity_positive_step"): (float, 0.0, 1.0),
             ("behavior", "user_affinity_negative_step"): (float, 0.0, 1.0),
+            ("behavior", "direct_reply_affinity_step"): (float, 0.0, 0.25),
+            ("behavior", "mention_affinity_step"): (float, 0.0, 0.25),
+            ("behavior", "continued_conversation_affinity_step"): (float, 0.0, 0.25),
+            ("behavior", "word_reuse_affinity_step"): (float, 0.0, 0.25),
+            ("behavior", "phrase_reuse_affinity_step"): (float, 0.0, 0.25),
+            ("behavior", "voice_join_affinity_step"): (float, 0.0, 0.25),
+            ("behavior", "voice_stay_affinity_step"): (float, 0.0, 0.25),
+            ("behavior", "voice_stay_seconds"): (int, 5, 3600),
+            ("behavior", "tts_stay_affinity_step"): (float, 0.0, 0.25),
+            ("behavior", "tts_stay_seconds"): (int, 5, 3600),
+            ("behavior", "positive_contact_cooldown_seconds"): (int, 1, 3600),
+            ("behavior", "familiar_affinity_threshold"): (float, -1.0, 1.0),
             ("behavior", "user_avoid_threshold"): (float, -1.0, 1.0),
             ("behavior", "ignore_disliked_users_text"): (bool, None, None),
             ("behavior", "avoid_disliked_users_on_voice"): (bool, None, None),
