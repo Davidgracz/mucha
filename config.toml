@@ -15,11 +15,11 @@ gpu_device = 0
 
 [language]
 database = "state/language.sqlite3"
-min_chars_before_speaking = 1200
-min_unique_chars_before_speaking = 18
-max_generated_chars = 220
+min_tokens_before_speaking = 450
+min_unique_tokens_before_speaking = 80
+max_generated_tokens = 28
 spontaneous_text = true
-reply_cooldown_seconds = 35
+reply_cooldown_seconds = 1
 spontaneous_cooldown_seconds = 180
 learn_from_bots = false
 
@@ -30,18 +30,18 @@ minimum_dwell_seconds = 60
 maximum_dwell_seconds = 300
 overstay_punish_amount = 0.5
 overstay_punish_interval_seconds = 60
-move_threshold = 0.67
-join_threshold = 0.72
-leave_threshold = 0.82
+move_threshold = 0.45
+join_threshold = 0.50
+leave_threshold = 0.62
 move_margin = 0.05
 include_empty_channels = true
 exclude_afk_channel = true
 
 [behavior]
 idle_tick_seconds = 5
-speak_threshold = 0.70
-reaction_threshold = 0.73
-reaction_cooldown_seconds = 20
+speak_threshold = 0.50
+reaction_threshold = 0.62
+reaction_cooldown_seconds = 1
 reaction_candidate_sample = 64
 save_every_seconds = 45
 
