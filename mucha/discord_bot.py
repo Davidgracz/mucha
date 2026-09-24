@@ -79,6 +79,7 @@ class MuchaClient(discord.Client):
         self.last_spontaneous: dict[int, float] = {}
         self.last_text_channel: dict[int, int] = {}
         self.last_text_context: dict[int, str] = {}
+        self.last_text_author: dict[int, int] = {}
         self.voice_arrived: dict[int, float] = {}
         self.sent: dict[int, SentTrace] = {}
         self.paused = False
@@ -1210,6 +1211,7 @@ class MuchaClient(discord.Client):
         if not blocked_text:
             self.last_text_channel[message.guild.id] = message.channel.id
         self.last_text_context[message.guild.id] = message.content
+        self.last_text_author[message.guild.id] = message.author.id
         await self._apply_social_message_feedback(message)
         self.language.learn(message.content)
         user_affinity = self._user_affinity(message.author.id)
@@ -1631,6 +1633,13 @@ class MuchaClient(discord.Client):
         for guild in self.guilds:
             last = self.last_spontaneous.get(guild.id, 0.0)
             if now - last < self.cfg.language.spontaneous_cooldown_seconds:
+                continue
+            last_author = self.last_text_author.get(guild.id)
+            if (
+                self.cfg.behavior.ignore_disliked_users_text
+                and last_author is not None
+                and self._is_disliked_user(last_author)
+            ):
                 continue
             cid = self.last_text_channel.get(guild.id)
             channel = guild.get_channel(cid) if cid else None
@@ -2081,6 +2090,13 @@ class MuchaClient(discord.Client):
         vc = self.random.choice(candidates)
         guild = vc.guild
         channel_name = getattr(vc.channel, "name", "voice")
+        last_author = self.last_text_author.get(guild.id)
+        if (
+            self.cfg.behavior.ignore_disliked_users_text
+            and last_author is not None
+            and self._is_disliked_user(last_author)
+        ):
+            return
 
         async with self._brain_lock:
             self.brain.inject(
