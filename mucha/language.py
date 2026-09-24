@@ -41,6 +41,7 @@ class OnlineLanguage:
         self.min_unique_chars = max(1, int(min_unique_chars))
         self.max_chars = max(24, int(max_chars))
         self._init_schema()
+        self._bootstrap_from_legacy_words()
 
     def _init_schema(self) -> None:
         self.db.executescript(
@@ -78,6 +79,147 @@ class OnlineLanguage:
                 v INTEGER NOT NULL
             );
             """
+        )
+        self.db.commit()
+
+    def _table_exists(self, name: str) -> bool:
+        row = self.db.execute(
+            "SELECT 1 FROM sqlite_master WHERE type='table' AND name=?",
+            (name,),
+        ).fetchone()
+        return row is not None
+
+    def _bootstrap_from_legacy_words(self) -> None:
+        """One-time conversion of the old word model into character transitions.
+
+        Legacy words are never used directly during generation. Their observed
+        frequencies only seed char-level statistics, so subsequent output is
+        still assembled one character at a time.
+        """
+        done = self.db.execute(
+            "SELECT v FROM char_stats WHERE k='legacy_bootstrap_v1'"
+        ).fetchone()
+        if done:
+            return
+
+        required = ("unigram", "bigram")
+        if not all(self._table_exists(name) for name in required):
+            self.db.execute(
+                "INSERT INTO char_stats(k,v) VALUES('legacy_bootstrap_v1',0) "
+                "ON CONFLICT(k) DO NOTHING"
+            )
+            self.db.commit()
+            return
+
+        char_counts: Counter[str] = Counter()
+        bigram_counts: Counter[tuple[str, str]] = Counter()
+        trigram_counts: Counter[tuple[str, str, str]] = Counter()
+        start_counts: Counter[tuple[str, str]] = Counter()
+        imported_chars = 0
+        imported_items = 0
+
+        def add_sequence(text: str, weight: int, as_start: bool = False) -> None:
+            nonlocal imported_chars, imported_items
+            normalized = self.normalize(text).lower()
+            if not normalized:
+                return
+            chars = list(normalized[:180])
+            if not chars:
+                return
+            weight = max(1, min(8, int(weight)))
+            seq = [START_A, START_B] + chars if as_start else chars
+
+            for ch in chars:
+                char_counts[ch] += weight
+            for a, b in zip(seq, seq[1:]):
+                bigram_counts[(a, b)] += weight
+            for a, b, cc in zip(seq, seq[1:], seq[2:]):
+                trigram_counts[(a, b, cc)] += weight
+
+            if as_start:
+                first = chars[0]
+                second = chars[1] if len(chars) > 1 else " "
+                start_counts[(first, second)] += weight
+
+            imported_chars += len(chars) * weight
+            imported_items += 1
+
+        # Old individual words teach spelling structure. Frequency is compressed
+        # logarithmically so very common words do not completely dominate.
+        for token, n in self.db.execute(
+            "SELECT token,n FROM unigram ORDER BY n DESC LIMIT 6000"
+        ).fetchall():
+            if not token:
+                continue
+            weight = max(1, min(6, int(math.log2(max(1, int(n))) + 1)))
+            add_sequence(str(token), weight, as_start=False)
+
+        # Old word pairs are especially useful because they teach spaces and
+        # transitions across word boundaries without making whole words atomic.
+        for a, b, n in self.db.execute(
+            "SELECT a,b,n FROM bigram ORDER BY n DESC LIMIT 12000"
+        ).fetchall():
+            if not a or not b:
+                continue
+            weight = max(1, min(4, int(math.log2(max(1, int(n))) + 1)))
+            add_sequence(f"{a} {b}", weight, as_start=False)
+
+        # Preserve some sentence-start statistics when the legacy table exists.
+        if self._table_exists("starts"):
+            for a, b, n in self.db.execute(
+                "SELECT a,b,n FROM starts ORDER BY n DESC LIMIT 3000"
+            ).fetchall():
+                if not a:
+                    continue
+                text = f"{a} {b}" if b else str(a)
+                weight = max(1, min(5, int(math.log2(max(1, int(n))) + 1)))
+                add_sequence(text, weight, as_start=True)
+
+        cur = self.db.cursor()
+        for ch, n in char_counts.items():
+            cur.execute(
+                "INSERT INTO char_unigram(ch,n) VALUES(?,?) "
+                "ON CONFLICT(ch) DO UPDATE SET n=n+excluded.n",
+                (ch, int(n)),
+            )
+        for (a, b), n in bigram_counts.items():
+            cur.execute(
+                "INSERT INTO char_bigram(a,b,n) VALUES(?,?,?) "
+                "ON CONFLICT(a,b) DO UPDATE SET n=n+excluded.n",
+                (a, b, int(n)),
+            )
+        for (a, b, cc), n in trigram_counts.items():
+            cur.execute(
+                "INSERT INTO char_trigram(a,b,c,n,reward) VALUES(?,?,?,?,0) "
+                "ON CONFLICT(a,b,c) DO UPDATE SET n=n+excluded.n",
+                (a, b, cc, int(n)),
+            )
+        for (a, b), n in start_counts.items():
+            cur.execute(
+                "INSERT INTO char_starts(a,b,n) VALUES(?,?,?) "
+                "ON CONFLICT(a,b) DO UPDATE SET n=n+excluded.n",
+                (a, b, int(n)),
+            )
+
+        if imported_chars:
+            cur.execute(
+                "INSERT INTO char_stats(k,v) VALUES('chars',?) "
+                "ON CONFLICT(k) DO UPDATE SET v=v+excluded.v",
+                (int(imported_chars),),
+            )
+        cur.execute(
+            "INSERT INTO char_stats(k,v) VALUES('legacy_bootstrap_chars',?) "
+            "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+            (int(imported_chars),),
+        )
+        cur.execute(
+            "INSERT INTO char_stats(k,v) VALUES('legacy_bootstrap_items',?) "
+            "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+            (int(imported_items),),
+        )
+        cur.execute(
+            "INSERT INTO char_stats(k,v) VALUES('legacy_bootstrap_v1',1) "
+            "ON CONFLICT(k) DO UPDATE SET v=1"
         )
         self.db.commit()
 
@@ -165,12 +307,20 @@ class OnlineLanguage:
         transitions = int(
             self.db.execute("SELECT COUNT(*) FROM char_trigram").fetchone()[0]
         )
+        legacy_chars_row = self.db.execute(
+            "SELECT v FROM char_stats WHERE k='legacy_bootstrap_chars'"
+        ).fetchone()
+        legacy_items_row = self.db.execute(
+            "SELECT v FROM char_stats WHERE k='legacy_bootstrap_items'"
+        ).fetchone()
         return {
             "mode": "characters",
             "chars": total,
             "unique_chars": unique,
             "messages": messages,
             "transitions": transitions,
+            "legacy_bootstrap_chars": int(legacy_chars_row[0]) if legacy_chars_row else 0,
+            "legacy_bootstrap_items": int(legacy_items_row[0]) if legacy_items_row else 0,
             "ready": self.ready(),
         }
 
