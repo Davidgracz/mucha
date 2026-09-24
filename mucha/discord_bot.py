@@ -43,9 +43,9 @@ class MuchaClient(discord.Client):
         self.brain = FlyBrain(self.connectome, cfg.brain)
         self.language = OnlineLanguage(
             cfg.language.database,
-            cfg.language.min_tokens_before_speaking,
-            cfg.language.min_unique_tokens_before_speaking,
-            cfg.language.max_generated_tokens,
+            cfg.language.min_chars_before_speaking,
+            cfg.language.min_unique_chars_before_speaking,
+            cfg.language.max_generated_chars,
             seed=cfg.brain.seed,
         )
         self.random = random.Random(cfg.brain.seed + 1)
@@ -445,7 +445,8 @@ class MuchaClient(discord.Client):
             diag = self.brain.diagnostics()
             top_neurons = self.brain.top_active_neurons(self.cfg.console_ui.top_neurons)
 
-        language_tokens, language_unique = self.language.stats()
+        language_total, language_unique = self.language.stats()
+        language_diag = self.language.diagnostics()
         voice_parts = []
         for guild in self.guilds:
             vc = guild.voice_client
@@ -465,9 +466,10 @@ class MuchaClient(discord.Client):
             "diag": diag,
             "scores": scores,
             "top_neurons": top_neurons,
-            "language_tokens": language_tokens,
+            "language_tokens": language_total,
             "language_unique": language_unique,
             "language_ready": self.language.ready(),
+            "language_diag": language_diag,
             "voice": ", ".join(voice_parts) if voice_parts else "poza voice",
             "last_event": self._last_brain_event,
             "last_action": self._last_brain_action,
@@ -800,12 +802,14 @@ class MuchaClient(discord.Client):
         if cmd == "status":
             d = self.brain.diagnostics()
             total, unique = self.language.stats()
+            lang = self.language.diagnostics()
             scores = self.brain.action_scores()
             txt = (
                 f"🪰 **Mucha v0.1**\n"
                 f"neurony: `{d['neurons']:,}` | połączenia: `{d['connections']:,}`\n"
                 f"aktywne >0.1: `{d['active_abs_gt_0_1']:,}` | mean |a|: `{d['mean_abs']:.4f}`\n"
-                f"język: `{total:,}` tokenów / `{unique:,}` unikalnych | gotowa: `{self.language.ready()}`\n"
+                f"język: `{total:,}` znaków / `{unique:,}` unikalnych | "
+                f"przejścia: `{lang['transitions']:,}` | gotowa: `{self.language.ready()}`\n"
                 f"reward trace: `{d['reward_trace']:.3f}` | ticks: `{d['ticks']:,}`\n"
                 f"speak `{scores['speak']:.2f}` move `{scores['voice_move']:.2f}` join `{scores['voice_join']:.2f}` leave `{scores['voice_leave']:.2f}`"
             )
