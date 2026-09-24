@@ -433,3 +433,35 @@ exploration_min_candidates = 3
 Kanały nigdy nieodwiedzone dostają największy bonus, a świeżo odwiedzone są tymczasowo mniej atrakcyjne. Spośród wszystkich dostępnych kanałów cel jest losowany wagowo zamiast zawsze wybierać ten sam najwyższy wynik. Deadly channels nadal są całkowicie wykluczone.
 
 Voice Debug pokazuje teraz `Affinity`, `Explore`, `Novelty` oraz `Last visit` dla każdego kanału.
+
+
+## Rare random voice audio
+
+Gdy Mucha jest podłączona do co najmniej jednego kanału voice, raz na sekundę wykonywany jest globalny los:
+
+```text
+1 / 10000
+```
+
+Po trafieniu Mucha wybiera jeden z aktualnie połączonych serwerów, na którym nic już nie gra, i odtwarza:
+
+```text
+assets/random_audio.mp3
+```
+
+Konfiguracja:
+
+```toml
+[voice]
+random_audio_enabled = true
+random_audio_file = "assets/random_audio.mp3"
+random_audio_chance_denominator = 10000
+random_audio_volume = 0.8
+ffmpeg_executable = "ffmpeg"
+```
+
+Komputer uruchamiający bota musi mieć FFmpeg dostępny w PATH albo należy podać pełną ścieżkę w `ffmpeg_executable`.
+
+Przy rare evencie connectome dostaje dodatkowe bodźce `internal:rare-audio` i `voice:rare-audio:guild:<id>`, a zdarzenie jest widoczne w Action History jako `rare_audio`.
+
+Jeśli pliku audio nie ma, bot tylko zapisuje jednorazowe ostrzeżenie do logu i działa dalej normalnie.
