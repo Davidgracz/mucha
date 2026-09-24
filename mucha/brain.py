@@ -322,6 +322,15 @@ class FlyBrain:
         bias_max_abs = self.compute.scalar(self.xp.max(bias_abs))
         bias_positive = self.compute.int_scalar(self.xp.count_nonzero(self.plastic_bias > 1e-7))
         bias_negative = self.compute.int_scalar(self.xp.count_nonzero(self.plastic_bias < -1e-7))
+        hist_counts, hist_edges = self.xp.histogram(
+            self.plastic_bias,
+            bins=21,
+            range=(-self.cfg.max_bias, self.cfg.max_bias),
+        )
+        bias_hist = {
+            "counts": self.compute.to_cpu(hist_counts).astype(np.int64).tolist(),
+            "edges": self.compute.to_cpu(hist_edges).astype(np.float32).tolist(),
+        }
         return {
             "neurons": self.c.n_neurons,
             "connections": int(self.c.matrix.nnz),
@@ -338,4 +347,5 @@ class FlyBrain:
             "bias_max_abs": bias_max_abs,
             "bias_positive": bias_positive,
             "bias_negative": bias_negative,
+            "bias_hist": bias_hist,
         }
