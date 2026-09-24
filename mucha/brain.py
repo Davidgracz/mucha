@@ -43,6 +43,17 @@ class FlyBrain:
         self.reward_trace = 0.0
         self.tick_count = 0
         self._pool_cache: dict[tuple[str, int], np.ndarray] = {}
+        self.last_learning: dict = {
+            "amount": 0.0,
+            "action": None,
+            "changed_neurons": 0,
+            "mean_delta": 0.0,
+            "max_delta": 0.0,
+            "before": {},
+            "after": {},
+            "impact": {},
+            "top_changed": [],
+        }
         self._load_state()
 
     @property
@@ -153,23 +164,119 @@ class FlyBrain:
             self.reward_trace *= 0.96
             self.tick_count += 1
 
-    def reward(self, amount: float) -> None:
+    def capture_learning_trace(self, count: int = 4096) -> tuple[np.ndarray, np.ndarray]:
+        """Capture a compact CPU copy of the strongest eligibility values."""
+        count = max(64, min(int(count), self.c.n_neurons))
+        abs_e = self.xp.abs(self.eligibility)
+        if count >= self.c.n_neurons:
+            idx = self.xp.argsort(abs_e)[::-1]
+        else:
+            idx = self.xp.argpartition(abs_e, -count)[-count:]
+            idx = idx[self.xp.argsort(abs_e[idx])[::-1]]
+        idx_cpu = self.compute.to_cpu(idx[:count]).astype(np.int32, copy=False)
+        val_cpu = self.compute.to_cpu(self.eligibility[idx[:count]]).astype(np.float32, copy=False)
+        return idx_cpu, val_cpu
+
+    def reward(
+        self,
+        amount: float,
+        action: str | None = None,
+        trace: tuple[np.ndarray, np.ndarray] | None = None,
+    ) -> dict:
+        """Apply reward to the recent neural trace and preferentially to one action."""
         amount = float(max(-1.0, min(1.0, amount)))
+        before = self.action_scores()
         self.reward_trace = max(-2.0, min(2.0, self.reward_trace + amount))
-        delta = self.cfg.plasticity_lr * amount * self.eligibility
-        self.plastic_bias += delta.astype(self.xp.float32)
+
+        changed_idx_cpu: np.ndarray
+        changed_delta_cpu: np.ndarray
+
+        if trace is not None and len(trace[0]):
+            idx_cpu, elig_cpu = trace
+            idx = self._backend_indices(idx_cpu)
+            elig = self.compute.asarray(elig_cpu, dtype=np.float32)
+            delta = (self.cfg.plasticity_lr * amount * elig).astype(self.xp.float32)
+            self.plastic_bias[idx] += delta
+            changed_idx_cpu = idx_cpu.astype(np.int32, copy=False)
+            changed_delta_cpu = self.compute.to_cpu(delta).astype(np.float32, copy=False)
+        else:
+            delta = (self.cfg.plasticity_lr * amount * self.eligibility).astype(self.xp.float32)
+            self.plastic_bias += delta
+            abs_delta = self.xp.abs(delta)
+            k = min(4096, self.c.n_neurons)
+            idx = self.xp.argpartition(abs_delta, -k)[-k:]
+            idx = idx[self.xp.argsort(abs_delta[idx])[::-1]]
+            changed_idx_cpu = self.compute.to_cpu(idx).astype(np.int32, copy=False)
+            changed_delta_cpu = self.compute.to_cpu(delta[idx]).astype(np.float32, copy=False)
+
+        # Action-specific reinforcement. This makes feedback about "speak" or
+        # "react" preferentially change the corresponding output population.
+        if action in self.ACTIONS:
+            out_cpu = self._subset("output:action:" + action, self.c.output, 128)
+            out = self._backend_indices(out_cpu)
+            action_delta = np.float32(self.cfg.plasticity_lr * amount * 8.0)
+            self.plastic_bias[out] += action_delta
+            self.state[out] += np.float32(0.12 * amount)
+
+            extra_idx = out_cpu.astype(np.int32, copy=False)
+            extra_delta = np.full(len(extra_idx), float(action_delta), dtype=np.float32)
+            changed_idx_cpu = np.concatenate([changed_idx_cpu, extra_idx])
+            changed_delta_cpu = np.concatenate([changed_delta_cpu, extra_delta])
+
         self.xp.clip(
             self.plastic_bias,
             -self.cfg.max_bias,
             self.cfg.max_bias,
             out=self.plastic_bias,
         )
+
         if len(self.c.modulatory):
             idx_cpu = self._subset(
                 "reward:modulatory", self.c.modulatory, min(128, len(self.c.modulatory))
             )
             idx = self._backend_indices(idx_cpu)
             self.state[idx] += np.float32(0.35 * amount)
+
+        after = self.action_scores()
+        impact = {name: after[name] - before[name] for name in self.ACTIONS}
+
+        if len(changed_idx_cpu):
+            order = np.argsort(np.abs(changed_delta_cpu))[::-1][:12]
+            top_changed = [
+                {
+                    "root_id": int(self.c.root_ids[int(changed_idx_cpu[i])]),
+                    "delta": float(changed_delta_cpu[i]),
+                    "activation": float(
+                        self.compute.to_cpu(
+                            self.state[self._backend_indices(
+                                np.asarray([changed_idx_cpu[i]], dtype=np.int32)
+                            )]
+                        )[0]
+                    ),
+                }
+                for i in order
+            ]
+            nonzero = int(np.count_nonzero(np.abs(changed_delta_cpu) > 1e-9))
+            mean_delta = float(np.mean(changed_delta_cpu))
+            max_delta = float(np.max(np.abs(changed_delta_cpu)))
+        else:
+            top_changed = []
+            nonzero = 0
+            mean_delta = 0.0
+            max_delta = 0.0
+
+        self.last_learning = {
+            "amount": amount,
+            "action": action,
+            "changed_neurons": nonzero,
+            "mean_delta": mean_delta,
+            "max_delta": max_delta,
+            "before": before,
+            "after": after,
+            "impact": impact,
+            "top_changed": top_changed,
+        }
+        return self.last_learning
 
     def readout(self, key: str, width: int = 96) -> float:
         idx_cpu = self._subset("output:" + key, self.c.output, width)
@@ -200,12 +307,21 @@ class FlyBrain:
             for i, v in zip(idx_cpu, values_cpu)
         ]
 
+    def learning_diagnostics(self) -> dict:
+        return self.last_learning
+
     def diagnostics(self) -> dict[str, float | int | str]:
         active = self.compute.int_scalar(
             self.xp.count_nonzero(self.xp.abs(self.state) > 0.1)
         )
         mean_abs = self.compute.scalar(self.xp.mean(self.xp.abs(self.state)))
         max_abs = self.compute.scalar(self.xp.max(self.xp.abs(self.state)))
+        bias_abs = self.xp.abs(self.plastic_bias)
+        bias_mean = self.compute.scalar(self.xp.mean(self.plastic_bias))
+        bias_mean_abs = self.compute.scalar(self.xp.mean(bias_abs))
+        bias_max_abs = self.compute.scalar(self.xp.max(bias_abs))
+        bias_positive = self.compute.int_scalar(self.xp.count_nonzero(self.plastic_bias > 1e-7))
+        bias_negative = self.compute.int_scalar(self.xp.count_nonzero(self.plastic_bias < -1e-7))
         return {
             "neurons": self.c.n_neurons,
             "connections": int(self.c.matrix.nnz),
@@ -217,4 +333,9 @@ class FlyBrain:
             "backend": self.compute.info.active,
             "device": self.compute.info.device_name,
             "cuda_runtime": self.compute.info.cuda_runtime or "",
+            "bias_mean": bias_mean,
+            "bias_mean_abs": bias_mean_abs,
+            "bias_max_abs": bias_max_abs,
+            "bias_positive": bias_positive,
+            "bias_negative": bias_negative,
         }
