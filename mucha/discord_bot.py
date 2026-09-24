@@ -712,6 +712,20 @@ class MuchaClient(discord.Client):
     async def before_presence(self):
         await self.wait_until_ready()
 
+    def _make_voice_source(
+        self,
+        path: Path,
+        volume: float,
+    ) -> discord.AudioSource:
+        volume = max(0.0, min(2.0, float(volume)))
+        return discord.FFmpegOpusAudio(
+            str(path),
+            executable=self.cfg.voice.ffmpeg_executable,
+            bitrate=96,
+            codec="libopus",
+            options=f"-vn -filter:a volume={volume}",
+        )
+
     def _synthesize_tts_file(self, text: str, path: Path) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
@@ -798,15 +812,9 @@ class MuchaClient(discord.Client):
             if not ok or vc.is_playing() or not vc.is_connected():
                 return
 
-            source = discord.PCMVolumeTransformer(
-                discord.FFmpegPCMAudio(
-                    str(wav_path),
-                    executable=self.cfg.voice.ffmpeg_executable,
-                ),
-                volume=max(
-                    0.0,
-                    min(2.0, float(self.cfg.voice.tts_volume)),
-                ),
+            source = self._make_voice_source(
+                wav_path,
+                self.cfg.voice.tts_volume,
             )
             vc.play(source)
 
@@ -873,15 +881,9 @@ class MuchaClient(discord.Client):
         channel_name = getattr(vc.channel, "name", "voice")
 
         try:
-            source = discord.PCMVolumeTransformer(
-                discord.FFmpegPCMAudio(
-                    str(audio_path),
-                    executable=self.cfg.voice.ffmpeg_executable,
-                ),
-                volume=max(
-                    0.0,
-                    min(2.0, float(self.cfg.voice.random_audio_volume)),
-                ),
+            source = self._make_voice_source(
+                audio_path,
+                self.cfg.voice.random_audio_volume,
             )
             async with self._brain_lock:
                 self.brain.inject("internal:rare-audio", 1.0, 128)
@@ -1604,8 +1606,47 @@ class MuchaClient(discord.Client):
                 message.guild,
             )
             await message.add_reaction("👎")
+        elif cmd == "audiotest":
+            vc = message.guild.voice_client
+            if (
+                vc is None
+                or not vc.is_connected()
+                or vc.channel is None
+                or vc.is_playing()
+            ):
+                await message.add_reaction("⚠️")
+                return
+
+            wav_path = Path("state") / "tts" / f"{message.guild.id}.wav"
+            test_text = "Test głosu Muchy."
+            try:
+                ok = await asyncio.to_thread(
+                    self._synthesize_tts_file,
+                    test_text,
+                    wav_path,
+                )
+                if not ok:
+                    await message.add_reaction("❌")
+                    return
+                source = self._make_voice_source(
+                    wav_path,
+                    self.cfg.voice.tts_volume,
+                )
+                vc.play(source)
+                self._record_action(
+                    "audio_test",
+                    f"{vc.channel.name}: {wav_path}",
+                    message.guild,
+                )
+                await message.add_reaction("🔊")
+            except Exception:
+                log.exception(
+                    "Audio test nie powiódł się na serwerze %s",
+                    message.guild.id,
+                )
+                await message.add_reaction("❌")
         elif cmd == "help":
             if text_blocked:
                 await message.add_reaction("🚫")
                 return
-            await message.channel.send("`!mucha status` `save` `pause` `resume` `reward` `punish`", allowed_mentions=discord.AllowedMentions.none())
+            await message.channel.send("`!mucha status` `save` `pause` `resume` `reward` `punish` `audiotest`", allowed_mentions=discord.AllowedMentions.none())
