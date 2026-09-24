@@ -103,6 +103,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     <div class="card">
       <h2>Środowisko</h2>
       <div class="metric"><span>Język</span><strong id="language">—</strong></div>
+      <div class="metric"><span>Tryb języka</span><strong id="language-mode">—</strong></div>
+      <div class="metric"><span>Wiadomości</span><strong id="language-messages">—</strong></div>
+      <div class="metric"><span>Przejścia znaków</span><strong id="language-transitions">—</strong></div>
       <div class="metric"><span>Gotowa pisać</span><strong id="ready">—</strong></div>
       <div class="metric"><span>Voice</span><strong id="voice">—</strong></div>
       <div class="metric"><span>Stan</span><strong id="paused">—</strong></div>
@@ -366,7 +369,11 @@ async function update(){
     $("bias-pos").textContent=nfmt(d.bias_positive||0);
     $("bias-neg").textContent=nfmt(d.bias_negative||0);
     drawBiasHistogram(d.bias_hist||{});
-    $("language").textContent=nfmt(s.language_tokens)+" / "+nfmt(s.language_unique);
+    const ld=s.language_diag||{};
+    $("language").textContent=nfmt(s.language_tokens)+" znaków / "+nfmt(s.language_unique)+" unikalnych";
+    $("language-mode").textContent=ld.mode||"characters";
+    $("language-messages").textContent=nfmt(ld.messages||0);
+    $("language-transitions").textContent=nfmt(ld.transitions||0);
     $("ready").textContent=s.language_ready?"TAK":"nie";$("voice").textContent=s.voice||"poza voice";
     $("paused").textContent=s.paused?"PAUZA":"aktywny";$("event").textContent=s.last_event||"—";$("lastaction").textContent=s.last_action||"—";
     renderActions(s.scores||{});
