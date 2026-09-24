@@ -93,7 +93,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
 <body><main>
 <div class="top">
   <div class="brand"><div class="logo">🪰</div><div><h1>Mucha Control Center</h1><div class="sub">VPS • Discord • Connectome • Chaser • Audio</div></div></div>
-  <div class="nav"><a href="/brain">🧠 Brain Debug</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
+  <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
@@ -277,12 +277,16 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 <body>
 <main>
   <div class="top">
-    <div class="brand"><div class="fly">🪰</div><div class="title"><h1>Mucha Brain Dashboard</h1><p id="source">łączenie…</p></div></div>
-    <div class="badges">
+    <div class="brand"><div class="fly">🪰</div><div class="title"><h1>Mucha — Szczegóły</h1><p id="source">łączenie…</p></div></div>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <a href="/" style="color:#c5d3e1;text-decoration:none;border:1px solid var(--line);background:#0f161f;border-radius:10px;padding:7px 10px;font-size:12px">🏠 Przegląd</a>
+      <a href="/details" style="color:#07110e;text-decoration:none;border:1px solid var(--accent);background:var(--accent);border-radius:10px;padding:7px 10px;font-size:12px;font-weight:700">📋 Szczegóły</a>
+      <div class="badges">
       <div class="badge"><span class="dot"></span><span id="live">LIVE</span></div>
       <div class="badge" id="backend">backend: —</div>
       <div class="badge" id="device">device: —</div>
       <div class="badge" id="clock">—</div>
+      </div>
     </div>
   </div>
 
@@ -774,6 +778,7 @@ class WebDashboard:
 
         app = web.Application(middlewares=[self._auth_middleware])
         app.router.add_get("/", self._index)
+        app.router.add_get("/details", self._details)
         app.router.add_get("/brain", self._brain)
         app.router.add_get("/login", self._login_get)
         app.router.add_post("/login", self._login_post)
@@ -801,7 +806,7 @@ class WebDashboard:
     async def _index(self, request: web.Request) -> web.Response:
         return web.Response(text=OVERVIEW_HTML, content_type="text/html")
 
-    async def _brain(self, request: web.Request) -> web.Response:
+    async def _details(self, request: web.Request) -> web.Response:
         html = HTML.replace(
             "const maxHistory=180;",
             f"const maxHistory={self.history_points};",
@@ -811,6 +816,9 @@ class WebDashboard:
             f"setInterval(update,{self.refresh_ms});",
         )
         return web.Response(text=html, content_type="text/html")
+
+    async def _brain(self, request: web.Request) -> web.StreamResponse:
+        raise web.HTTPFound("/details")
 
     async def _login_get(self, request: web.Request) -> web.Response:
         if self._is_authenticated(request):
