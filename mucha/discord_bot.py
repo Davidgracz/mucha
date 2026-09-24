@@ -5,6 +5,7 @@ import logging
 import math
 import random
 import shutil
+import subprocess
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -1186,6 +1187,42 @@ class MuchaClient(discord.Client):
             path.unlink(missing_ok=True)
         except OSError:
             pass
+
+        espeak = shutil.which("espeak-ng")
+        if espeak:
+            cmd = [
+                espeak,
+                "-s",
+                str(max(80, min(450, int(self.cfg.voice.tts_rate)))),
+                "-w",
+                str(path),
+            ]
+            wanted = self.cfg.voice.tts_voice_name.strip()
+            if wanted:
+                cmd.extend(["-v", wanted])
+            cmd.append(text)
+
+            try:
+                result = subprocess.run(
+                    cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=30,
+                    check=False,
+                )
+                if (
+                    result.returncode == 0
+                    and path.is_file()
+                    and path.stat().st_size > 44
+                ):
+                    return True
+                log.warning(
+                    "espeak-ng TTS failed (code=%s): %s",
+                    result.returncode,
+                    (result.stderr or result.stdout).strip(),
+                )
+            except Exception:
+                log.exception("espeak-ng TTS failed")
 
         engine = pyttsx3.init()
         try:
