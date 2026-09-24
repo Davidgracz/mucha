@@ -345,3 +345,14 @@ reaction_candidate_sample = 64
 ```
 
 Każde emoji z pełnej puli może trafić do kolejnych próbek. Jeśli Discord odrzuci najwyżej ocenioną reakcję, bot próbuje następnych kandydatów. Reaction Debug pokazuje całkowity rozmiar puli, liczbę ocenionych kandydatów i top wyników.
+
+
+## Per-server reinforcement context
+
+Mucha nadal używa jednego wspólnego connectome na wszystkich serwerach, ale kontekst reward/punish jest rozdzielony per Discord guild.
+
+- ostatnia nagradzalna akcja jest zapisywana osobno dla każdego serwera,
+- `!mucha reward` i `!mucha punish` działają tylko na ostatnią akcję z bieżącego serwera,
+- jeśli na bieżącym serwerze nie ma jeszcze akcji do nagrodzenia, komenda nie wykonuje globalnego rewardu,
+- voice join/move/leave, speak, react i overstay `stay` aktualizują własny kontekst danego serwera,
+- Web UI pokazuje sekcję **Server Learning Context** z ostatnią nagradzalną akcją każdego serwera.
