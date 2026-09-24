@@ -125,6 +125,11 @@ class WebUIConfig:
     auto_open: bool = True
     refresh_ms: int = 500
     history_points: int = 180
+    auth_enabled: bool = True
+    auth_username: str = "admin"
+    auth_password_env: str = "MUCHA_DASHBOARD_PASSWORD"
+    session_hours: int = 168
+    chaser_status_file: str = "/opt/mucha-chaser/state/chaser_status.json"
 
 
 @dataclass(slots=True)
