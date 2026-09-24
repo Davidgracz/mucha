@@ -20,7 +20,7 @@ SnapshotProvider = Callable[[], Awaitable[dict]]
 ConfigProvider = Callable[[], dict]
 ConfigUpdater = Callable[[dict], dict]
 
-LOGIN_CONFIG_HTML = r"""<!doctype html>
+CONFIG_HTML = r"""<!doctype html>
 <html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mucha — Konfiguracja</title>
 <style>
@@ -113,7 +113,7 @@ $("save").onclick=async()=>{
 load().catch(e=>{$("status").textContent="Błąd ładowania: "+e.message;$("status").className="bad"});
 </script></body></html>"""
 
-HTML = r"""<!doctype html>
+LOGIN_HTML = r"""<!doctype html>
 <html lang="pl">
 <head>
 <meta charset="utf-8">
