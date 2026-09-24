@@ -178,6 +178,14 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card span3">
+      <h2>Server Learning Context</h2>
+      <table>
+        <thead><tr><th>Serwer</th><th>Ostatnia nagradzalna akcja</th><th>Szczegół</th><th>Wiek</th></tr></thead>
+        <tbody id="guild-learning-context"></tbody>
+      </table>
+    </div>
+
+    <div class="card span3">
       <h2>Voice Debug</h2>
       <div id="voice-debug"><div class="reason">Czekam na pierwszy cykl voice…</div></div>
     </div>
@@ -288,13 +296,31 @@ function renderReaction(r){
     (x.emoji||"—")+" "+Number(x.score||0).toFixed(3)
   ).join("   ");
 }
+function renderGuildLearningContext(items){
+  const root=$("guild-learning-context");
+  if(!Array.isArray(items)||!items.length){
+    root.innerHTML='<tr><td colspan="4">Brak zapisanych akcji per serwer.</td></tr>';
+    return;
+  }
+  const now=Date.now()/1000;
+  root.innerHTML=items.map(x=>{
+    const age=Math.max(0,now-Number(x.time||0));
+    return '<tr>'+
+      '<td>'+esc(x.guild||x.guild_id||"—")+'</td>'+
+      '<td><strong>'+esc(x.action||"—")+'</strong></td>'+
+      '<td>'+esc(x.detail||"—")+'</td>'+
+      '<td>'+age.toFixed(0)+' s</td>'+
+    '</tr>';
+  }).join("");
+}
 function renderActionHistory(items){
   const root=$("action-history");
   if(!Array.isArray(items)||!items.length){root.innerHTML='<div class="reason">Brak akcji.</div>';return}
   root.innerHTML=items.slice().reverse().map(x=>{
     const t=new Date(Number(x.time||0)*1000).toLocaleTimeString("pl-PL");
+    const guild=x.guild?('['+esc(x.guild)+'] '):'';
     return '<div class="log-item"><div class="log-time">'+t+'</div><div class="log-kind">'+esc(x.kind||"")+
-      '</div><div>'+esc(x.detail||"")+'</div></div>';
+      '</div><div>'+guild+esc(x.detail||"")+'</div></div>';
   }).join("");
 }
 function drawBiasHistogram(hist){
@@ -382,6 +408,7 @@ async function update(){
     renderReaction(s.reaction_debug||{});
     renderLearning(s.learning_debug||{});
     renderActionHistory(s.action_history||[]);
+    renderGuildLearningContext(s.guild_learning_context||[]);
     drawRewardChart(s.reward_history||[],d.reward_trace);
     renderVoiceDebug(s.voice_debug||[]);
     $("top").innerHTML=(s.top_neurons||[]).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+x[0]+'</td><td>'+(x[1]>=0?"+":"")+Number(x[1]).toFixed(5)+'</td><td>'+Math.abs(x[1]).toFixed(5)+'</td></tr>').join("");
