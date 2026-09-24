@@ -78,7 +78,8 @@ class MuchaClient(discord.Client):
         ]
         self._action_history: list[dict] = []
         self._reward_history: list[dict] = []
-        self._last_reinforceable: tuple[str, tuple] | None = None
+        self._last_reinforceable: dict[int, tuple[str, tuple]] = {}
+        self._guild_learning_context: dict[int, dict] = {}
         self.console_ui = ConsoleBrainUI(
             mode=cfg.console_ui.mode,
             top_neurons=cfg.console_ui.top_neurons,
@@ -92,25 +93,56 @@ class MuchaClient(discord.Client):
             history_points=cfg.web_ui.history_points,
         )
 
-    def _record_action(self, kind: str, detail: str) -> None:
+    def _record_action(
+        self,
+        kind: str,
+        detail: str,
+        guild: discord.Guild | None = None,
+    ) -> None:
         self._action_history.append({
             "time": time.time(),
             "kind": kind,
             "detail": detail,
+            "guild_id": guild.id if guild else None,
+            "guild": guild.name if guild else None,
         })
         if len(self._action_history) > 80:
             del self._action_history[:-80]
 
-    def _record_reward(self, amount: float, action: str | None, source: str) -> None:
+    def _record_reward(
+        self,
+        amount: float,
+        action: str | None,
+        source: str,
+        guild: discord.Guild | None = None,
+    ) -> None:
         self._reward_history.append({
             "time": time.time(),
             "amount": float(amount),
             "action": action,
             "source": source,
             "trace": float(self.brain.reward_trace),
+            "guild_id": guild.id if guild else None,
+            "guild": guild.name if guild else None,
         })
         if len(self._reward_history) > 120:
             del self._reward_history[:-120]
+
+    def _set_reinforceable(
+        self,
+        guild: discord.Guild,
+        action: str,
+        trace: tuple,
+        detail: str = "",
+    ) -> None:
+        self._last_reinforceable[guild.id] = (action, trace)
+        self._guild_learning_context[guild.id] = {
+            "guild_id": guild.id,
+            "guild": guild.name,
+            "action": action,
+            "detail": detail,
+            "time": time.time(),
+        }
 
     def _reaction_candidates(self, guild: discord.Guild) -> tuple[list[tuple[str, object]], int]:
         """Sample from the full Unicode emoji set plus usable custom guild emoji."""
@@ -253,10 +285,16 @@ class MuchaClient(discord.Client):
                     self.cfg.behavior.reaction_cooldown_seconds
                 )
                 self._last_brain_action = f"REACTION → {chosen_label} • #{channel_name}"
-                self._last_reinforceable = ("react", learning_trace)
+                self._set_reinforceable(
+                    message.guild,
+                    "react",
+                    learning_trace,
+                    f"{chosen_label} → #{channel_name}",
+                )
                 self._record_action(
                     "react",
                     f"{chosen_label} → #{channel_name} / {message.author.display_name}",
+                    message.guild,
                 )
             elif self._reaction_debug["decision"] != "BRAK UPRAWNIEŃ":
                 self._reaction_debug["decision"] = (
@@ -297,8 +335,19 @@ class MuchaClient(discord.Client):
             )
             channel_name = getattr(channel, "name", "kanał")
             self._last_brain_action = f"TEXT → #{channel_name}: {text[:80]}"
-            self._last_reinforceable = ("speak", learning_trace)
-            self._record_action("speak", f"#{channel_name}: {text[:120]}")
+            guild = getattr(channel, "guild", None)
+            if isinstance(guild, discord.Guild):
+                self._set_reinforceable(
+                    guild,
+                    "speak",
+                    learning_trace,
+                    f"#{channel_name}: {text[:80]}",
+                )
+            self._record_action(
+                "speak",
+                f"#{channel_name}: {text[:120]}",
+                guild if isinstance(guild, discord.Guild) else None,
+            )
             if len(self.sent) > 500:
                 oldest = sorted(self.sent.items(), key=lambda kv: kv[1].created)[:100]
                 for mid, _ in oldest:
@@ -328,8 +377,13 @@ class MuchaClient(discord.Client):
                     trace=trace.learning_trace,
                 )
                 self.brain.step(1)
-            self._record_reward(amount, trace.action, f"Discord {emoji}")
-            self._record_action("reward", f"{amount:+.0f} → {trace.action} ({emoji})")
+            guild = self.get_guild(payload.guild_id) if payload.guild_id else None
+            self._record_reward(amount, trace.action, f"Discord {emoji}", guild)
+            self._record_action(
+                "reward",
+                f"{amount:+.0f} → {trace.action} ({emoji})",
+                guild,
+            )
 
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
         if self.paused or (self.user and member.id == self.user.id):
@@ -479,6 +533,11 @@ class MuchaClient(discord.Client):
             "learning_debug": self.brain.learning_diagnostics(),
             "action_history": self._action_history[-40:],
             "reward_history": self._reward_history[-80:],
+            "guild_learning_context": [
+                self._guild_learning_context[guild.id]
+                for guild in self.guilds
+                if guild.id in self._guild_learning_context
+            ],
         }
 
     @tasks.loop(seconds=1)
@@ -647,8 +706,13 @@ class MuchaClient(discord.Client):
                 self._last_brain_action = f"VOICE JOIN → {target.name}"
                 async with self._brain_lock:
                     learning_trace = self.brain.capture_learning_trace()
-                self._last_reinforceable = ("voice_join", learning_trace)
-                self._record_action("voice_join", f"→ {target.name}")
+                self._set_reinforceable(
+                    guild,
+                    "voice_join",
+                    learning_trace,
+                    f"→ {target.name}",
+                )
+                self._record_action("voice_join", f"→ {target.name}", guild)
                 debug["current"] = target.name
                 debug["dwell_remaining"] = self.cfg.voice.minimum_dwell_seconds
                 debug["decision"] = f"WESZŁA → {target.name}"
@@ -710,10 +774,16 @@ class MuchaClient(discord.Client):
                 for row in debug["channels"]:
                     if row["id"] in affinities:
                         row["affinity"] = affinities[row["id"]]
-                self._record_reward(-punish_amount, "stay", "voice overstay")
+                self._record_reward(
+                    -punish_amount,
+                    "stay",
+                    "voice overstay",
+                    guild,
+                )
                 self._record_action(
                     "punish",
                     f"-{punish_amount:.2f} stay • {current.name} • {dwell_elapsed:.0f}s",
+                    guild,
                 )
                 self._last_brain_event = (
                     f"VOICE OVERSTAY • {current.name} • punish -{punish_amount:.2f}"
@@ -733,8 +803,13 @@ class MuchaClient(discord.Client):
                 self._last_brain_action = f"VOICE LEAVE ← {old_name}"
                 async with self._brain_lock:
                     learning_trace = self.brain.capture_learning_trace()
-                self._last_reinforceable = ("voice_leave", learning_trace)
-                self._record_action("voice_leave", f"← {old_name}")
+                self._set_reinforceable(
+                    guild,
+                    "voice_leave",
+                    learning_trace,
+                    f"← {old_name}",
+                )
+                self._record_action("voice_leave", f"← {old_name}", guild)
                 debug["current"] = None
                 debug["decision"] = f"WYSZŁA ← {old_name}"
             except (discord.Forbidden, discord.HTTPException) as exc:
@@ -785,8 +860,13 @@ class MuchaClient(discord.Client):
             self._last_brain_action = f"VOICE MOVE → {target.name}"
             async with self._brain_lock:
                 learning_trace = self.brain.capture_learning_trace()
-            self._last_reinforceable = ("voice_move", learning_trace)
-            self._record_action("voice_move", f"→ {target.name}")
+            self._set_reinforceable(
+                guild,
+                "voice_move",
+                learning_trace,
+                f"→ {target.name}",
+            )
+            self._record_action("voice_move", f"→ {target.name}", guild)
             debug["current"] = target.name
             debug["dwell_remaining"] = self.cfg.voice.minimum_dwell_seconds
             debug["decision"] = f"PRZENIESIONA → {target.name}"
@@ -827,20 +907,34 @@ class MuchaClient(discord.Client):
             self._last_brain_action = "ADMIN → resume"
             await message.add_reaction("▶️")
         elif cmd == "reward":
-            action, trace = self._last_reinforceable or (None, None)
+            action, trace = self._last_reinforceable.get(
+                message.guild.id,
+                (None, None),
+            )
             async with self._brain_lock:
                 self.brain.reward(1.0, action=action, trace=trace)
                 self.brain.step(1)
-            self._record_reward(1.0, action, "admin")
-            self._record_action("reward", f"+1 → {action or 'global'}")
+            self._record_reward(1.0, action, "admin", message.guild)
+            self._record_action(
+                "reward",
+                f"+1 → {action or 'global'}",
+                message.guild,
+            )
             await message.add_reaction("👍")
         elif cmd == "punish":
-            action, trace = self._last_reinforceable or (None, None)
+            action, trace = self._last_reinforceable.get(
+                message.guild.id,
+                (None, None),
+            )
             async with self._brain_lock:
                 self.brain.reward(-1.0, action=action, trace=trace)
                 self.brain.step(1)
-            self._record_reward(-1.0, action, "admin")
-            self._record_action("reward", f"-1 → {action or 'global'}")
+            self._record_reward(-1.0, action, "admin", message.guild)
+            self._record_action(
+                "reward",
+                f"-1 → {action or 'global'}",
+                message.guild,
+            )
             await message.add_reaction("👎")
         elif cmd == "help":
             await message.channel.send("`!mucha status` `save` `pause` `resume` `reward` `punish`", allowed_mentions=discord.AllowedMentions.none())
