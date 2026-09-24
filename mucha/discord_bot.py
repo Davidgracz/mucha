@@ -57,6 +57,7 @@ class MuchaClient(discord.Client):
         self._last_presence_text: str | None = None
         self._last_brain_event = "startup"
         self._last_brain_action = "brak"
+        self._voice_debug: dict[int, dict] = {}
         self.console_ui = ConsoleBrainUI(
             mode=cfg.console_ui.mode,
             top_neurons=cfg.console_ui.top_neurons,
@@ -303,6 +304,7 @@ class MuchaClient(discord.Client):
             "last_event": self._last_brain_event,
             "last_action": self._last_brain_action,
             "paused": self.paused,
+            "voice_debug": list(self._voice_debug.values()),
         }
 
     @tasks.loop(seconds=1)
@@ -345,18 +347,79 @@ class MuchaClient(discord.Client):
     async def _voice_decision(self, guild: discord.Guild):
         me = guild.me
         if not me:
+            self._voice_debug[guild.id] = {
+                "guild": guild.name,
+                "guild_id": guild.id,
+                "decision": "BRAK BOT MEMBER",
+                "reason": "Discord nie zwrócił guild.me",
+                "channels": [],
+            }
             return
+
+        now = time.monotonic()
+        vc = guild.voice_client
+        current = vc.channel if vc and vc.is_connected() else None
+        arrived = self.voice_arrived.get(guild.id, now)
+        dwell_elapsed = max(0.0, now - arrived)
+        dwell_remaining = max(0.0, self.cfg.voice.minimum_dwell_seconds - dwell_elapsed)
+
+        debug = {
+            "guild": guild.name,
+            "guild_id": guild.id,
+            "enabled": self.cfg.voice.enabled,
+            "current": current.name if current else None,
+            "decision": "ANALIZA",
+            "reason": "oczekiwanie na wynik",
+            "join_threshold": self.cfg.voice.join_threshold,
+            "move_threshold": self.cfg.voice.move_threshold,
+            "leave_threshold": self.cfg.voice.leave_threshold,
+            "move_margin": self.cfg.voice.move_margin,
+            "minimum_dwell_seconds": self.cfg.voice.minimum_dwell_seconds,
+            "dwell_remaining": dwell_remaining,
+            "scores": {},
+            "channels": [],
+            "checked_at": time.time(),
+        }
+
         channels = []
         for ch in guild.voice_channels:
-            if self.cfg.voice.exclude_afk_channel and guild.afk_channel and ch.id == guild.afk_channel.id:
-                continue
+            is_afk = bool(
+                self.cfg.voice.exclude_afk_channel
+                and guild.afk_channel
+                and ch.id == guild.afk_channel.id
+            )
             perms = ch.permissions_for(me)
-            if not (perms.view_channel and perms.connect):
-                continue
             humans = [m for m in ch.members if not m.bot]
-            if humans or self.cfg.voice.include_empty_channels:
+            view_ok = bool(perms.view_channel)
+            connect_ok = bool(perms.connect)
+            include_ok = bool(humans or self.cfg.voice.include_empty_channels)
+            eligible = bool(not is_afk and view_ok and connect_ok and include_ok)
+
+            row = {
+                "id": ch.id,
+                "name": ch.name,
+                "humans": len(humans),
+                "view": view_ok,
+                "connect": connect_ok,
+                "afk": is_afk,
+                "eligible": eligible,
+                "affinity": None,
+                "current": bool(current and current.id == ch.id),
+                "status": "OK" if eligible else (
+                    "AFK" if is_afk else
+                    "BRAK VIEW" if not view_ok else
+                    "BRAK CONNECT" if not connect_ok else
+                    "PUSTY WYŁĄCZONY"
+                ),
+            }
+            debug["channels"].append(row)
+            if eligible:
                 channels.append((ch, humans))
+
         if not channels:
+            debug["decision"] = "NIE WCHODZĘ"
+            debug["reason"] = "brak dostępnych kanałów voice"
+            self._voice_debug[guild.id] = debug
             return
 
         async with self._brain_lock:
@@ -364,51 +427,128 @@ class MuchaClient(discord.Client):
                 self.brain.inject_voice_snapshot(guild.id, ch.id, [m.id for m in humans])
             self.brain.step(2)
             scores = self.brain.action_scores()
-            affinities = {ch.id: self.brain.channel_affinity(guild.id, ch.id) for ch, _ in channels}
+            affinities = {
+                ch.id: self.brain.channel_affinity(guild.id, ch.id)
+                for ch, _ in channels
+            }
 
-        vc = guild.voice_client
-        now = time.monotonic()
+        debug["scores"] = {
+            "voice_join": scores["voice_join"],
+            "voice_move": scores["voice_move"],
+            "voice_leave": scores["voice_leave"],
+            "stay": scores["stay"],
+        }
+        for row in debug["channels"]:
+            if row["id"] in affinities:
+                row["affinity"] = affinities[row["id"]]
 
         if vc is None or not vc.is_connected():
-            if scores["voice_join"] < self.cfg.voice.join_threshold:
+            join = scores["voice_join"]
+            if join < self.cfg.voice.join_threshold:
+                debug["decision"] = "NIE WCHODZĘ"
+                debug["reason"] = (
+                    f"voice_join {join:.3f} < próg {self.cfg.voice.join_threshold:.3f}"
+                )
+                self._voice_debug[guild.id] = debug
                 return
+
             target = max(channels, key=lambda x: affinities[x[0].id])[0]
+            target_aff = affinities[target.id]
+            debug["decision"] = f"JOIN → {target.name}"
+            debug["reason"] = (
+                f"voice_join {join:.3f} ≥ {self.cfg.voice.join_threshold:.3f}; "
+                f"najwyższe affinity {target_aff:.3f}"
+            )
             try:
                 await target.connect(self_deaf=True)
                 self.voice_arrived[guild.id] = now
                 self._last_brain_action = f"VOICE JOIN → {target.name}"
-            except (discord.ClientException, discord.Forbidden, discord.HTTPException):
-                return
+                debug["current"] = target.name
+                debug["dwell_remaining"] = self.cfg.voice.minimum_dwell_seconds
+                debug["decision"] = f"WESZŁA → {target.name}"
+            except (discord.ClientException, discord.Forbidden, discord.HTTPException) as exc:
+                debug["decision"] = "BŁĄD JOIN"
+                debug["reason"] = f"{type(exc).__name__}: {exc}"
+            self._voice_debug[guild.id] = debug
             return
 
-        current = vc.channel
         if current is None:
+            debug["decision"] = "NIEZNANY STAN"
+            debug["reason"] = "voice client jest połączony, ale kanał jest None"
+            self._voice_debug[guild.id] = debug
             return
-        arrived = self.voice_arrived.get(guild.id, now)
-        if now - arrived < self.cfg.voice.minimum_dwell_seconds:
+
+        if dwell_remaining > 0:
+            debug["decision"] = "ZOSTAJĘ"
+            debug["reason"] = f"minimum dwell: jeszcze {dwell_remaining:.1f} s"
+            self._voice_debug[guild.id] = debug
             return
 
         if scores["voice_leave"] >= self.cfg.voice.leave_threshold:
             old_name = getattr(current, "name", "voice")
-            await vc.disconnect(force=False)
-            self.voice_arrived[guild.id] = now
-            self._last_brain_action = f"VOICE LEAVE ← {old_name}"
+            debug["decision"] = f"LEAVE ← {old_name}"
+            debug["reason"] = (
+                f"voice_leave {scores['voice_leave']:.3f} ≥ "
+                f"{self.cfg.voice.leave_threshold:.3f}"
+            )
+            try:
+                await vc.disconnect(force=False)
+                self.voice_arrived[guild.id] = now
+                self._last_brain_action = f"VOICE LEAVE ← {old_name}"
+                debug["current"] = None
+                debug["decision"] = f"WYSZŁA ← {old_name}"
+            except (discord.Forbidden, discord.HTTPException) as exc:
+                debug["decision"] = "BŁĄD LEAVE"
+                debug["reason"] = f"{type(exc).__name__}: {exc}"
+            self._voice_debug[guild.id] = debug
             return
 
         current_aff = affinities.get(current.id, 0.5)
         target, _ = max(channels, key=lambda x: affinities[x[0].id])
         target_aff = affinities[target.id]
-        if (
-            target.id != current.id
-            and scores["voice_move"] >= self.cfg.voice.move_threshold
-            and target_aff >= current_aff + self.cfg.voice.move_margin
-        ):
-            try:
-                await vc.move_to(target)
-                self.voice_arrived[guild.id] = now
-                self._last_brain_action = f"VOICE MOVE → {target.name}"
-            except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError):
-                pass
+
+        if target.id == current.id:
+            debug["decision"] = "ZOSTAJĘ"
+            debug["reason"] = f"obecny kanał ma najwyższe affinity {current_aff:.3f}"
+            self._voice_debug[guild.id] = debug
+            return
+
+        if scores["voice_move"] < self.cfg.voice.move_threshold:
+            debug["decision"] = "ZOSTAJĘ"
+            debug["reason"] = (
+                f"voice_move {scores['voice_move']:.3f} < próg "
+                f"{self.cfg.voice.move_threshold:.3f}"
+            )
+            self._voice_debug[guild.id] = debug
+            return
+
+        required_aff = current_aff + self.cfg.voice.move_margin
+        if target_aff < required_aff:
+            debug["decision"] = "ZOSTAJĘ"
+            debug["reason"] = (
+                f"affinity {target.name}={target_aff:.3f} < wymagane "
+                f"{required_aff:.3f} (current {current_aff:.3f} + margin "
+                f"{self.cfg.voice.move_margin:.3f})"
+            )
+            self._voice_debug[guild.id] = debug
+            return
+
+        debug["decision"] = f"MOVE → {target.name}"
+        debug["reason"] = (
+            f"voice_move {scores['voice_move']:.3f} ≥ {self.cfg.voice.move_threshold:.3f}; "
+            f"affinity {target_aff:.3f} > {current_aff:.3f}"
+        )
+        try:
+            await vc.move_to(target)
+            self.voice_arrived[guild.id] = now
+            self._last_brain_action = f"VOICE MOVE → {target.name}"
+            debug["current"] = target.name
+            debug["dwell_remaining"] = self.cfg.voice.minimum_dwell_seconds
+            debug["decision"] = f"PRZENIESIONA → {target.name}"
+        except (discord.Forbidden, discord.HTTPException, asyncio.TimeoutError) as exc:
+            debug["decision"] = "BŁĄD MOVE"
+            debug["reason"] = f"{type(exc).__name__}: {exc}"
+        self._voice_debug[guild.id] = debug
 
     async def _admin_command(self, message: discord.Message):
         if not isinstance(message.author, discord.Member) or not message.author.guild_permissions.administrator:
