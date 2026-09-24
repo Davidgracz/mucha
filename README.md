@@ -496,3 +496,41 @@ tts_max_chars = 180
 Wypowiedź TTS jest zapisywana w Action History jako `tts_speak` i staje się ostatnią akcją `speak` do ręcznego `!mucha reward` / `!mucha punish`.
 
 TTS i rare audio nie grają jednocześnie: obie ścieżki sprawdzają, czy klient voice aktualnie coś odtwarza.
+
+
+## Mucha Chaser predator response
+
+Mucha ma osobne zachowanie dopasowane do projektu Mucha Chaser, który okresowo wchodzi na voice i przez około 30 sekund podąża za Muchą między kanałami.
+
+Gdy obcy bot wejdzie dokładnie na kanał, na którym siedzi Mucha:
+
+- pierwsze spotkanie uruchamia krótki odruch podejrzenia i natychmiastową próbę ucieczki,
+- jeśli ten sam bot podąży za Muchą ponownie w krótkim oknie, zostaje rozpoznany jako Chaser,
+- potwierdzony Chaser uruchamia około 35 sekund stanu PANIC / CHASE,
+- zwykły `minimum_dwell_seconds` nie blokuje odruchowej ucieczki,
+- Mucha wybiera inny dostępny kanał z użyciem bieżących affinity i mechanizmu eksploracji connectomu,
+- kanał, na którym Chaser ją dopadł, jest tymczasowo oznaczany jako niebezpieczny,
+- kanał zawierający rozpoznanego Chasera jest wykluczany z normalnych celów ruchu,
+- każda kolejna pogoń Chasera na nowy kanał może wywołać kolejną szybką ucieczkę.
+
+Connectome dostaje przy takim spotkaniu silne bodźce `internal:predator-chaser`, `voice:predator:<guild>:<bot>` i `voice:danger-channel:<guild>:<channel>`. Udana ucieczka może wzmacniać akcję `voice_move`.
+
+Konfiguracja:
+
+```toml
+[voice]
+chaser_enabled = true
+chaser_bot_id = 0
+chaser_name_hint = "chaser"
+chaser_confirm_hits = 2
+chaser_follow_window_seconds = 12.0
+chaser_panic_seconds = 35.0
+chaser_suspicion_seconds = 8.0
+chaser_escape_delay_min_seconds = 0.15
+chaser_escape_delay_max_seconds = 0.75
+chaser_channel_avoid_seconds = 90.0
+chaser_threat_magnitude = 2.2
+chaser_escape_reward = 0.25
+```
+
+`chaser_bot_id = 0` oznacza automatyczne wykrywanie. Jeśli znasz ID bota Mucha Chaser, wpisanie go tutaj daje natychmiastowe rozpoznanie bez oczekiwania na drugi follow.
