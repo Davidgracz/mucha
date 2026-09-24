@@ -686,6 +686,7 @@ function renderSocial(s){
   $("social-amount").textContent=(amount>=0?"+":"")+amount.toFixed(2);
   $("social-amount").className=amount>0?"ok":amount<0?"no":"";
   const threshold=Number(settings.user_avoid_threshold??-0.35);
+  const familiar=Number(settings.familiar_affinity_threshold??0.10);
   $("social-threshold").textContent=threshold.toFixed(2);
   $("social-last").innerHTML=d.user_name
     ? '<b>'+esc(d.user_name)+'</b> • affinity '+Number(d.affinity||0).toFixed(2)+' • '+esc(d.event||"—")
@@ -693,7 +694,7 @@ function renderSocial(s){
 
   $("social-users").innerHTML=(s.user_affinities||[]).slice(0,12).map(u=>{
     const a=Number(u.affinity||0);
-    const status=a<=threshold?"OMIJA":a>=0.35?"LUBI":a>=0.1?"SYMPATIA":"NEUTRAL";
+    const status=a<=threshold?"OMIJA":a>=0.35?"LUBI":a>=familiar?"ZNAJOMY":"NEUTRAL";
     const cls=a<=threshold?"no":a>=0.1?"ok":"";
     return '<tr><td>'+esc(u.display_name||u.user_id)+'</td>'+
       '<td class="'+cls+'">'+(a>=0?"+":"")+a.toFixed(2)+'</td>'+
