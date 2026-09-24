@@ -15,9 +15,9 @@ gpu_device = 0
 
 [language]
 database = "state/language.sqlite3"
-min_tokens_before_speaking = 450
-min_unique_tokens_before_speaking = 80
-max_generated_tokens = 28
+min_chars_before_speaking = 1200
+min_unique_chars_before_speaking = 18
+max_generated_chars = 220
 spontaneous_text = true
 reply_cooldown_seconds = 35
 spontaneous_cooldown_seconds = 180
