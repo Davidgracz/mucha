@@ -176,6 +176,7 @@ class MuchaClient(discord.Client):
             "emoji": None,
             "target": f"#{channel_name} / {message.author.display_name}",
             "cooldown_remaining": react_cooldown,
+            "guild_id": message.guild.id,
         }
         if scores["react"] >= self.cfg.behavior.reaction_threshold and react_cooldown <= 0.0:
             emojis = ["👍", "❤️", "😂", "👀", "🤔", "🔥", "🪰", "😮", "😢"]
@@ -390,6 +391,15 @@ class MuchaClient(discord.Client):
             vc = guild.voice_client
             if vc and vc.is_connected() and vc.channel:
                 voice_parts.append(f"{guild.name}/{vc.channel.name}")
+        reaction_debug = dict(self._reaction_debug)
+        reaction_guild_id = reaction_debug.get("guild_id")
+        if reaction_guild_id:
+            last_react = self._last_reaction.get(int(reaction_guild_id), 0.0)
+            reaction_debug["cooldown_remaining"] = max(
+                0.0,
+                self.cfg.behavior.reaction_cooldown_seconds - (time.monotonic() - last_react),
+            )
+
         return {
             "source": self.connectome.metadata.get("source", "unknown"),
             "diag": diag,
@@ -403,7 +413,7 @@ class MuchaClient(discord.Client):
             "last_action": self._last_brain_action,
             "paused": self.paused,
             "voice_debug": list(self._voice_debug.values()),
-            "reaction_debug": self._reaction_debug,
+            "reaction_debug": reaction_debug,
             "learning_debug": self.brain.learning_diagnostics(),
             "action_history": self._action_history[-40:],
             "reward_history": self._reward_history[-80:],
