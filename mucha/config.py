@@ -39,6 +39,9 @@ class VoiceConfig:
     enabled: bool = True
     poll_seconds: int = 15
     minimum_dwell_seconds: int = 60
+    maximum_dwell_seconds: int = 300
+    overstay_punish_amount: float = 0.5
+    overstay_punish_interval_seconds: int = 60
     move_threshold: float = 0.67
     join_threshold: float = 0.72
     leave_threshold: float = 0.82
@@ -53,6 +56,7 @@ class BehaviorConfig:
     speak_threshold: float = 0.70
     reaction_threshold: float = 0.73
     reaction_cooldown_seconds: int = 20
+    reaction_candidate_sample: int = 64
     save_every_seconds: int = 45
 
 
