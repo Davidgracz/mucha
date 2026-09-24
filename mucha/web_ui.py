@@ -45,8 +45,15 @@ canvas{display:block;width:100%;height:220px;background:#0c1219;border-radius:12
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:8px;border-bottom:1px solid rgba(35,49,66,.6)}th{color:var(--muted);font-weight:600}td:last-child,th:last-child{text-align:right}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--good);margin-right:6px;box-shadow:0 0 12px rgba(84,217,140,.45)}
 .footer{color:var(--muted);font-size:12px;margin-top:12px;text-align:right}
+.voice-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin-bottom:12px}
+.voice-pill{background:#0c131b;border:1px solid #1d2936;border-radius:12px;padding:10px}
+.voice-pill small{display:block;color:var(--muted);margin-bottom:5px}.voice-pill strong{font-size:14px}
+.reason{padding:11px 12px;border-radius:12px;background:#0c131b;border:1px solid #1d2936;margin-bottom:12px}
+.reason b{color:var(--accent)}
+.ok{color:var(--good)}.no{color:var(--bad)}.warn{color:var(--warn)}
 @media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.span3{grid-column:span 2}}
-@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.events{grid-template-columns:1fr}}
+@media(max-width:900px){.voice-summary{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.events{grid-template-columns:1fr}.voice-summary{grid-template-columns:1fr}}
 </style>
 </head>
 <body>
@@ -100,6 +107,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card span3">
+      <h2>Voice Debug</h2>
+      <div id="voice-debug"><div class="reason">Czekam na pierwszy cykl voice…</div></div>
+    </div>
+
+    <div class="card span3">
       <h2>Najbardziej aktywne neurony</h2>
       <table><thead><tr><th>#</th><th>FlyWire root_id</th><th>activation</th><th>|a|</th></tr></thead><tbody id="top"></tbody></table>
       <div class="footer">Przy prawdziwym FAFB v783 root_id odpowiada identyfikatorowi neuronu FlyWire.</div>
@@ -121,6 +133,41 @@ function renderActions(scores){
       '<div class="track"><div class="fill" style="width:'+Math.max(0,Math.min(100,v*100))+'%"></div></div>'+
       '<div class="val">'+v.toFixed(3)+'</div></div>';
   }).join("");
+}
+function esc(v){
+  return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
+}
+function renderVoiceDebug(items){
+  const root=$("voice-debug");
+  if(!Array.isArray(items)||!items.length){
+    root.innerHTML='<div class="reason">Brak danych. Jeśli voice jest wyłączony w configu, pętla diagnostyczna nie wystartuje.</div>';
+    return;
+  }
+  root.innerHTML=items.map(v=>{
+    const s=v.scores||{};
+    const channels=(v.channels||[]).map(ch=>{
+      const aff=ch.affinity==null?"—":Number(ch.affinity).toFixed(3);
+      const status=ch.eligible?"OK":ch.status;
+      const cls=ch.eligible?"ok":(ch.status==="AFK"?"warn":"no");
+      return '<tr>'+
+        '<td>'+(ch.current?"▶ ":"")+esc(ch.name)+'</td>'+
+        '<td>'+Number(ch.humans||0)+'</td>'+
+        '<td class="'+(ch.view?"ok":"no")+'">'+(ch.view?"YES":"NO")+'</td>'+
+        '<td class="'+(ch.connect?"ok":"no")+'">'+(ch.connect?"YES":"NO")+'</td>'+
+        '<td>'+aff+'</td>'+
+        '<td class="'+cls+'">'+esc(status)+'</td>'+
+      '</tr>';
+    }).join("");
+    return '<div class="voice-summary">'+
+      '<div class="voice-pill"><small>serwer / kanał</small><strong>'+esc(v.guild)+' / '+esc(v.current||"poza voice")+'</strong></div>'+
+      '<div class="voice-pill"><small>voice_join</small><strong>'+Number(s.voice_join??0).toFixed(3)+' / '+Number(v.join_threshold??0).toFixed(3)+'</strong></div>'+
+      '<div class="voice-pill"><small>voice_move</small><strong>'+Number(s.voice_move??0).toFixed(3)+' / '+Number(v.move_threshold??0).toFixed(3)+'</strong></div>'+
+      '<div class="voice-pill"><small>voice_leave</small><strong>'+Number(s.voice_leave??0).toFixed(3)+' / '+Number(v.leave_threshold??0).toFixed(3)+'</strong></div>'+
+      '<div class="voice-pill"><small>dwell remaining</small><strong>'+Number(v.dwell_remaining??0).toFixed(1)+' s</strong></div>'+
+    '</div>'+
+    '<div class="reason"><b>'+esc(v.decision||"—")+'</b> — '+esc(v.reason||"—")+'</div>'+
+    '<table><thead><tr><th>Kanał</th><th>Ludzie</th><th>View</th><th>Connect</th><th>Affinity</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table>';
+  }).join('<div style="height:14px"></div>');
 }
 function draw(){
   const c=$("chart"),ctx=c.getContext("2d"),w=c.width,h=c.height;
@@ -152,6 +199,7 @@ async function update(){
     $("ready").textContent=s.language_ready?"TAK":"nie";$("voice").textContent=s.voice||"poza voice";
     $("paused").textContent=s.paused?"PAUZA":"aktywny";$("event").textContent=s.last_event||"—";$("lastaction").textContent=s.last_action||"—";
     renderActions(s.scores||{});
+    renderVoiceDebug(s.voice_debug||[]);
     $("top").innerHTML=(s.top_neurons||[]).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+x[0]+'</td><td>'+(x[1]>=0?"+":"")+Number(x[1]).toFixed(5)+'</td><td>'+Math.abs(x[1]).toFixed(5)+'</td></tr>').join("");
     history.push({mean:Number(d.mean_abs),max:Number(d.max_abs)});while(history.length>maxHistory)history.shift();draw();
     $("live").textContent="LIVE";
