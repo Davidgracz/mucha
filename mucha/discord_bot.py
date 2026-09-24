@@ -174,6 +174,12 @@ class MuchaClient(discord.Client):
             return False
         return int(channel_id) in self.cfg.discord.blocked_text_channel_ids
 
+    def _is_voice_channel_blocked(self, channel: object) -> bool:
+        channel_id = getattr(channel, "id", None)
+        if channel_id is None:
+            return False
+        return int(channel_id) in self.cfg.voice.blocked_voice_channel_ids
+
     def _deadly_voice_remaining(
         self,
         guild_id: int,
@@ -342,6 +348,8 @@ class MuchaClient(discord.Client):
 
         for ch in guild.voice_channels:
             if ch.id == current.id:
+                continue
+            if self._is_voice_channel_blocked(ch):
                 continue
             if (
                 self.cfg.voice.exclude_afk_channel
@@ -1448,6 +1456,7 @@ class MuchaClient(discord.Client):
                 now,
             )
             deadly = deadly_remaining > 0.0
+            blocked_voice = self._is_voice_channel_blocked(ch)
             chaser_here = bool(
                 chaser_active
                 and chaser_id
@@ -1456,6 +1465,7 @@ class MuchaClient(discord.Client):
             eligible = bool(
                 not is_afk
                 and not deadly
+                and not blocked_voice
                 and not chaser_here
                 and view_ok
                 and connect_ok
@@ -1472,6 +1482,7 @@ class MuchaClient(discord.Client):
                 "eligible": eligible,
                 "deadly": deadly,
                 "deadly_remaining": deadly_remaining,
+                "blocked_voice": blocked_voice,
                 "chaser_here": chaser_here,
                 "affinity": None,
                 "exploration_score": None,
@@ -1479,6 +1490,7 @@ class MuchaClient(discord.Client):
                 "novelty": None,
                 "current": bool(current and current.id == ch.id),
                 "status": "OK" if eligible else (
+                    "⛔ BLOKADA" if blocked_voice else
                     "🕷 CHASER" if chaser_here else
                     f"☠ ŚMIERTELNE {deadly_remaining:.0f}s" if deadly else
                     "AFK" if is_afk else
@@ -1619,6 +1631,50 @@ class MuchaClient(discord.Client):
         if current is None:
             debug["decision"] = "NIEZNANY STAN"
             debug["reason"] = "voice client jest połączony, ale kanał jest None"
+            self._voice_debug[guild.id] = debug
+            return
+
+        if self._is_voice_channel_blocked(current):
+            target, exploration = self._choose_voice_target(
+                guild,
+                channels,
+                affinities,
+                now,
+                current_id=current.id,
+            )
+            if target is None:
+                debug["decision"] = "BLOKADA • BRAK WYJŚCIA"
+                debug["reason"] = (
+                    f"kanał {current.id} jest zablokowany, "
+                    "ale nie ma innego dostępnego kanału"
+                )
+                self._voice_debug[guild.id] = debug
+                return
+            try:
+                await vc.move_to(target)
+                self.voice_arrived[guild.id] = now
+                self._mark_voice_visit(guild.id, target.id, now)
+                self._last_overstay_punish.pop(guild.id, None)
+                self._last_brain_action = (
+                    f"VOICE BLOCK ESCAPE → {target.name}"
+                )
+                self._record_action(
+                    "blocked_voice_escape",
+                    f"{current.name} → {target.name}",
+                    guild,
+                )
+                debug["current"] = target.name
+                debug["decision"] = f"BLOKADA • WYJŚCIE → {target.name}"
+                debug["reason"] = (
+                    f"kanał {current.id} jest na blocked_voice_channel_ids"
+                )
+            except (
+                discord.Forbidden,
+                discord.HTTPException,
+                asyncio.TimeoutError,
+            ) as exc:
+                debug["decision"] = "BŁĄD WYJŚCIA Z BLOKADY"
+                debug["reason"] = f"{type(exc).__name__}: {exc}"
             self._voice_debug[guild.id] = debug
             return
 
