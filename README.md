@@ -465,3 +465,34 @@ Komputer uruchamiający bota musi mieć FFmpeg dostępny w PATH albo należy pod
 Przy rare evencie connectome dostaje dodatkowe bodźce `internal:rare-audio` i `voice:rare-audio:guild:<id>`, a zdarzenie jest widoczne w Action History jako `rare_audio`.
 
 Jeśli pliku audio nie ma, bot tylko zapisuje jednorazowe ostrzeżenie do logu i działa dalej normalnie.
+
+
+## Autonomous TTS on voice
+
+Gdy Mucha siedzi na voice, co 10 sekund dostaje okazję do powiedzenia czegoś. Nie mówi automatycznie co każde 10 sekund: connectome najpierw musi mieć `speak >= behavior.speak_threshold`.
+
+Jeśli chce mówić:
+
+1. connectome dostaje bodziec `voice:tts-opportunity:guild:<id>`,
+2. ten sam character-level generator, który tworzy wiadomości tekstowe, składa wypowiedź znak po znaku,
+3. ostatnia wiadomość tekstowa z tego samego serwera jest używana jako kontekst,
+4. lokalny `pyttsx3` generuje WAV,
+5. Discord odtwarza WAV przez FFmpeg na aktualnym voice.
+
+Konfiguracja:
+
+```toml
+[voice]
+tts_enabled = true
+tts_interval_seconds = 10
+tts_rate = 185
+tts_volume = 0.9
+tts_voice_name = ""
+tts_max_chars = 180
+```
+
+`tts_voice_name = ""` oznacza domyślny głos systemowy. Można wpisać część nazwy zainstalowanego głosu Windows, np. `Paulina` albo `Zofia`, jeśli taki głos istnieje w systemie.
+
+Wypowiedź TTS jest zapisywana w Action History jako `tts_speak` i staje się ostatnią akcją `speak` do ręcznego `!mucha reward` / `!mucha punish`.
+
+TTS i rare audio nie grają jednocześnie: obie ścieżki sprawdzają, czy klient voice aktualnie coś odtwarza.
