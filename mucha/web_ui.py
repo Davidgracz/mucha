@@ -248,6 +248,11 @@ function renderVoiceDebug(items){
       '<div class="voice-pill"><small>minimum dwell</small><strong>'+Number(v.dwell_remaining??0).toFixed(1)+' s</strong></div>'+
       '<div class="voice-pill"><small>overstay</small><strong class="'+(overstay>0?"no":"ok")+'">'+overstay.toFixed(0)+' s</strong></div>'+
       '<div class="voice-pill"><small>kara w tym cyklu</small><strong class="'+(punished?"no":"")+'">'+(punished?Number(v.overstay_punish_amount||0).toFixed(2):"nie")+'</strong></div>'+
+      '<div class="voice-pill"><small>THREAT</small><strong class="'+(v.threat_active?"no":"ok")+'">'+(Number(v.threat_level||0)*100).toFixed(0)+'%</strong></div>'+
+      '<div class="voice-pill"><small>threat magnitude</small><strong>'+Number(v.threat_magnitude||0).toFixed(3)+'</strong></div>'+
+      '<div class="voice-pill"><small>effective move</small><strong>'+((v.effective_move_score==null)?"—":Number(v.effective_move_score).toFixed(3))+'</strong></div>'+
+      '<div class="voice-pill"><small>effective margin</small><strong>'+((v.effective_move_margin==null)?"—":Number(v.effective_move_margin).toFixed(3))+'</strong></div>'+
+      '<div class="voice-pill"><small>escape target</small><strong>'+esc(v.escape_target||"—")+'</strong></div>'+
     '</div>'+
     '<div class="reason"><b>'+esc(v.decision||"—")+'</b> — '+esc(v.reason||"—")+'</div>'+
     '<table><thead><tr><th>Kanał</th><th>Ludzie</th><th>View</th><th>Connect</th><th>Affinity</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table>';
