@@ -596,6 +596,17 @@ class MuchaClient(discord.Client):
         dwell_elapsed = max(0.0, now - arrived)
         dwell_remaining = max(0.0, self.cfg.voice.minimum_dwell_seconds - dwell_elapsed)
 
+        max_dwell = max(
+            float(self.cfg.voice.minimum_dwell_seconds),
+            float(self.cfg.voice.maximum_dwell_seconds),
+        )
+        overstay_seconds = max(0.0, dwell_elapsed - max_dwell)
+        threat_active = bool(current and dwell_elapsed >= max_dwell)
+        threat_level = 0.0
+        if threat_active:
+            ramp = max(1.0, float(self.cfg.voice.threat_ramp_seconds))
+            threat_level = min(1.0, 0.25 + 0.75 * (overstay_seconds / ramp))
+
         debug = {
             "guild": guild.name,
             "guild_id": guild.id,
@@ -611,11 +622,14 @@ class MuchaClient(discord.Client):
             "maximum_dwell_seconds": self.cfg.voice.maximum_dwell_seconds,
             "dwell_elapsed": dwell_elapsed,
             "dwell_remaining": dwell_remaining,
-            "overstay_seconds": max(
-                0.0,
-                dwell_elapsed - self.cfg.voice.maximum_dwell_seconds,
-            ),
+            "overstay_seconds": overstay_seconds,
             "overstay_punished": False,
+            "threat_active": threat_active,
+            "threat_level": threat_level,
+            "threat_magnitude": 0.0,
+            "effective_move_score": None,
+            "effective_move_margin": None,
+            "escape_target": None,
             "scores": {},
             "channels": [],
             "checked_at": time.time(),
@@ -734,11 +748,48 @@ class MuchaClient(discord.Client):
             self._voice_debug[guild.id] = debug
             return
 
-        max_dwell = max(
-            float(self.cfg.voice.minimum_dwell_seconds),
-            float(self.cfg.voice.maximum_dwell_seconds),
-        )
-        if dwell_elapsed >= max_dwell:
+        threat_trace = None
+        if threat_active:
+            threat_magnitude = float(self.cfg.voice.threat_magnitude) * threat_level
+            async with self._brain_lock:
+                self.brain.inject(
+                    "internal:threat:voice-overstay",
+                    threat_magnitude,
+                    192,
+                )
+                self.brain.inject(
+                    f"voice:threat:guild:{guild.id}",
+                    0.75 * threat_magnitude,
+                    128,
+                )
+                self.brain.inject(
+                    f"voice:threat:channel:{guild.id}:{current.id}",
+                    threat_magnitude,
+                    128,
+                )
+                self.brain.step(max(1, int(self.cfg.voice.threat_steps)))
+                scores = self.brain.action_scores()
+                affinities = {
+                    ch.id: self.brain.channel_affinity(guild.id, ch.id)
+                    for ch, _ in channels
+                }
+                threat_trace = self.brain.capture_learning_trace()
+
+            debug["threat_magnitude"] = threat_magnitude
+            debug["scores"].update({
+                "voice_join": scores["voice_join"],
+                "voice_move": scores["voice_move"],
+                "voice_leave": scores["voice_leave"],
+                "stay": scores["stay"],
+            })
+            for row in debug["channels"]:
+                if row["id"] in affinities:
+                    row["affinity"] = affinities[row["id"]]
+            self._last_brain_event = (
+                f"VOICE THREAT • {current.name} • "
+                f"{threat_level * 100:.0f}% zagrożenia"
+            )
+
             last_punish = self._last_overstay_punish.get(guild.id, 0.0)
             punish_interval = max(
                 float(self.cfg.voice.poll_seconds),
@@ -750,11 +801,10 @@ class MuchaClient(discord.Client):
                     min(1.0, float(self.cfg.voice.overstay_punish_amount)),
                 )
                 async with self._brain_lock:
-                    learning_trace = self.brain.capture_learning_trace()
                     self.brain.reward(
                         -punish_amount,
                         action="stay",
-                        trace=learning_trace,
+                        trace=threat_trace,
                     )
                     self.brain.step(1)
                     scores = self.brain.action_scores()
@@ -766,8 +816,8 @@ class MuchaClient(discord.Client):
                 self._set_reinforceable(
                     guild,
                     "stay",
-                    learning_trace,
-                    f"overstay • {current.name} • {dwell_elapsed:.0f}s",
+                    threat_trace,
+                    f"threat overstay • {current.name} • {dwell_elapsed:.0f}s",
                 )
                 debug["overstay_punished"] = True
                 debug["overstay_punish_amount"] = -punish_amount
@@ -783,17 +833,118 @@ class MuchaClient(discord.Client):
                 self._record_reward(
                     -punish_amount,
                     "stay",
-                    "voice overstay",
+                    "voice threat overstay",
                     guild,
                 )
                 self._record_action(
-                    "punish",
-                    f"-{punish_amount:.2f} stay • {current.name} • {dwell_elapsed:.0f}s",
+                    "threat",
+                    f"-{punish_amount:.2f} stay • {current.name} • "
+                    f"threat {threat_level * 100:.0f}%",
                     guild,
                 )
-                self._last_brain_event = (
-                    f"VOICE OVERSTAY • {current.name} • punish -{punish_amount:.2f}"
+
+        current_aff = affinities.get(current.id, 0.5)
+
+        # When the current channel becomes threatening, deliberately search for
+        # the best *other* channel instead of allowing current affinity to win.
+        alternatives = [
+            item for item in channels
+            if item[0].id != current.id
+        ]
+        if threat_active and alternatives:
+            target, _ = max(alternatives, key=lambda x: affinities[x[0].id])
+            target_aff = affinities[target.id]
+            effective_move_score = min(
+                1.0,
+                scores["voice_move"]
+                + threat_level * float(self.cfg.voice.threat_move_boost),
+            )
+            effective_margin = (
+                float(self.cfg.voice.move_margin)
+                - threat_level * float(self.cfg.voice.threat_affinity_relaxation)
+            )
+            required_aff = current_aff + effective_margin
+
+            debug["escape_target"] = target.name
+            debug["effective_move_score"] = effective_move_score
+            debug["effective_move_margin"] = effective_margin
+
+            if (
+                effective_move_score >= self.cfg.voice.move_threshold
+                and target_aff >= required_aff
+            ):
+                debug["decision"] = f"UCIECZKA → {target.name}"
+                debug["reason"] = (
+                    f"threat {threat_level:.2f}; move "
+                    f"{scores['voice_move']:.3f}+"
+                    f"{threat_level * float(self.cfg.voice.threat_move_boost):.3f}"
+                    f"={effective_move_score:.3f}; affinity "
+                    f"{target_aff:.3f} ≥ wymagane {required_aff:.3f}"
                 )
+                try:
+                    await vc.move_to(target)
+                    self.voice_arrived[guild.id] = now
+                    self._last_overstay_punish.pop(guild.id, None)
+
+                    escape_reward = max(
+                        0.0,
+                        min(1.0, float(self.cfg.voice.threat_escape_reward)),
+                    )
+                    learning_trace = threat_trace
+                    async with self._brain_lock:
+                        if learning_trace is None:
+                            learning_trace = self.brain.capture_learning_trace()
+                        if escape_reward > 0:
+                            self.brain.reward(
+                                escape_reward,
+                                action="voice_move",
+                                trace=learning_trace,
+                            )
+                            self.brain.step(1)
+
+                    self._last_brain_action = (
+                        f"VOICE ESCAPE → {target.name} "
+                        f"(threat {threat_level * 100:.0f}%)"
+                    )
+                    self._last_brain_event = (
+                        f"VOICE SAFE • uciekła z {current.name} do {target.name}"
+                    )
+                    self._set_reinforceable(
+                        guild,
+                        "voice_move",
+                        learning_trace,
+                        f"escape {current.name} → {target.name}",
+                    )
+                    if escape_reward > 0:
+                        self._record_reward(
+                            escape_reward,
+                            "voice_move",
+                            "voice threat escape",
+                            guild,
+                        )
+                    self._record_action(
+                        "escape",
+                        f"{current.name} → {target.name} • "
+                        f"threat {threat_level * 100:.0f}%",
+                        guild,
+                    )
+                    debug["current"] = target.name
+                    debug["dwell_remaining"] = self.cfg.voice.minimum_dwell_seconds
+                    debug["decision"] = f"UCIEKŁA → {target.name}"
+                    debug["reason"] += (
+                        f"; reward za ucieczkę +{escape_reward:.2f}"
+                    )
+                    self._voice_debug[guild.id] = debug
+                    return
+                except (
+                    discord.Forbidden,
+                    discord.HTTPException,
+                    asyncio.TimeoutError,
+                ) as exc:
+                    debug["decision"] = "BŁĄD UCIECZKI"
+                    debug["reason"] = f"{type(exc).__name__}: {exc}"
+                    self._voice_debug[guild.id] = debug
+                    return
 
         if scores["voice_leave"] >= self.cfg.voice.leave_threshold:
             old_name = getattr(current, "name", "voice")
@@ -824,7 +975,19 @@ class MuchaClient(discord.Client):
             self._voice_debug[guild.id] = debug
             return
 
-        current_aff = affinities.get(current.id, 0.5)
+        # If threat is active but there is no successful escape yet, do not let
+        # the current channel win simply because it has the highest affinity.
+        if threat_active and alternatives:
+            debug["decision"] = "ZAGROŻONA • SZUKA UCIECZKI"
+            debug["reason"] = (
+                f"threat {threat_level:.2f}; move "
+                f"{debug['effective_move_score']:.3f} / "
+                f"{self.cfg.voice.move_threshold:.3f}; "
+                f"cel {debug['escape_target']}"
+            )
+            self._voice_debug[guild.id] = debug
+            return
+
         target, _ = max(channels, key=lambda x: affinities[x[0].id])
         target_aff = affinities[target.id]
 
