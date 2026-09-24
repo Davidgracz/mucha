@@ -763,6 +763,12 @@ class MuchaClient(discord.Client):
                         for ch, _ in channels
                     }
                 self._last_overstay_punish[guild.id] = now
+                self._set_reinforceable(
+                    guild,
+                    "stay",
+                    learning_trace,
+                    f"overstay • {current.name} • {dwell_elapsed:.0f}s",
+                )
                 debug["overstay_punished"] = True
                 debug["overstay_punish_amount"] = -punish_amount
                 debug["scores"].update({
@@ -907,32 +913,44 @@ class MuchaClient(discord.Client):
             self._last_brain_action = "ADMIN → resume"
             await message.add_reaction("▶️")
         elif cmd == "reward":
-            action, trace = self._last_reinforceable.get(
-                message.guild.id,
-                (None, None),
-            )
+            context = self._last_reinforceable.get(message.guild.id)
+            if context is None:
+                self._record_action(
+                    "reward",
+                    "pominięto: brak akcji do nagrodzenia na tym serwerze",
+                    message.guild,
+                )
+                await message.add_reaction("⚠️")
+                return
+            action, trace = context
             async with self._brain_lock:
                 self.brain.reward(1.0, action=action, trace=trace)
                 self.brain.step(1)
             self._record_reward(1.0, action, "admin", message.guild)
             self._record_action(
                 "reward",
-                f"+1 → {action or 'global'}",
+                f"+1 → {action}",
                 message.guild,
             )
             await message.add_reaction("👍")
         elif cmd == "punish":
-            action, trace = self._last_reinforceable.get(
-                message.guild.id,
-                (None, None),
-            )
+            context = self._last_reinforceable.get(message.guild.id)
+            if context is None:
+                self._record_action(
+                    "reward",
+                    "pominięto: brak akcji do ukarania na tym serwerze",
+                    message.guild,
+                )
+                await message.add_reaction("⚠️")
+                return
+            action, trace = context
             async with self._brain_lock:
                 self.brain.reward(-1.0, action=action, trace=trace)
                 self.brain.step(1)
             self._record_reward(-1.0, action, "admin", message.guild)
             self._record_action(
                 "reward",
-                f"-1 → {action or 'global'}",
+                f"-1 → {action}",
                 message.guild,
             )
             await message.add_reaction("👎")
