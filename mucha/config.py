@@ -59,12 +59,20 @@ class DiscordConfig:
 
 
 @dataclass(slots=True)
+class ConsoleUIConfig:
+    mode: str = "dashboard"
+    refresh_seconds: float = 1.0
+    top_neurons: int = 8
+
+
+@dataclass(slots=True)
 class Config:
     brain: BrainConfig
     language: LanguageConfig
     voice: VoiceConfig
     behavior: BehaviorConfig
     discord: DiscordConfig
+    console_ui: ConsoleUIConfig
 
 
 def load_config(path: str | Path = "config.toml") -> Config:
@@ -77,6 +85,7 @@ def load_config(path: str | Path = "config.toml") -> Config:
     v = raw["voice"]
     beh = raw["behavior"]
     d = raw["discord"]
+    cui = raw.get("console_ui", {})
 
     return Config(
         brain=BrainConfig(**{**b, "connectome_dir": Path(b["connectome_dir"]), "state_file": Path(b["state_file"])}),
@@ -84,4 +93,5 @@ def load_config(path: str | Path = "config.toml") -> Config:
         voice=VoiceConfig(**v),
         behavior=BehaviorConfig(**beh),
         discord=DiscordConfig(**d),
+        console_ui=ConsoleUIConfig(**cui),
     )
