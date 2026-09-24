@@ -6,7 +6,9 @@ import math
 import random
 import shutil
 import subprocess
+import threading
 import time
+import wave
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -14,6 +16,12 @@ import discord
 import emoji as emoji_lib
 import pyttsx3
 from discord.ext import tasks
+
+try:
+    from piper import PiperVoice, SynthesisConfig
+except ImportError:
+    PiperVoice = None
+    SynthesisConfig = None
 
 from .brain import FlyBrain
 from .config import Config
@@ -85,6 +93,10 @@ class MuchaClient(discord.Client):
         self._chaser_escape_tasks: dict[int, asyncio.Task] = {}
         self._chaser_scream_tasks: dict[int, asyncio.Task] = {}
         self._random_audio_missing_warned = False
+        self._piper_voice = None
+        self._piper_model_path: str | None = None
+        self._piper_lock = threading.Lock()
+        self._piper_warning_shown = False
         self._audio_debug: dict = {
             "status": "STARTUP",
             "stage": "init",
@@ -1181,12 +1193,79 @@ class MuchaClient(discord.Client):
             "updated_at": time.time(),
         })
 
+    def _synthesize_piper_file(self, text: str, path: Path) -> bool:
+        if self.cfg.voice.tts_engine.strip().lower() != "piper":
+            return False
+
+        if PiperVoice is None or SynthesisConfig is None:
+            if not self._piper_warning_shown:
+                log.warning(
+                    "Piper TTS unavailable; install requirements.txt. "
+                    "Falling back to espeak-ng."
+                )
+                self._piper_warning_shown = True
+            return False
+
+        model_path = Path(self.cfg.voice.tts_piper_model)
+        config_path = Path(f"{model_path}.json")
+        if not model_path.is_file() or not config_path.is_file():
+            if not self._piper_warning_shown:
+                log.warning(
+                    "Piper voice missing: %s / %s. "
+                    "Falling back to espeak-ng.",
+                    model_path,
+                    config_path,
+                )
+                self._piper_warning_shown = True
+            return False
+
+        try:
+            with self._piper_lock:
+                model_key = str(model_path.resolve())
+                if (
+                    self._piper_voice is None
+                    or self._piper_model_path != model_key
+                ):
+                    self._piper_voice = PiperVoice.load(model_path)
+                    self._piper_model_path = model_key
+                    log.info("Piper TTS loaded: %s", model_path)
+
+                syn_config = SynthesisConfig(
+                    length_scale=max(
+                        0.5,
+                        min(
+                            2.0,
+                            float(self.cfg.voice.tts_piper_length_scale),
+                        ),
+                    ),
+                    normalize_audio=True,
+                    volume=1.0,
+                )
+
+                with wave.open(str(path), "wb") as wav_file:
+                    self._piper_voice.synthesize_wav(
+                        text,
+                        wav_file,
+                        syn_config=syn_config,
+                    )
+
+            self._piper_warning_shown = False
+            return path.is_file() and path.stat().st_size > 44
+        except Exception:
+            if not self._piper_warning_shown:
+                log.exception("Piper TTS synthesis failed; using fallback")
+                self._piper_warning_shown = True
+            return False
+
     def _synthesize_tts_file(self, text: str, path: Path) -> bool:
         path.parent.mkdir(parents=True, exist_ok=True)
         try:
             path.unlink(missing_ok=True)
         except OSError:
             pass
+
+        if self._synthesize_piper_file(text, path):
+            return True
 
         espeak = shutil.which("espeak-ng")
         if espeak:
