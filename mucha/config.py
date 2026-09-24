@@ -60,6 +60,12 @@ class VoiceConfig:
     random_audio_chance_denominator: int = 10000
     random_audio_volume: float = 0.8
     ffmpeg_executable: str = "ffmpeg"
+    tts_enabled: bool = True
+    tts_interval_seconds: int = 10
+    tts_rate: int = 185
+    tts_volume: float = 0.9
+    tts_voice_name: str = ""
+    tts_max_chars: int = 180
     move_threshold: float = 0.67
     join_threshold: float = 0.72
     leave_threshold: float = 0.82
