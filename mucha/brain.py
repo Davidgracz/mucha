@@ -149,6 +149,17 @@ class FlyBrain:
     def channel_affinity(self, guild_id: int, channel_id: int) -> float:
         return self.readout(f"voice-affinity:{guild_id}:{channel_id}", 96)
 
+    def top_active_neurons(self, count: int = 8) -> list[tuple[int, float]]:
+        """Return root_id and signed activation for the strongest neurons."""
+        count = max(1, min(int(count), self.c.n_neurons))
+        abs_state = np.abs(self.state)
+        if count >= self.c.n_neurons:
+            idx = np.argsort(abs_state)[::-1]
+        else:
+            idx = np.argpartition(abs_state, -count)[-count:]
+            idx = idx[np.argsort(abs_state[idx])[::-1]]
+        return [(int(self.c.root_ids[i]), float(self.state[i])) for i in idx[:count]]
+
     def diagnostics(self) -> dict[str, float | int]:
         return {
             "neurons": self.c.n_neurons,
