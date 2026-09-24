@@ -161,3 +161,17 @@ Najważniejsze rozszerzenia, które warto zrobić dalej:
 3. uczenie małej sieci char/word GRU od zera jako drugi etap języka,
 4. dashboard WebSocket pokazujący aktywne regiony/neurony na żywo,
 5. audio voice jako bodziec (VAD/energia/cechy akustyczne) bez rozpoznawania mowy albo opcjonalnie z transkrypcją.
+
+## Status Discord zależny od connectome
+
+Po połączeniu z Discordem Mucha zawsze ustawia dostępność na **online**. Co 30 sekund odczytuje aktualny stan connectome i aktualizuje widoczną aktywność, np.:
+
+- 🧠 nasłuchuje kanałów,
+- 🧠 uczy się rozmów,
+- 🧠 eksploruje serwer,
+- 🧠 obserwuje reakcje,
+- 🧠 przetwarza bodźce.
+
+Wybór stanu wynika z aktualnych readoutów connectome (`speak`, `explore`, `voice_join`, `voice_move`, `stay`, `react`). Status pokazuje też bieżącą średnią aktywność i liczbę neuronów z aktywacją powyżej 0.1.
+
+**Uwaga:** ustawienie `online` nie utrzymuje bota przy życiu. Jeśli program `bot.py` przestanie działać albo komputer/hosting zostanie wyłączony, Discord pokaże Muchę jako offline.
