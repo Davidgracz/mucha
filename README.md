@@ -1,0 +1,163 @@
+# 🪰 Mucha v0.1
+
+Autonomiczny bot Discord sterowany stanem sieci o topologii **FlyWire FAFB v783**. Bot:
+
+- utrzymuje ciągły stan neuronów zamiast resetować się po każdej wiadomości,
+- odbiera wiadomości i zdarzenia voice jako bodźce,
+- sam decyduje czy pisać,
+- sam decyduje czy wejść, wyjść lub przeskoczyć na inny kanał voice,
+- zaczyna z **pustym modelem języka** i uczy się wyłącznie z tekstu na serwerze,
+- nie używa ChatGPT/LLM do generowania tekstu,
+- zapisuje stan mózgu i model języka między restartami,
+- reakcje pod wiadomościami Muchy mogą wzmacniać/osłabiać jej zachowanie i użyte ciągi słów.
+
+## Co jest biologiczne, a co jest naszym interfejsem
+
+Realne dane: neurony, kierunek i siła połączeń oraz klasy neuronów z FlyWire. Runtime v0.1 korzysta ze sparse matrix i ciągłej propagacji aktywności inspirowanej modelami firing-rate/LIF. Mapowanie tekstu/Discorda na neurony sensoryczne oraz neuronów wyjściowych na akcje Discorda jest sztucznym interfejsem, bo mucha nie ma biologicznych wejść „Discord” ani aparatu językowego.
+
+**Nie należy interpretować tego jako emulacji świadomości lub dokładnego mózgu żywej muchy.** To eksperyment: prawdziwa topologia connectome + sztuczne wejścia/wyjścia.
+
+## 1. Szybki test bez FlyWire
+
+Na Windowsie najlepiej Python 3.12.
+
+```bat
+install_windows.bat
+```
+
+Skrypt utworzy środowisko i **demo connectome**. Demo służy tylko do sprawdzenia bota.
+
+Skopiuj token bota do `.env`:
+
+```env
+DISCORD_TOKEN=...
+```
+
+Uruchom:
+
+```bat
+run_windows.bat
+```
+
+## 2. Bot Discord
+
+W Discord Developer Portal utwórz Application → Bot.
+
+Włącz privileged intents:
+
+- Message Content Intent
+- Server Members Intent
+
+Bot potrzebuje co najmniej:
+
+- View Channels
+- Send Messages
+- Read Message History
+- Add Reactions
+- Connect (voice)
+
+Bot łączy się z voice jako `self_deaf=True`; v0.1 nie nagrywa i nie analizuje audio.
+
+## 3. Pełny FlyWire FAFB v783
+
+Codex wymaga zalogowania. Pobierz z portalu **Download Data** dla datasetu FAFB v783 co najmniej:
+
+- `classification.csv.gz`
+- `neurons.csv.gz`
+- `connections_princeton.csv.gz` (wersja filtrowana, około 3.7 mln połączeń)
+
+Można użyć `connections_princeton_no_threshold.csv.gz`, ale będzie większy i cięższy.
+
+Umieść np. w:
+
+```text
+raw_flywire/
+    classification.csv.gz
+    neurons.csv.gz
+    connections_princeton.csv.gz
+```
+
+Następnie:
+
+```bat
+.venv\Scripts\activate
+python tools\prepare_connectome.py --input raw_flywire --output data\connectome
+```
+
+Po zakończeniu `data/connectome/manifest.json` powinien pokazać około **139 255 neuronów** i około **3 732 460** połączeń dla filtrowanego exportu v783 (dokładna liczba może zależeć od aktualnego pliku eksportowego Codex).
+
+Potem po prostu:
+
+```bat
+python bot.py
+```
+
+## 4. Jak uczy się pisać
+
+Model języka jest pusty na pierwszym starcie. Nie ma listy gotowych zdań i nie ma pretreningu.
+
+Każda zwykła wiadomość użytkownika aktualizuje online model unigram/bigram/trigram w `state/language.sqlite3`. Surowe wiadomości nie są archiwizowane w tej bazie — przechowywane są statystyki przejść tokenów.
+
+Domyślnie Mucha zacznie w ogóle dopuszczać pisanie dopiero po:
+
+- 450 zaobserwowanych tokenach,
+- 80 różnych tokenach.
+
+To ustawisz w `config.toml`.
+
+Jeśli ktoś zareaguje 👍/❤️/😂/🔥/🪰 na wiadomość Muchy, wzmacniane są użyte przez nią trójki tokenów oraz aktualny ślad nagrody w connectome. 👎/😡/🤮/💩/😒 robią odwrotnie.
+
+## 5. Voice
+
+Co `voice.poll_seconds` sekund bot daje mózgowi snapshot kanałów voice i znajdujących się w nich użytkowników. Potem odczytuje populacje wyjściowe:
+
+- `voice_join`
+- `voice_move`
+- `voice_leave`
+- `stay`
+
+Każdy kanał ma stabilną „sygnaturę” sensoryczną i wyjściową zależną od jego Discord ID. Dzięki temu wybór kanału zależy od aktualnego stanu connectome i wcześniejszych bodźców.
+
+`minimum_dwell_seconds` zapobiega skakaniu kilka razy na sekundę i problemom z rate-limitami Discorda. Nie jest to reguła wyboru kanału — tylko okres refrakcji.
+
+## 6. Admin/debug
+
+Tylko administrator serwera:
+
+```text
+!mucha status
+!mucha save
+!mucha pause
+!mucha resume
+!mucha reward
+!mucha punish
+```
+
+Normalnego zachowania nie kontrolujesz komendami. Komendy są tylko diagnostyczne/awaryjne.
+
+## 7. Pliki stanu
+
+```text
+state/brain_state.npz     aktywność + plastyczny bias + eligibility trace
+state/language.sqlite3   wyuczony język
+```
+
+Jeżeli przeniesiesz te dwa pliki razem z tym samym connectome, przenosisz „tę konkretną Muchę” w sensie tego projektu.
+
+## 8. Test
+
+Po instalacji zależności:
+
+```bat
+python tests\smoke_test.py
+```
+
+## Następny krok: v0.2
+
+Najważniejsze rozszerzenia, które warto zrobić dalej:
+
+1. pełny biologiczny LIF na parametrach Shiu et al. dla zdarzeń o znaczeniu behawioralnym,
+2. synaptyczna plastyczność jako sparse overlay zamiast tylko persistent neuronal bias,
+3. uczenie małej sieci char/word GRU od zera jako drugi etap języka,
+4. dashboard WebSocket pokazujący aktywne regiony/neurony na żywo,
+5. audio voice jako bodziec (VAD/energia/cechy akustyczne) bez rozpoznawania mowy albo opcjonalnie z transkrypcją.
