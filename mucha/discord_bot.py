@@ -497,6 +497,11 @@ class MuchaClient(discord.Client):
             if amount > 0.0:
                 async with self._brain_lock:
                     self.brain.inject(
+                        "social:direct-reply",
+                        0.70,
+                        128,
+                    )
+                    self.brain.inject(
                         f"social:direct-reply:user:{message.author.id}",
                         0.55,
                         96,
@@ -524,6 +529,81 @@ class MuchaClient(discord.Client):
                     amount,
                     message.author,
                 )
+
+        normalized_message = OnlineLanguage.normalize(
+            message.content
+        ).lower()
+        correction_match = re.search(
+            r'\\bnie\\s+["„]?([^\\s"”„,.;:!?]{2,})["”]?'
+            r'\\s*,?\\s*(?:tylko|ale)\\s+'
+            r'["„]?([^\\s"”„,.;:!?]{2,})["”]?',
+            normalized_message,
+            flags=re.UNICODE,
+        )
+        if correction_match:
+            wrong_word = correction_match.group(1)
+            right_word = correction_match.group(2)
+            recent_for_correction = sorted(
+                (
+                    trace
+                    for trace in self.sent.values()
+                    if trace.guild_id == message.guild.id
+                    and trace.channel_id == message.channel.id
+                    and now - trace.created <= window
+                    and wrong_word in self._social_words(trace.text)
+                ),
+                key=lambda trace: trace.created,
+                reverse=True,
+            )
+            if recent_for_correction:
+                source_trace = recent_for_correction[0]
+                self.language.reinforce_text(wrong_word, -0.30)
+                self.language.reinforce_text(right_word, 0.50)
+                self.language.record_word_feedback(
+                    right_word,
+                    message.author.id,
+                    0.50,
+                )
+                correction_reward = -0.10
+                async with self._brain_lock:
+                    self.brain.inject(
+                        "social:correction",
+                        0.85,
+                        144,
+                    )
+                    self.brain.inject(
+                        f"social:correction:user:{message.author.id}",
+                        0.60,
+                        96,
+                    )
+                    self.brain.reward(
+                        correction_reward,
+                        action=source_trace.action,
+                        trace=source_trace.learning_trace,
+                    )
+                    self.brain.step(1)
+                detail = f"{wrong_word} → {right_word}"
+                self._record_reward(
+                    correction_reward,
+                    source_trace.action,
+                    f"social:correction • {detail}",
+                    message.guild,
+                )
+                self._record_action(
+                    "social_correction",
+                    (
+                        f"{message.author.display_name} • {detail} • "
+                        "lang -0.30/+0.50"
+                    ),
+                    message.guild,
+                )
+                self._remember_social_event(
+                    "CORRECTION",
+                    detail,
+                    0.50,
+                    message.author,
+                )
+                return
 
         user_words = self._social_words(message.content)
         if not user_words:
@@ -636,10 +716,20 @@ class MuchaClient(discord.Client):
                 else ""
             )
 
+        stimulus = {
+            "WORD_REUSE": "social:word-reused",
+            "PHRASE_REUSE": "social:phrase-reused",
+            "MULTI_USER_CONFIRM": "social:multi-user-confirm",
+        }.get(event, f"social:{event.lower().replace('_', '-')}")
         if brain_amount > 0.0:
             async with self._brain_lock:
                 self.brain.inject(
-                    f"social:{event.lower()}:user:{message.author.id}",
+                    stimulus,
+                    0.65,
+                    128,
+                )
+                self.brain.inject(
+                    f"{stimulus}:user:{message.author.id}",
                     0.45,
                     96,
                 )
@@ -1402,6 +1492,11 @@ class MuchaClient(discord.Client):
                     )
                     self.language.reinforce(trigrams, -penalty)
                     async with self._brain_lock:
+                        self.brain.inject(
+                            "internal:self-repeat",
+                            min(1.0, 0.45 + penalty),
+                            128,
+                        )
                         self.brain.reward(
                             -min(0.15, penalty * 0.4),
                             action="speak",
