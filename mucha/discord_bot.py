@@ -4,6 +4,7 @@ import asyncio
 import logging
 import math
 import random
+import re
 import shutil
 import subprocess
 import threading
@@ -34,6 +35,13 @@ log = logging.getLogger("mucha")
 
 POSITIVE = {"👍", "❤️", "❤", "😂", "🤣", "🔥", "🪰", "💚", "👏"}
 NEGATIVE = {"👎", "😡", "🤮", "💩", "😒"}
+POSITIVE_REACTION_WEIGHT = {
+    "❤️": 1.0, "❤": 1.0, "😂": 0.9, "🤣": 0.9,
+    "👍": 0.8, "🔥": 0.8, "💚": 0.8, "👏": 0.7, "🪰": 0.6,
+}
+NEGATIVE_REACTION_WEIGHT = {
+    "🤮": 1.0, "😡": 0.9, "👎": 0.8, "💩": 0.7, "😒": 0.6,
+}
 
 
 @dataclass
@@ -42,6 +50,9 @@ class SentTrace:
     created: float
     action: str
     learning_trace: tuple
+    text: str = ""
+    guild_id: int | None = None
+    channel_id: int | None = None
 
 
 class MuchaClient(discord.Client):
@@ -84,6 +95,15 @@ class MuchaClient(discord.Client):
             "cooldown_remaining": 0.0,
         }
         self._last_reaction: dict[int, float] = {}
+        self._social_debug: dict = {
+            "event": "BRAK",
+            "detail": "",
+            "amount": 0.0,
+            "user_id": None,
+            "user_name": None,
+            "affinity": 0.0,
+            "updated_at": 0.0,
+        }
         self._last_overstay_punish: dict[int, float] = {}
         self._deadly_voice_until: dict[tuple[int, int], float] = {}
         self._voice_last_visit: dict[tuple[int, int], float] = {}
@@ -186,6 +206,242 @@ class MuchaClient(discord.Client):
             "detail": detail,
             "time": time.time(),
         }
+
+    @staticmethod
+    def _social_words(text: str) -> list[str]:
+        normalized = OnlineLanguage.normalize(text).lower()
+        return re.findall(r"[^\W_]{3,}", normalized, flags=re.UNICODE)
+
+    def _user_affinity(self, user_id: int) -> float:
+        return self.language.get_user_affinity(int(user_id))
+
+    def _is_disliked_user(self, user_id: int) -> bool:
+        return (
+            self._user_affinity(user_id)
+            <= float(self.cfg.behavior.user_avoid_threshold)
+        )
+
+    def _disliked_members(
+        self,
+        members: list[discord.Member],
+    ) -> list[tuple[discord.Member, float]]:
+        threshold = float(self.cfg.behavior.user_avoid_threshold)
+        disliked = []
+        for member in members:
+            affinity = self._user_affinity(member.id)
+            if affinity <= threshold:
+                disliked.append((member, affinity))
+        return disliked
+
+    def _remember_social_event(
+        self,
+        event: str,
+        detail: str,
+        amount: float,
+        member: discord.abc.User | discord.Member | None = None,
+    ) -> None:
+        affinity = (
+            self._user_affinity(member.id)
+            if member is not None
+            else 0.0
+        )
+        self._social_debug = {
+            "event": event,
+            "detail": detail,
+            "amount": float(amount),
+            "user_id": member.id if member is not None else None,
+            "user_name": (
+                getattr(member, "display_name", None)
+                or getattr(member, "name", None)
+                if member is not None
+                else None
+            ),
+            "affinity": affinity,
+            "updated_at": time.time(),
+        }
+
+    async def _apply_social_message_feedback(
+        self,
+        message: discord.Message,
+    ) -> None:
+        if not self.cfg.behavior.social_learning_enabled:
+            return
+
+        window = max(
+            30.0,
+            float(self.cfg.behavior.social_window_seconds),
+        )
+        now = time.monotonic()
+        reference_id = (
+            message.reference.message_id
+            if message.reference is not None
+            else None
+        )
+        referenced = self.sent.get(reference_id) if reference_id else None
+
+        if (
+            referenced is not None
+            and referenced.guild_id == message.guild.id
+            and now - referenced.created <= window
+        ):
+            amount = max(
+                0.0,
+                min(1.0, float(self.cfg.behavior.direct_reply_reward)),
+            )
+            if amount > 0.0:
+                async with self._brain_lock:
+                    self.brain.inject(
+                        f"social:direct-reply:user:{message.author.id}",
+                        0.55,
+                        96,
+                    )
+                    self.brain.reward(
+                        amount,
+                        action=referenced.action,
+                        trace=referenced.learning_trace,
+                    )
+                    self.brain.step(1)
+                self._record_reward(
+                    amount,
+                    referenced.action,
+                    f"direct reply • {message.author.display_name}",
+                    message.guild,
+                )
+                self._record_action(
+                    "social_reply",
+                    f"+{amount:.2f} • {message.author.display_name}",
+                    message.guild,
+                )
+                self._remember_social_event(
+                    "DIRECT_REPLY",
+                    message.author.display_name,
+                    amount,
+                    message.author,
+                )
+
+        user_words = self._social_words(message.content)
+        if not user_words:
+            return
+        user_word_set = set(user_words)
+        user_phrases = {
+            tuple(user_words[i:i + size])
+            for size in (2, 3)
+            for i in range(max(0, len(user_words) - size + 1))
+        }
+
+        recent = sorted(
+            (
+                trace
+                for trace in self.sent.values()
+                if trace.guild_id == message.guild.id
+                and trace.channel_id == message.channel.id
+                and now - trace.created <= window
+            ),
+            key=lambda trace: trace.created,
+            reverse=True,
+        )[:12]
+
+        matched_trace = None
+        matched_phrase: tuple[str, ...] | None = None
+        matched_word: str | None = None
+
+        for trace in recent:
+            sent_words = self._social_words(trace.text)
+            for size in (3, 2):
+                for i in range(max(0, len(sent_words) - size + 1)):
+                    phrase = tuple(sent_words[i:i + size])
+                    if (
+                        phrase in user_phrases
+                        and sum(len(x) for x in phrase) >= 8
+                    ):
+                        matched_trace = trace
+                        matched_phrase = phrase
+                        break
+                if matched_phrase is not None:
+                    break
+            if matched_phrase is not None:
+                break
+
+            shared = [
+                word
+                for word in set(sent_words) & user_word_set
+                if len(word) >= 5
+            ]
+            if shared:
+                matched_trace = trace
+                matched_word = max(shared, key=len)
+                break
+
+        if matched_trace is None:
+            return
+
+        if matched_phrase is not None:
+            phrase_text = " ".join(matched_phrase)
+            language_amount = max(
+                0.0,
+                min(1.0, float(self.cfg.behavior.phrase_reuse_reward)),
+            )
+            self.language.reinforce_text(phrase_text, language_amount)
+            for word in matched_phrase:
+                if len(word) >= 4:
+                    self.language.record_word_feedback(
+                        word,
+                        message.author.id,
+                        language_amount * 0.5,
+                    )
+            brain_amount = min(0.20, language_amount * 0.35)
+            event = "PHRASE_REUSE"
+            detail = phrase_text
+        else:
+            language_amount = max(
+                0.0,
+                min(1.0, float(self.cfg.behavior.word_reuse_reward)),
+            )
+            self.language.reinforce_text(matched_word or "", language_amount)
+            if matched_word:
+                self.language.record_word_feedback(
+                    matched_word,
+                    message.author.id,
+                    language_amount,
+                )
+            brain_amount = min(0.15, language_amount * 0.35)
+            event = "WORD_REUSE"
+            detail = matched_word or ""
+
+        if brain_amount > 0.0:
+            async with self._brain_lock:
+                self.brain.inject(
+                    f"social:{event.lower()}:user:{message.author.id}",
+                    0.45,
+                    96,
+                )
+                self.brain.reward(
+                    brain_amount,
+                    action=matched_trace.action,
+                    trace=matched_trace.learning_trace,
+                )
+                self.brain.step(1)
+
+        self._record_reward(
+            brain_amount,
+            matched_trace.action,
+            f"{event.lower()} • {detail}",
+            message.guild,
+        )
+        self._record_action(
+            "social_learn",
+            (
+                f"{event} • {message.author.display_name} • "
+                f"{detail} • lang +{language_amount:.2f}"
+            ),
+            message.guild,
+        )
+        self._remember_social_event(
+            event,
+            detail,
+            language_amount,
+            message.author,
+        )
 
     def _is_text_channel_blocked(self, channel: object) -> bool:
         channel_id = getattr(channel, "id", None)
@@ -727,13 +983,31 @@ class MuchaClient(discord.Client):
         if not blocked_text:
             self.last_text_channel[message.guild.id] = message.channel.id
         self.last_text_context[message.guild.id] = message.content
+        await self._apply_social_message_feedback(message)
         self.language.learn(message.content)
+        user_affinity = self._user_affinity(message.author.id)
+        disliked_user = bool(
+            self.cfg.behavior.ignore_disliked_users_text
+            and user_affinity <= float(self.cfg.behavior.user_avoid_threshold)
+        )
         mentioned = self.user in message.mentions if self.user else False
         channel_name = getattr(message.channel, "name", str(message.channel.id))
         self._last_brain_event = f"TEXT • {message.author.display_name} • #{channel_name}" + (" • mention" if mentioned else "")
 
         async with self._brain_lock:
             self.brain.inject_text(message.content, message.author.id, mentioned)
+            if user_affinity >= 0.15:
+                self.brain.inject(
+                    f"social:liked-user:{message.author.id}",
+                    min(1.0, user_affinity),
+                    96,
+                )
+            elif user_affinity <= float(self.cfg.behavior.user_avoid_threshold):
+                self.brain.inject(
+                    f"social:disliked-user:{message.author.id}",
+                    min(1.0, abs(user_affinity)),
+                    96,
+                )
             self.brain.step(self.cfg.brain.steps_per_event)
             scores = self.brain.action_scores()
 
@@ -755,7 +1029,11 @@ class MuchaClient(discord.Client):
             "cooldown_remaining": react_cooldown,
             "guild_id": message.guild.id,
         }
-        if scores["react"] >= self.cfg.behavior.reaction_threshold and react_cooldown <= 0.0:
+        if (
+            not disliked_user
+            and scores["react"] >= self.cfg.behavior.reaction_threshold
+            and react_cooldown <= 0.0
+        ):
             candidates, pool_total = self._reaction_candidates(message.guild)
             async with self._brain_lock:
                 ranked = sorted(
@@ -819,6 +1097,10 @@ class MuchaClient(discord.Client):
                     if last_http_error is not None
                     else "BRAK KANDYDATÓW"
                 )
+        elif disliked_user:
+            self._reaction_debug["decision"] = (
+                f"SOCIAL AVOID • affinity {user_affinity:+.2f}"
+            )
         elif react_cooldown > 0.0:
             self._reaction_debug["decision"] = "COOLDOWN"
         else:
@@ -830,6 +1112,7 @@ class MuchaClient(discord.Client):
         urge = scores["speak"] + (0.10 if mentioned else 0.0)
         if (
             not blocked_text
+            and not disliked_user
             and self.language.ready()
             and urge >= self.cfg.behavior.speak_threshold
             and now - last >= self.cfg.language.reply_cooldown_seconds
@@ -847,15 +1130,67 @@ class MuchaClient(discord.Client):
             async with self._brain_lock:
                 learning_trace = self.brain.capture_learning_trace()
             sent = await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
+            guild = getattr(channel, "guild", None)
             self.sent[sent.id] = SentTrace(
                 trigrams=trigrams,
                 created=time.monotonic(),
                 action="speak",
                 learning_trace=learning_trace,
+                text=text,
+                guild_id=guild.id if isinstance(guild, discord.Guild) else None,
+                channel_id=getattr(channel, "id", None),
             )
+
+            if self.cfg.behavior.social_learning_enabled:
+                recent_self = [
+                    trace
+                    for mid, trace in self.sent.items()
+                    if mid != sent.id
+                    and trace.guild_id == self.sent[sent.id].guild_id
+                    and trace.channel_id == self.sent[sent.id].channel_id
+                    and time.monotonic() - trace.created
+                    <= float(self.cfg.behavior.social_window_seconds)
+                ]
+                new_words = set(self._social_words(text))
+                repeated = False
+                for old_trace in recent_self[-8:]:
+                    old_words = set(self._social_words(old_trace.text))
+                    if (
+                        len(new_words) >= 4
+                        and len(old_words) >= 4
+                        and len(new_words & old_words)
+                        / max(1, len(new_words | old_words)) >= 0.72
+                    ):
+                        repeated = True
+                        break
+                if repeated:
+                    penalty = max(
+                        0.0,
+                        min(
+                            1.0,
+                            float(self.cfg.behavior.self_repeat_penalty),
+                        ),
+                    )
+                    self.language.reinforce(trigrams, -penalty)
+                    async with self._brain_lock:
+                        self.brain.reward(
+                            -min(0.15, penalty * 0.4),
+                            action="speak",
+                            trace=learning_trace,
+                        )
+                        self.brain.step(1)
+                    self._record_action(
+                        "self_repeat",
+                        f"-{penalty:.2f} • {text[:100]}",
+                        guild if isinstance(guild, discord.Guild) else None,
+                    )
+                    self._remember_social_event(
+                        "SELF_REPEAT",
+                        text[:100],
+                        -penalty,
+                    )
             channel_name = getattr(channel, "name", "kanał")
             self._last_brain_action = f"TEXT → #{channel_name}: {text[:80]}"
-            guild = getattr(channel, "guild", None)
             if isinstance(guild, discord.Guild):
                 self._set_reinforceable(
                     guild,
@@ -888,7 +1223,35 @@ class MuchaClient(discord.Client):
         elif emoji in NEGATIVE:
             amount = -1.0
         if amount:
-            self._last_brain_event = f"REACTION • {emoji} • reward {amount:+.0f}"
+            guild = self.get_guild(payload.guild_id) if payload.guild_id else None
+            member = guild.get_member(payload.user_id) if guild else None
+            display_name = (
+                member.display_name
+                if member is not None
+                else str(payload.user_id)
+            )
+            if amount > 0:
+                affinity_delta = (
+                    float(self.cfg.behavior.user_affinity_positive_step)
+                    * POSITIVE_REACTION_WEIGHT.get(emoji, 0.6)
+                )
+                affinity_kind = "positive"
+            else:
+                affinity_delta = -(
+                    float(self.cfg.behavior.user_affinity_negative_step)
+                    * NEGATIVE_REACTION_WEIGHT.get(emoji, 0.6)
+                )
+                affinity_kind = "negative"
+            new_affinity = self.language.adjust_user_affinity(
+                payload.user_id,
+                display_name,
+                affinity_delta,
+                affinity_kind,
+            )
+            self._last_brain_event = (
+                f"REACTION • {emoji} • reward {amount:+.0f} • "
+                f"affinity {new_affinity:+.2f}"
+            )
             self.language.reinforce(trace.trigrams, amount)
             async with self._brain_lock:
                 self.brain.reward(
@@ -897,12 +1260,20 @@ class MuchaClient(discord.Client):
                     trace=trace.learning_trace,
                 )
                 self.brain.step(1)
-            guild = self.get_guild(payload.guild_id) if payload.guild_id else None
             self._record_reward(amount, trace.action, f"Discord {emoji}", guild)
             self._record_action(
                 "reward",
-                f"{amount:+.0f} → {trace.action} ({emoji})",
+                (
+                    f"{amount:+.0f} → {trace.action} ({emoji}) • "
+                    f"{display_name} affinity {new_affinity:+.2f}"
+                ),
                 guild,
+            )
+            self._remember_social_event(
+                "REACTION_AFFINITY",
+                f"{emoji} • {new_affinity:+.2f}",
+                affinity_delta,
+                member,
             )
 
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
@@ -1132,6 +1503,14 @@ class MuchaClient(discord.Client):
             "audio_debug": dict(self._audio_debug),
             "reaction_debug": reaction_debug,
             "learning_debug": self.brain.learning_diagnostics(),
+            "social_debug": dict(self._social_debug),
+            "user_affinities": self.language.user_affinities(50),
+            "word_feedback": self.language.top_word_feedback(30),
+            "social_settings": {
+                "user_avoid_threshold": self.cfg.behavior.user_avoid_threshold,
+                "ignore_disliked_users_text": self.cfg.behavior.ignore_disliked_users_text,
+                "avoid_disliked_users_on_voice": self.cfg.behavior.avoid_disliked_users_on_voice,
+            },
             "action_history": self._action_history[-40:],
             "reward_history": self._reward_history[-80:],
             "guild_learning_context": [
@@ -1735,6 +2114,12 @@ class MuchaClient(discord.Client):
             )
             perms = ch.permissions_for(me)
             humans = [m for m in ch.members if not m.bot]
+            disliked_members = self._disliked_members(humans)
+            social_blocked = bool(
+                self.cfg.behavior.avoid_disliked_users_on_voice
+                and disliked_members
+                and not chaser_active
+            )
             view_ok = bool(perms.view_channel)
             connect_ok = bool(perms.connect)
             include_ok = bool(humans or self.cfg.voice.include_empty_channels)
@@ -1755,6 +2140,7 @@ class MuchaClient(discord.Client):
                 and not deadly
                 and not blocked_voice
                 and not chaser_here
+                and not social_blocked
                 and view_ok
                 and connect_ok
                 and include_ok
@@ -1772,6 +2158,18 @@ class MuchaClient(discord.Client):
                 "deadly_remaining": deadly_remaining,
                 "blocked_voice": blocked_voice,
                 "chaser_here": chaser_here,
+                "social_blocked": social_blocked,
+                "disliked_users": [
+                    {
+                        "id": member.id,
+                        "name": member.display_name,
+                        "affinity": affinity,
+                    }
+                    for member, affinity in disliked_members
+                ],
+                "user_affinity_min": (
+                    min((affinity for _, affinity in disliked_members), default=None)
+                ),
                 "affinity": None,
                 "exploration_score": None,
                 "visit_age": None,
@@ -1780,6 +2178,12 @@ class MuchaClient(discord.Client):
                 "status": "OK" if eligible else (
                     "⛔ BLOKADA" if blocked_voice else
                     "🕷 CHASER" if chaser_here else
+                    (
+                        "🙅 NIELUBI " + ", ".join(
+                            member.display_name
+                            for member, _ in disliked_members[:2]
+                        )
+                    ) if social_blocked else
                     f"☠ ŚMIERTELNE {deadly_remaining:.0f}s" if deadly else
                     "AFK" if is_afk else
                     "BRAK VIEW" if not view_ok else
@@ -1818,9 +2222,53 @@ class MuchaClient(discord.Client):
                 f"panic {chaser_remaining:.1f}s"
             )
 
+        current_disliked = (
+            self._disliked_members(
+                [m for m in current.members if not m.bot]
+            )
+            if current is not None and not chaser_active
+            else []
+        )
+        debug["social_avoid_active"] = bool(current_disliked)
+        debug["social_avoid_users"] = [
+            {
+                "id": member.id,
+                "name": member.display_name,
+                "affinity": affinity,
+            }
+            for member, affinity in current_disliked
+        ]
+
         if not channels:
-            debug["decision"] = "NIE WCHODZĘ"
-            debug["reason"] = "brak dostępnych kanałów voice"
+            if (
+                current is not None
+                and current_disliked
+                and vc is not None
+                and vc.is_connected()
+            ):
+                try:
+                    await vc.disconnect(force=False)
+                    names = ", ".join(
+                        member.display_name
+                        for member, _ in current_disliked
+                    )
+                    debug["decision"] = "SOCIAL AVOID • LEAVE"
+                    debug["reason"] = (
+                        f"nielubiany użytkownik na kanale: {names}; "
+                        "brak bezpiecznego kanału"
+                    )
+                    self._record_action(
+                        "social_voice_leave",
+                        f"{current.name} • {names}",
+                        guild,
+                    )
+                except (discord.Forbidden, discord.HTTPException):
+                    log.exception(
+                        "Nie udało się opuścić kanału podczas social avoid"
+                    )
+            else:
+                debug["decision"] = "NIE WCHODZĘ"
+                debug["reason"] = "brak dostępnych kanałów voice"
             self._voice_debug[guild.id] = debug
             return
 
@@ -1965,6 +2413,50 @@ class MuchaClient(discord.Client):
                 debug["reason"] = f"{type(exc).__name__}: {exc}"
             self._voice_debug[guild.id] = debug
             return
+
+        if current_disliked and not chaser_active:
+            target, exploration = self._choose_voice_target(
+                guild,
+                channels,
+                affinities,
+                now,
+                current_id=current.id,
+            )
+            if target is not None:
+                names = ", ".join(
+                    member.display_name
+                    for member, _ in current_disliked
+                )
+                try:
+                    await vc.move_to(target)
+                    self.voice_arrived[guild.id] = now
+                    self._mark_voice_visit(guild.id, target.id, now)
+                    self._last_brain_action = (
+                        f"SOCIAL AVOID → {target.name}"
+                    )
+                    self._last_brain_event = (
+                        f"SOCIAL AVOID • omija {names}"
+                    )
+                    self._record_action(
+                        "social_voice_avoid",
+                        f"{current.name} → {target.name} • {names}",
+                        guild,
+                    )
+                    debug["current"] = target.name
+                    debug["decision"] = f"SOCIAL AVOID → {target.name}"
+                    debug["reason"] = (
+                        f"omija: {names}; affinity <= "
+                        f"{self.cfg.behavior.user_avoid_threshold:+.2f}"
+                    )
+                    self._voice_debug[guild.id] = debug
+                    return
+                except (
+                    discord.Forbidden,
+                    discord.HTTPException,
+                    asyncio.TimeoutError,
+                ) as exc:
+                    debug["decision"] = "SOCIAL AVOID • BŁĄD"
+                    debug["reason"] = f"{type(exc).__name__}: {exc}"
 
         if dwell_remaining > 0:
             debug["decision"] = "ZOSTAJĘ"
