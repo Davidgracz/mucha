@@ -448,6 +448,58 @@ class OnlineLanguage:
         text = cls.normalize(text).lower()
         return list(text)
 
+    @classmethod
+    def words(cls, text: str) -> list[str]:
+        normalized = cls.normalize(text).lower()
+        return WORD_RE.findall(normalized)[:120]
+
+    def _learn_words(
+        self,
+        text: str,
+        cur: sqlite3.Cursor,
+        now: float,
+    ) -> int:
+        tokens = self.words(text)
+        if not tokens:
+            return 0
+
+        for token in tokens:
+            cur.execute(
+                "INSERT INTO word_unigram(token,n,reward,last_seen) "
+                "VALUES(?,1,0,?) "
+                "ON CONFLICT(token) DO UPDATE SET "
+                "n=word_unigram.n+1,last_seen=excluded.last_seen",
+                (token, now),
+            )
+
+        for a, b in zip(tokens, tokens[1:]):
+            cur.execute(
+                "INSERT INTO word_bigram(a,b,n,reward,last_seen) "
+                "VALUES(?,?,1,0,?) "
+                "ON CONFLICT(a,b) DO UPDATE SET "
+                "n=word_bigram.n+1,last_seen=excluded.last_seen",
+                (a, b, now),
+            )
+
+        for a, b, cc in zip(tokens, tokens[1:], tokens[2:]):
+            cur.execute(
+                "INSERT INTO word_trigram(a,b,c,n,reward,last_seen) "
+                "VALUES(?,?,?,1,0,?) "
+                "ON CONFLICT(a,b,c) DO UPDATE SET "
+                "n=word_trigram.n+1,last_seen=excluded.last_seen",
+                (a, b, cc, now),
+            )
+
+        first = tokens[0]
+        second = tokens[1] if len(tokens) > 1 else "."
+        cur.execute(
+            "INSERT INTO word_starts(a,b,n,last_seen) VALUES(?,?,1,?) "
+            "ON CONFLICT(a,b) DO UPDATE SET "
+            "n=word_starts.n+1,last_seen=excluded.last_seen",
+            (first, second, now),
+        )
+        return len(tokens)
+
     def learn(self, text: str) -> int:
         chars = self.characters(text)
         if not chars:
@@ -456,6 +508,8 @@ class OnlineLanguage:
         chars = chars[:1800]
         seq = [START_A, START_B] + chars
         cur = self.db.cursor()
+        now = time.time()
+        word_count = self._learn_words(text, cur, now)
 
         for ch in chars:
             cur.execute(
@@ -495,6 +549,11 @@ class OnlineLanguage:
         cur.execute(
             "INSERT INTO char_stats(k,v) VALUES('messages',1) "
             "ON CONFLICT(k) DO UPDATE SET v=v+1"
+        )
+        cur.execute(
+            "INSERT INTO char_stats(k,v) VALUES('word_tokens',?) "
+            "ON CONFLICT(k) DO UPDATE SET v=v+excluded.v",
+            (int(word_count),),
         )
         self.db.commit()
         return len(chars)
