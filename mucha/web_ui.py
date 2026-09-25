@@ -285,54 +285,257 @@ ASSOCIATIONS_HTML = r"""<!doctype html>
 <title>Mucha — Mapa skojarzeń</title>
 <style>
 :root{--bg:#050910;--panel:#0d151e;--panel2:#08111a;--line:#203247;--txt:#eef7ff;--muted:#7f92a5;--cyan:#55ead0;--blue:#6da8ff;--good:#58df98;--bad:#ff7474;--warn:#ffd166}
-*{box-sizing:border-box}body{margin:0;color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(circle at 18% 0%,rgba(85,234,208,.11),transparent 30%),radial-gradient(circle at 84% 5%,rgba(109,168,255,.11),transparent 31%),linear-gradient(180deg,#050910,#07101a)}
-main{max-width:1640px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.brand{display:flex;gap:13px;align-items:center}.logo{font-size:38px}h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#bacada;text-decoration:none;border:1px solid var(--line);background:#0b141d;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:linear-gradient(90deg,var(--cyan),#7ce5d4);border-color:var(--cyan);color:#04120e;font-weight:850}
-.hero{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}.kpi,.card{background:linear-gradient(180deg,rgba(13,21,30,.97),rgba(8,15,23,.97));border:1px solid var(--line);border-radius:16px}.kpi{padding:13px}.kpi small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}.kpi strong{font-size:17px}.kpi em{display:block;color:#8799aa;font-size:9px;font-style:normal;margin-top:4px}
-.grid{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(360px,.8fr);gap:12px}.card{padding:14px;min-width:0}.head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.head h2{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#9eb0c1}.live{font-size:9px;color:var(--good);font-weight:850;letter-spacing:.1em}.graph{height:720px;border:1px solid #17283a;border-radius:14px;overflow:hidden;position:relative;background:radial-gradient(circle at 50% 50%,rgba(85,234,208,.035),transparent 44%),#050b12}.graph canvas{width:100%;height:100%;display:block}.tip{position:absolute;display:none;pointer-events:none;z-index:4;max-width:280px;padding:9px 10px;background:rgba(5,10,16,.96);border:1px solid #31506c;border-radius:10px;font-size:10px;line-height:1.5}.side{display:flex;flex-direction:column;gap:12px}.ins{min-height:160px}.empty{color:var(--muted);font-size:11px;line-height:1.5}.meta{display:grid;grid-template-columns:1fr 1fr;gap:7px}.meta div{padding:8px;background:var(--panel2);border:1px solid #17283a;border-radius:9px}.meta small{display:block;color:#74899d;font-size:8px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}.meta b{font-size:11px}.assoc{display:flex;flex-direction:column;gap:6px;max-height:430px;overflow:auto}.row{display:grid;grid-template-columns:1fr 58px;gap:8px;padding:8px;border:1px solid #17283a;background:var(--panel2);border-radius:9px;font-size:10px;cursor:pointer}.row:hover{border-color:#34566f}.row small{display:block;color:var(--muted);margin-top:3px}.pos{color:var(--good)}.neg{color:var(--bad)}.note{margin-top:10px;color:#71869a;font-size:9px;line-height:1.55}.legend{display:flex;gap:12px;flex-wrap:wrap;color:#75899c;font-size:9px;margin-top:8px}.legend i{display:inline-block;width:9px;height:3px;border-radius:999px;margin-right:5px;vertical-align:middle}.lstruct{background:var(--blue)}.lpos{background:var(--good)}.lneg{background:var(--bad)}
-@media(max-width:1100px){.grid{grid-template-columns:1fr}.graph{height:620px}.hero{grid-template-columns:repeat(3,1fr)}}@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.graph{height:520px}}
+*{box-sizing:border-box}body{margin:0;color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(circle at 18% 0%,rgba(85,234,208,.10),transparent 30%),radial-gradient(circle at 84% 5%,rgba(109,168,255,.10),transparent 31%),linear-gradient(180deg,#050910,#07101a)}
+main{max-width:1880px;margin:auto;padding:22px 28px 30px}.top{display:flex;justify-content:space-between;gap:18px;align-items:center;margin-bottom:16px}.brand{display:flex;gap:13px;align-items:center}.logo{font-size:38px}h1{margin:0;font-size:25px}.sub{color:var(--muted);font-size:12px;margin-top:4px;max-width:760px;line-height:1.45}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#bacada;text-decoration:none;border:1px solid var(--line);background:#0b141d;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:linear-gradient(90deg,var(--cyan),#7ce5d4);border-color:var(--cyan);color:#04120e;font-weight:850}
+.hero{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:12px;margin-bottom:14px}.kpi,.card{background:linear-gradient(180deg,rgba(13,21,30,.97),rgba(8,15,23,.97));border:1px solid var(--line);border-radius:17px;box-shadow:0 18px 50px rgba(0,0,0,.14)}.kpi{padding:14px 16px}.kpi small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.11em;margin-bottom:6px}.kpi strong{display:block;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi em{display:block;color:#8799aa;font-size:9px;font-style:normal;margin-top:5px}
+.toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:11px 13px;border:1px solid var(--line);border-radius:14px;background:rgba(9,16,24,.88)}.toolgroup{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.toolgroup label{font-size:9px;color:#7f94a7;text-transform:uppercase;letter-spacing:.1em}.toolgroup output{min-width:24px;text-align:right;font-size:10px;color:#c8d7e5;font-weight:800}.toolgroup input[type=range]{width:120px;accent-color:var(--cyan)}.btn{border:1px solid #294057;background:#08121b;color:#9eb2c3;border-radius:999px;padding:7px 11px;font-size:9px;font-weight:850;letter-spacing:.05em;cursor:pointer}.btn:hover{border-color:#4b6e8a;color:white}.btn.on{color:#04120e;background:var(--cyan);border-color:var(--cyan)}
+.grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;align-items:start}.card{padding:15px;min-width:0}.head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:11px}.head h2{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#9eb0c1}.live{font-size:9px;color:var(--good);font-weight:850;letter-spacing:.1em}.graph{height:min(78vh,900px);min-height:680px;border:1px solid #17283a;border-radius:15px;overflow:hidden;position:relative;background:radial-gradient(circle at 50% 50%,rgba(85,234,208,.035),transparent 46%),linear-gradient(180deg,#050b12,#06101a)}.graph canvas{width:100%;height:100%;display:block}.tip{position:absolute;display:none;pointer-events:none;z-index:4;width:235px;padding:10px 11px;background:rgba(5,10,16,.97);border:1px solid #31506c;border-radius:11px;font-size:10px;line-height:1.55;box-shadow:0 16px 45px rgba(0,0,0,.35)}.graph-hint{position:absolute;left:12px;bottom:12px;padding:6px 9px;border:1px solid #1b3042;border-radius:999px;background:rgba(5,11,18,.78);color:#6f8498;font-size:9px;pointer-events:none}
+.side{display:flex;flex-direction:column;gap:14px;position:sticky;top:12px}.ins{min-height:205px}.empty{color:var(--muted);font-size:11px;line-height:1.55;padding:6px 0}.word-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.word-title h3{margin:0;font-size:21px}.word-title span{font-size:9px;color:var(--cyan);border:1px solid rgba(85,234,208,.32);background:rgba(85,234,208,.07);padding:5px 7px;border-radius:999px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px}.meta div{padding:10px;background:var(--panel2);border:1px solid #17283a;border-radius:10px}.meta small{display:block;color:#74899d;font-size:8px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}.meta b{font-size:12px}.assoc{display:flex;flex-direction:column;gap:7px;max-height:510px;overflow:auto;padding-right:3px}.row{display:grid;grid-template-columns:minmax(0,1fr) 54px;gap:10px;padding:10px;border:1px solid #17283a;background:var(--panel2);border-radius:10px;font-size:10px;cursor:pointer;transition:.12s ease}.row:hover{border-color:#3b617e;background:#0a1722}.row b{font-size:11px}.row small{display:block;color:var(--muted);margin-top:4px;line-height:1.45}.weight{text-align:right;font-size:12px!important;color:#dceaf5}.pos{color:var(--good)}.neg{color:var(--bad)}.note{margin-top:10px;color:#71869a;font-size:9px;line-height:1.55}.legend{display:flex;gap:14px;flex-wrap:wrap;color:#75899c;font-size:9px;margin-top:9px}.legend i{display:inline-block;width:14px;height:3px;border-radius:999px;margin-right:5px;vertical-align:middle}.lstruct{background:var(--blue)}.lpos{background:var(--good)}.lneg{background:var(--bad)}
+@media(max-width:1280px){.grid{grid-template-columns:minmax(0,1fr) 350px}.graph{min-height:620px}.hero{grid-template-columns:repeat(3,1fr)}}@media(max-width:980px){main{padding:16px}.top{align-items:flex-start;flex-direction:column}.grid{grid-template-columns:1fr}.side{position:static}.graph{height:650px;min-height:0}}@media(max-width:650px){main{padding:11px}.hero{grid-template-columns:1fr 1fr}.graph{height:540px}.toolbar{align-items:flex-start}.toolgroup input[type=range]{width:95px}.meta{grid-template-columns:1fr}}
 </style>
 </head>
 <body><main>
 <div class="top">
- <div class="brand"><div class="logo">🕸</div><div><h1>Mapa skojarzeń Muchy</h1><div class="sub">Słowa są węzłami connectomu; krawędzie wynikają z propagacji po macierzy oraz wyuczonego plastic bias par słów.</div></div></div>
+ <div class="brand"><div class="logo">🕸</div><div><h1>Mapa skojarzeń Muchy</h1><div class="sub">Czytelny widok relacji słów z connectomu. Domyślnie pokazuje tylko najważniejsze węzły i krawędzie; suwaki pozwalają odsłonić więcej.</div></div></div>
  <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a class="active" href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
 </div>
+
 <section class="hero">
- <div class="kpi"><small>Słowa na mapie</small><strong id="nodes">—</strong><em>recent + learned vocabulary</em></div>
- <div class="kpi"><small>Widoczne skojarzenia</small><strong id="edges">—</strong><em>najsilniejsze krawędzie</em></div>
+ <div class="kpi"><small>Węzły widoczne</small><strong id="nodes">—</strong><em id="nodes-total">z — dostępnych</em></div>
+ <div class="kpi"><small>Krawędzie widoczne</small><strong id="edges">—</strong><em id="edges-total">z — dostępnych</em></div>
  <div class="kpi"><small>Najsilniejsze</small><strong id="strongest">—</strong><em id="strongest-w">—</em></div>
  <div class="kpi"><small>Reward trace</small><strong id="reward">—</strong><em>bieżący ślad nagrody</em></div>
  <div class="kpi"><small>Tick</small><strong id="tick">—</strong><em id="source">runtime</em></div>
 </section>
+
+<div class="toolbar">
+ <div class="toolgroup">
+  <label for="node-limit">Węzły</label><input id="node-limit" type="range" min="8" max="28" value="18" step="1"><output id="node-limit-out">18</output>
+  <label for="edge-limit">Krawędzie</label><input id="edge-limit" type="range" min="6" max="50" value="16" step="1"><output id="edge-limit-out">16</output>
+ </div>
+ <div class="toolgroup">
+  <button class="btn on" id="labels-auto">ETYKIETY AUTO</button>
+  <button class="btn" id="labels-all">WSZYSTKIE ETYKIETY</button>
+  <button class="btn" id="reset-layout">ROZŁÓŻ PONOWNIE</button>
+  <button class="btn" id="clear-selection">WYCZYŚĆ WYBÓR</button>
+ </div>
+</div>
+
 <section class="grid">
  <div class="card">
   <div class="head"><h2>Connectome word graph</h2><span class="live" id="live">LIVE</span></div>
-  <div class="graph" id="wrap"><canvas id="canvas"></canvas><div class="tip" id="tip"></div></div>
+  <div class="graph" id="wrap">
+   <canvas id="canvas"></canvas>
+   <div class="tip" id="tip"></div>
+   <div class="graph-hint">Kliknij słowo, aby podświetlić tylko jego bezpośrednie skojarzenia.</div>
+  </div>
   <div class="legend"><span><i class="lstruct"></i> struktura connectomu</span><span><i class="lpos"></i> dodatni learned bias</span><span><i class="lneg"></i> ujemny learned bias</span></div>
-  <div class="note">Mapa nie korzysta z osobnej bazy relacji. Każde słowo ma deterministyczną populację sensoryczną, jej sygnał propaguje się przez właściwą macierz connectomu, a reakcje użytkowników zmieniają plastic bias śladu uczenia.</div>
+  <div class="note">Mapa nie ma osobnej bazy relacji. Węzły są populacjami słów w connectomie, a waga krawędzi łączy strukturę macierzy, wyuczony plastic bias oraz bieżącą aktywność pary.</div>
  </div>
+
  <div class="side">
-  <div class="card ins"><div class="head"><h2>Wybrane słowo</h2><span id="event" class="live">—</span></div><div id="inspector" class="empty">Kliknij słowo na mapie.</div></div>
-  <div class="card"><div class="head"><h2>Najsilniejsze połączenia</h2><span id="method" class="live">connectome</span></div><div id="assoc" class="assoc"></div></div>
+  <div class="card ins">
+   <div class="head"><h2>Wybrane słowo</h2><span id="event" class="live">—</span></div>
+   <div id="inspector" class="empty">Kliknij słowo na mapie. Pozostałe węzły zostaną przygaszone, a jego relacje będą łatwiejsze do odczytania.</div>
+  </div>
+  <div class="card">
+   <div class="head"><h2>Najsilniejsze połączenia</h2><span id="method" class="live">CONNECTOME</span></div>
+   <div id="assoc" class="assoc"></div>
+  </div>
  </div>
 </section>
 </main>
+
 <script>
 const $=id=>document.getElementById(id),canvas=$("canvas"),ctx=canvas.getContext("2d"),wrap=$("wrap"),tip=$("tip");
-let data={nodes:[],edges:[]},points=new Map(),hover=null,selected=null,mouse={x:0,y:0},dpr=1;
+let raw={nodes:[],edges:[]},data={nodes:[],edges:[]},points=new Map(),hover=null,selected=null,mouse={x:-9999,y:-9999},dpr=1;
+let nodeLimit=18,edgeLimit=16,labelMode="auto",layoutEpoch=0;
 const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 const nfmt=n=>Number(n||0).toLocaleString("pl-PL");
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+
 function resize(){const r=wrap.getBoundingClientRect();dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0)}
 function seed(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
-function syncPoints(){const r=wrap.getBoundingClientRect(),cx=r.width/2,cy=r.height/2,R=Math.min(r.width,r.height)*.34;data.nodes.forEach((n,i)=>{if(points.has(n.id))return;const a=2*Math.PI*(i/Math.max(1,data.nodes.length)+seed(n.id)*.18);points.set(n.id,{x:cx+Math.cos(a)*R,y:cy+Math.sin(a)*R,vx:0,vy:0})});for(const key of [...points.keys()])if(!data.nodes.some(n=>n.id===key))points.delete(key)}
-function physics(){const r=wrap.getBoundingClientRect(),nodes=data.nodes,by=id=>points.get(id);for(let i=0;i<nodes.length;i++){const a=by(nodes[i].id);if(!a)continue;for(let j=i+1;j<nodes.length;j++){const b=by(nodes[j].id);if(!b)continue;let dx=b.x-a.x,dy=b.y-a.y,d2=Math.max(80,dx*dx+dy*dy),d=Math.sqrt(d2),f=1500/d2;a.vx-=dx/d*f;a.vy-=dy/d*f;b.vx+=dx/d*f;b.vy+=dy/d*f}}data.edges.forEach(e=>{const a=by(e.source),b=by(e.target);if(!a||!b)return;let dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy)),target=105+80*(1-Number(e.weight||0)),f=(d-target)*(.0009+.0022*Number(e.weight||0));a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f});const cx=r.width/2,cy=r.height/2;nodes.forEach(n=>{const p=by(n.id);if(!p)return;p.vx+=(cx-p.x)*.0007;p.vy+=(cy-p.y)*.0007;p.vx*=.90;p.vy*=.90;p.x=Math.max(30,Math.min(r.width-30,p.x+p.vx));p.y=Math.max(30,Math.min(r.height-30,p.y+p.vy))})}
+
+function rebuildData(){
+ const rankedEdges=(raw.edges||[]).slice().sort((a,b)=>Number(b.weight||0)-Number(a.weight||0));
+ const score=new Map((raw.nodes||[]).map(n=>[n.id,2.2*Number(n.salience||0)+1.1*Number(n.brain_score||0)]));
+ rankedEdges.forEach((e,i)=>{const bonus=Math.max(0,1-i/Math.max(1,rankedEdges.length));score.set(e.source,(score.get(e.source)||0)+bonus*Number(e.weight||0));score.set(e.target,(score.get(e.target)||0)+bonus*Number(e.weight||0))});
+ const keep=(raw.nodes||[]).slice().sort((a,b)=>(score.get(b.id)||0)-(score.get(a.id)||0)).slice(0,nodeLimit);
+ const keepIds=new Set(keep.map(n=>n.id));
+ const edges=rankedEdges.filter(e=>keepIds.has(e.source)&&keepIds.has(e.target)).slice(0,edgeLimit);
+ const connected=new Set(edges.flatMap(e=>[e.source,e.target]));
+ const nodes=keep.slice().sort((a,b)=>Number(connected.has(b.id))-Number(connected.has(a.id))||Number(b.salience||0)-Number(a.salience||0));
+ data={nodes,edges};
+ syncPoints();
+ renderStats();
+ renderRows();
+ if(selected&&!nodes.some(n=>n.id===selected.id)){selected=null;inspect(null)}
+}
+
+function resetLayout(){
+ points.clear();layoutEpoch++;
+ syncPoints(true);
+}
+
+function syncPoints(force=false){
+ const r=wrap.getBoundingClientRect(),cx=r.width/2,cy=r.height/2,R=Math.min(r.width,r.height)*.38;
+ const total=Math.max(1,data.nodes.length);
+ data.nodes.forEach((n,i)=>{
+  if(!force&&points.has(n.id))return;
+  const ring=i<8?0.54:0.90;
+  const a=2*Math.PI*(i/total+seed(n.id+"|"+layoutEpoch)*.14);
+  points.set(n.id,{x:cx+Math.cos(a)*R*ring,y:cy+Math.sin(a)*R*ring,vx:0,vy:0})
+ });
+ for(const key of [...points.keys()])if(!data.nodes.some(n=>n.id===key))points.delete(key)
+}
+
+function neighborhood(){
+ if(!selected)return null;
+ const set=new Set([selected.id]);
+ data.edges.forEach(e=>{if(e.source===selected.id)set.add(e.target);if(e.target===selected.id)set.add(e.source)});
+ return set
+}
+
+function physics(){
+ const r=wrap.getBoundingClientRect(),nodes=data.nodes,by=id=>points.get(id);
+ for(let i=0;i<nodes.length;i++){
+  const a=by(nodes[i].id);if(!a)continue;
+  for(let j=i+1;j<nodes.length;j++){
+   const b=by(nodes[j].id);if(!b)continue;
+   let dx=b.x-a.x,dy=b.y-a.y,d2=Math.max(180,dx*dx+dy*dy),d=Math.sqrt(d2);
+   const minDist=110;
+   const repel=5200/d2+(d<minDist?(minDist-d)*.045:0);
+   a.vx-=dx/d*repel;a.vy-=dy/d*repel;b.vx+=dx/d*repel;b.vy+=dy/d*repel
+  }
+ }
+ data.edges.forEach(e=>{
+  const a=by(e.source),b=by(e.target);if(!a||!b)return;
+  let dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy));
+  const target=150+70*(1-Number(e.weight||0));
+  const f=(d-target)*(.00065+.0015*Number(e.weight||0));
+  a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f
+ });
+ const cx=r.width/2,cy=r.height/2;
+ nodes.forEach(n=>{
+  const p=by(n.id);if(!p)return;
+  p.vx+=(cx-p.x)*.00032;p.vy+=(cy-p.y)*.00032;
+  p.vx*=.86;p.vy*=.86;
+  p.x=clamp(p.x+p.vx,48,r.width-48);p.y=clamp(p.y+p.vy,48,r.height-58)
+ })
+}
+
 function edgeColor(e,a){const learned=Number(e.learned||0);if(learned>.10)return "rgba(88,223,152,"+a+")";if(learned<-.10)return "rgba(255,116,116,"+a+")";return "rgba(109,168,255,"+a+")"}
-function draw(){physics();const r=wrap.getBoundingClientRect();ctx.clearRect(0,0,r.width,r.height);data.edges.forEach(e=>{const a=points.get(e.source),b=points.get(e.target);if(!a||!b)return;const w=Number(e.weight||0);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=edgeColor(e,.12+.72*w);ctx.lineWidth=.6+5*w;ctx.stroke()});hover=null;for(const n of data.nodes){const p=points.get(n.id);if(!p)continue;const rad=10+12*Number(n.salience||0);if(Math.hypot(mouse.x-p.x,mouse.y-p.y)<=rad+5)hover=n;ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);ctx.fillStyle=(selected&&selected.id===n.id)?"rgba(85,234,208,.95)":"rgba(18,39,55,.96)";ctx.fill();ctx.strokeStyle="rgba(85,234,208,"+(.25+.65*Number(n.brain_score||0))+")";ctx.lineWidth=1.2+2.2*Number(n.salience||0);ctx.stroke();ctx.fillStyle="#eaf5ff";ctx.font="600 11px system-ui";ctx.textAlign="center";ctx.fillText(n.id,p.x,p.y+rad+14)}if(hover){const p=points.get(hover.id);tip.style.display="block";tip.style.left=Math.min(r.width-270,p.x+16)+"px";tip.style.top=Math.min(r.height-120,p.y+16)+"px";tip.innerHTML="<b>"+esc(hover.id)+"</b><br>brain score "+Number(hover.brain_score||0).toFixed(3)+"<br>activation "+Number(hover.activation||0).toFixed(4)+"<br>plastic bias "+Number(hover.plastic_bias||0).toFixed(5)}else tip.style.display="none";requestAnimationFrame(draw)}
-function inspect(n){selected=n;if(!n){$("inspector").className="empty";$("inspector").textContent="Kliknij słowo na mapie.";return}$("inspector").className="";$("inspector").innerHTML="<h3 style='margin:0 0 9px'>"+esc(n.id)+"</h3><div class='meta'><div><small>brain score</small><b>"+Number(n.brain_score||0).toFixed(3)+"</b></div><div><small>salience</small><b>"+Number(n.salience||0).toFixed(3)+"</b></div><div><small>activation</small><b>"+Number(n.activation||0).toFixed(5)+"</b></div><div><small>plastic bias</small><b>"+Number(n.plastic_bias||0).toFixed(6)+"</b></div><div><small>liczba wystąpień</small><b>"+nfmt(n.count)+"</b></div><div><small>language reward</small><b>"+Number(n.language_reward||0).toFixed(3)+"</b></div></div>"}
-function render(d){data=d||{nodes:[],edges:[]};syncPoints();$("nodes").textContent=nfmt(d.node_count);$("edges").textContent=nfmt(d.edge_count);$("reward").textContent=Number(d.reward_trace||0).toFixed(3);$("tick").textContent=nfmt(d.ticks);$("source").textContent=d.source||"runtime";$("event").textContent=d.last_event||"—";$("method").textContent="CONNECTOME";const s=d.strongest;$("strongest").textContent=s?(s.source+" ↔ "+s.target):"—";$("strongest-w").textContent=s?("waga "+Number(s.weight||0).toFixed(3)):"brak krawędzi";$("assoc").innerHTML=(d.edges||[]).slice(0,18).map(e=>"<div class='row' data-a='"+esc(e.source)+"' data-b='"+esc(e.target)+"'><div><b>"+esc(e.source)+" ↔ "+esc(e.target)+"</b><small>structure "+Number(e.structural||0).toFixed(3)+" • learned <span class='"+(Number(e.learned||0)>=0?"pos":"neg")+"'>"+(Number(e.learned||0)>=0?"+":"")+Number(e.learned||0).toFixed(3)+"</span> • activity "+Number(e.pair_activation||0).toFixed(3)+"</small></div><b>"+Number(e.weight||0).toFixed(3)+"</b></div>").join("")||"<div class='empty'>Za mało wspólnej aktywności, żeby pokazać krawędzie.</div>";document.querySelectorAll(".row").forEach(x=>x.onclick=()=>{const n=data.nodes.find(n=>n.id===x.dataset.a)||data.nodes.find(n=>n.id===x.dataset.b);if(n)inspect(n)});if(selected){const fresh=data.nodes.find(n=>n.id===selected.id);if(fresh)inspect(fresh);else inspect(null)}$("live").textContent="LIVE"}
+
+function importantLabels(){
+ const ids=new Set(),edgeTop=data.edges.slice(0,8);
+ edgeTop.forEach(e=>{ids.add(e.source);ids.add(e.target)});
+ data.nodes.slice().sort((a,b)=>Number(b.salience||0)-Number(a.salience||0)).slice(0,8).forEach(n=>ids.add(n.id));
+ if(selected)ids.add(selected.id);if(hover)ids.add(hover.id);
+ return ids
+}
+
+function drawLabel(n,p,alpha){
+ const text=n.id,rad=11+13*Number(n.salience||0),y=p.y+rad+16;
+ ctx.font="600 11px system-ui";
+ const w=ctx.measureText(text).width+12;
+ ctx.fillStyle="rgba(4,10,16,"+(0.76*alpha)+")";
+ ctx.strokeStyle="rgba(38,62,82,"+(0.72*alpha)+")";
+ ctx.lineWidth=1;
+ ctx.beginPath();
+ if(ctx.roundRect)ctx.roundRect(p.x-w/2,y-12,w,18,7);else ctx.rect(p.x-w/2,y-12,w,18);
+ ctx.fill();ctx.stroke();
+ ctx.fillStyle="rgba(234,245,255,"+alpha+")";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(text,p.x,y-3)
+}
+
+function draw(){
+ physics();
+ const r=wrap.getBoundingClientRect(),near=neighborhood(),labels=importantLabels();
+ ctx.clearRect(0,0,r.width,r.height);
+
+ data.edges.forEach(e=>{
+  const a=points.get(e.source),b=points.get(e.target);if(!a||!b)return;
+  const focus=!selected||e.source===selected.id||e.target===selected.id;
+  const w=Number(e.weight||0),alpha=focus?(.16+.72*w):.035;
+  ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=edgeColor(e,alpha);ctx.lineWidth=focus?(.8+4.2*w):.55;ctx.stroke()
+ });
+
+ hover=null;
+ for(const n of data.nodes){
+  const p=points.get(n.id);if(!p)continue;
+  const rad=11+13*Number(n.salience||0);
+  if(Math.hypot(mouse.x-p.x,mouse.y-p.y)<=rad+7)hover=n;
+  const focus=!near||near.has(n.id),alpha=focus?1:.16;
+  ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);
+  ctx.fillStyle=(selected&&selected.id===n.id)?"rgba(85,234,208,.96)":"rgba(15,35,50,"+(.94*alpha)+")";
+  ctx.fill();
+  ctx.strokeStyle="rgba(85,234,208,"+((.23+.72*Number(n.brain_score||0))*alpha)+")";
+  ctx.lineWidth=(selected&&selected.id===n.id)?3.4:1.4+2.1*Number(n.salience||0);
+  ctx.stroke();
+  const showLabel=labelMode==="all"||labels.has(n.id)||!!near&&near.has(n.id);
+  if(showLabel)drawLabel(n,p,alpha)
+ }
+
+ if(hover){
+  const p=points.get(hover.id);
+  tip.style.display="block";
+  tip.style.left=Math.max(8,Math.min(r.width-250,p.x+18))+"px";
+  tip.style.top=Math.max(8,Math.min(r.height-132,p.y+18))+"px";
+  tip.innerHTML="<b style='font-size:12px'>"+esc(hover.id)+"</b><br>brain score <b>"+Number(hover.brain_score||0).toFixed(3)+"</b><br>activation <b>"+Number(hover.activation||0).toFixed(4)+"</b><br>plastic bias <b>"+Number(hover.plastic_bias||0).toFixed(5)+"</b>"
+ }else tip.style.display="none";
+ requestAnimationFrame(draw)
+}
+
+function inspect(n){
+ selected=n;
+ if(!n){
+  $("inspector").className="empty";
+  $("inspector").textContent="Kliknij słowo na mapie. Pozostałe węzły zostaną przygaszone, a jego relacje będą łatwiejsze do odczytania.";
+  renderRows();
+  return
+ }
+ $("inspector").className="";
+ const related=data.edges.filter(e=>e.source===n.id||e.target===n.id).sort((a,b)=>Number(b.weight||0)-Number(a.weight||0));
+ $("inspector").innerHTML="<div class='word-title'><h3>"+esc(n.id)+"</h3><span>"+related.length+" relacji</span></div><div class='meta'><div><small>brain score</small><b>"+Number(n.brain_score||0).toFixed(3)+"</b></div><div><small>salience</small><b>"+Number(n.salience||0).toFixed(3)+"</b></div><div><small>activation</small><b>"+Number(n.activation||0).toFixed(5)+"</b></div><div><small>plastic bias</small><b>"+Number(n.plastic_bias||0).toFixed(6)+"</b></div><div><small>liczba wystąpień</small><b>"+nfmt(n.count)+"</b></div><div><small>language reward</small><b>"+Number(n.language_reward||0).toFixed(3)+"</b></div></div>";
+ renderRows()
+}
+
+function renderStats(){
+ $("nodes").textContent=nfmt(data.nodes.length);$("nodes-total").textContent="z "+nfmt(raw.node_count||0)+" dostępnych";
+ $("edges").textContent=nfmt(data.edges.length);$("edges-total").textContent="z "+nfmt(raw.edge_count||0)+" dostępnych";
+ $("reward").textContent=Number(raw.reward_trace||0).toFixed(3);$("tick").textContent=nfmt(raw.ticks);$("source").textContent=raw.source||"runtime";
+ const s=(data.edges||[])[0];$("strongest").textContent=s?(s.source+" ↔ "+s.target):"—";$("strongest-w").textContent=s?("waga "+Number(s.weight||0).toFixed(3)):"brak krawędzi";
+ $("event").textContent=raw.last_event||"—";$("method").textContent="CONNECTOME"
+}
+
+function renderRows(){
+ let rows=(data.edges||[]).slice();
+ if(selected)rows=rows.filter(e=>e.source===selected.id||e.target===selected.id);
+ rows=rows.slice(0,14);
+ $("assoc").innerHTML=rows.map(e=>"<div class='row' data-a='"+esc(e.source)+"' data-b='"+esc(e.target)+"'><div><b>"+esc(e.source)+" ↔ "+esc(e.target)+"</b><small>structure "+Number(e.structural||0).toFixed(3)+" • learned <span class='"+(Number(e.learned||0)>=0?"pos":"neg")+"'>"+(Number(e.learned||0)>=0?"+":"")+Number(e.learned||0).toFixed(3)+"</span> • activity "+Number(e.pair_activation||0).toFixed(3)+"</small></div><b class='weight'>"+Number(e.weight||0).toFixed(3)+"</b></div>").join("")||"<div class='empty'>Brak widocznych połączeń dla tego ustawienia.</div>";
+ document.querySelectorAll(".row").forEach(x=>x.onclick=()=>{const preferred=selected?(x.dataset.a===selected.id?x.dataset.b:x.dataset.a):x.dataset.a;const n=data.nodes.find(n=>n.id===preferred);if(n)inspect(n)})
+}
+
+function render(d){
+ raw=d||{nodes:[],edges:[]};
+ rebuildData();
+ if(selected){const fresh=data.nodes.find(n=>n.id===selected.id);if(fresh){selected=fresh;inspect(fresh)}else inspect(null)}
+ $("live").textContent="LIVE"
+}
+
 async function update(){try{const r=await fetch("/api/associations",{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}}
-canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top});canvas.addEventListener("mouseleave",()=>{mouse.x=-9999;mouse.y=-9999});canvas.addEventListener("click",()=>{if(hover)inspect(hover)});
-window.addEventListener("resize",()=>{resize();syncPoints()});resize();draw();setInterval(update,1400);update();
+
+$("node-limit").oninput=e=>{nodeLimit=Number(e.target.value);$("node-limit-out").textContent=nodeLimit;rebuildData()};
+$("edge-limit").oninput=e=>{edgeLimit=Number(e.target.value);$("edge-limit-out").textContent=edgeLimit;rebuildData()};
+$("labels-auto").onclick=()=>{labelMode="auto";$("labels-auto").classList.add("on");$("labels-all").classList.remove("on")};
+$("labels-all").onclick=()=>{labelMode="all";$("labels-all").classList.add("on");$("labels-auto").classList.remove("on")};
+$("reset-layout").onclick=resetLayout;
+$("clear-selection").onclick=()=>inspect(null);
+canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top});
+canvas.addEventListener("mouseleave",()=>{mouse.x=-9999;mouse.y=-9999});
+canvas.addEventListener("click",()=>{if(hover)inspect(hover)});
+window.addEventListener("resize",()=>{resize();resetLayout()});
+resize();draw();setInterval(update,1400);update();
 </script>
 </body></html>"""
 
