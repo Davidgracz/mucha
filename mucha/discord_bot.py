@@ -15,16 +15,28 @@ from dataclasses import dataclass
 from pathlib import Path
 
 import discord
+import numpy as np
 import emoji as emoji_lib
 import pyttsx3
 import tomli_w
 from discord.ext import tasks
+from scipy.signal import resample_poly
+
+try:
+    from discord.ext import voice_recv
+except ImportError:
+    voice_recv = None
 
 try:
     from piper import PiperVoice, SynthesisConfig
 except ImportError:
     PiperVoice = None
     SynthesisConfig = None
+
+try:
+    from faster_whisper import WhisperModel
+except ImportError:
+    WhisperModel = None
 
 from .brain import FlyBrain
 from .config import Config
@@ -178,6 +190,32 @@ class MuchaClient(discord.Client):
         self._piper_model_path: str | None = None
         self._piper_lock = threading.Lock()
         self._piper_warning_shown = False
+        self._stt_buffers: dict[int, dict] = {}
+        self._stt_buffer_lock = threading.Lock()
+        self._stt_model = None
+        self._stt_model_key: tuple | None = None
+        self._stt_model_lock = threading.Lock()
+        self._stt_inference_lock = asyncio.Lock()
+        self._stt_pending = 0
+        self._last_tts_trace: dict[int, SentTrace] = {}
+        self._stt_debug: dict = {
+            "enabled": bool(cfg.voice.stt_enabled),
+            "status": "IDLE",
+            "model": cfg.voice.stt_model,
+            "device": cfg.voice.stt_device,
+            "compute_type": cfg.voice.stt_compute_type,
+            "user": None,
+            "user_id": None,
+            "guild": None,
+            "channel": None,
+            "text": "",
+            "duration": 0.0,
+            "language": cfg.voice.stt_language,
+            "language_probability": None,
+            "pending": 0,
+            "error": "",
+            "updated_at": time.time(),
+        }
         self._audio_debug: dict = {
             "status": "STARTUP",
             "stage": "init",
@@ -259,6 +297,17 @@ class MuchaClient(discord.Client):
             "tts_enabled",
             "tts_interval_seconds",
             "tts_volume",
+            "stt_enabled",
+            "stt_model",
+            "stt_language",
+            "stt_device",
+            "stt_compute_type",
+            "stt_cpu_threads",
+            "stt_silence_seconds",
+            "stt_min_segment_seconds",
+            "stt_max_segment_seconds",
+            "stt_min_chars",
+            "stt_beam_size",
             "random_audio_enabled",
         ]
         data = {
@@ -341,6 +390,17 @@ class MuchaClient(discord.Client):
             ("voice", "tts_enabled"): (bool, None, None),
             ("voice", "tts_interval_seconds"): (int, 1, 3600),
             ("voice", "tts_volume"): (float, 0.0, 2.0),
+            ("voice", "stt_enabled"): (bool, None, None),
+            ("voice", "stt_model"): (str, None, None),
+            ("voice", "stt_language"): (str, None, None),
+            ("voice", "stt_device"): (str, None, None),
+            ("voice", "stt_compute_type"): (str, None, None),
+            ("voice", "stt_cpu_threads"): (int, 1, 64),
+            ("voice", "stt_silence_seconds"): (float, 0.2, 5.0),
+            ("voice", "stt_min_segment_seconds"): (float, 0.2, 10.0),
+            ("voice", "stt_max_segment_seconds"): (float, 2.0, 60.0),
+            ("voice", "stt_min_chars"): (int, 1, 100),
+            ("voice", "stt_beam_size"): (int, 1, 10),
             ("voice", "random_audio_enabled"): (bool, None, None),
         }
 
@@ -358,6 +418,8 @@ class MuchaClient(discord.Client):
                 value = bool(value)
             elif kind is int:
                 value = int(value)
+            elif kind is str:
+                value = str(value).strip()
             else:
                 value = float(value)
             if minimum is not None:
@@ -415,7 +477,27 @@ class MuchaClient(discord.Client):
             seconds=max(1, int(self.cfg.voice.tts_interval_seconds))
         )
 
+        stt_model_fields = {
+            "voice.stt_model",
+            "voice.stt_language",
+            "voice.stt_device",
+            "voice.stt_compute_type",
+            "voice.stt_cpu_threads",
+        }
+        if any(key in stt_model_fields for key in changed):
+            with self._stt_model_lock:
+                self._stt_model = None
+                self._stt_model_key = None
+
         if self.is_ready():
+            if self.cfg.voice.stt_enabled:
+                if not self.stt_segment_loop.is_running():
+                    self.stt_segment_loop.start()
+                for vc in self.voice_clients:
+                    self._ensure_voice_listener(vc)
+            elif self.stt_segment_loop.is_running():
+                self.stt_segment_loop.cancel()
+
             if self.cfg.voice.tts_enabled:
                 if (
                     self.cfg.voice.enabled
@@ -1767,6 +1849,8 @@ class MuchaClient(discord.Client):
         self.console_loop.change_interval(seconds=max(0.25, self.cfg.console_ui.refresh_seconds))
         self.idle_loop.start()
         self.presence_loop.start()
+        if self.cfg.voice.stt_enabled:
+            self.stt_segment_loop.start()
         if self.cfg.voice.enabled:
             self.voice_loop.start()
             if self.cfg.voice.random_audio_enabled:
@@ -1818,6 +1902,10 @@ class MuchaClient(discord.Client):
 
     async def close(self) -> None:
         try:
+            if self.stt_segment_loop.is_running():
+                self.stt_segment_loop.cancel()
+            with self._stt_buffer_lock:
+                self._stt_buffers.clear()
             await self.web_ui.stop()
             self.console_ui.stop()
             self.brain.save()
