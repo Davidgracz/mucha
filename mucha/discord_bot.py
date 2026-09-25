@@ -1703,6 +1703,11 @@ class MuchaClient(discord.Client):
                 min(1.0, float(self.cfg.behavior.direct_reply_reward)),
             )
             if amount > 0.0:
+                if referenced.text:
+                    self.language.reinforce_text(
+                        referenced.text,
+                        min(0.20, amount * 0.50),
+                    )
                 async with self._brain_lock:
                     self.brain.inject(
                         "social:direct-reply",
