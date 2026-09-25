@@ -663,6 +663,330 @@ class MuchaClient(discord.Client):
             "updated_at": time.time(),
         }
 
+    async def _grant_negative_social(
+        self,
+        member: discord.Member,
+        event: str,
+        stimulus: str,
+        affinity_step: float,
+        guild: discord.Guild,
+        detail: str = "",
+        source_action: str | None = None,
+        source_learning_trace: tuple | None = None,
+        brain_penalty: float = 0.0,
+    ) -> float | None:
+        if (
+            not self.cfg.behavior.social_learning_enabled
+            or member.bot
+        ):
+            return None
+
+        now = time.monotonic()
+        cooldown = max(
+            1.0,
+            float(self.cfg.behavior.negative_contact_cooldown_seconds),
+        )
+        cooldown_key = (member.id, event)
+        last = self._social_negative_last.get(cooldown_key, 0.0)
+        if now - last < cooldown:
+            return None
+        self._social_negative_last[cooldown_key] = now
+
+        streak_window = max(
+            cooldown,
+            float(self.cfg.behavior.negative_streak_window_seconds),
+        )
+        streak = self._social_negative_streak.get(
+            member.id,
+            {"count": 0, "last": 0.0},
+        )
+        if now - float(streak.get("last", 0.0)) > streak_window:
+            streak = {"count": 0, "last": 0.0}
+        streak["count"] = int(streak.get("count", 0)) + 1
+        streak["last"] = now
+        self._social_negative_streak[member.id] = streak
+
+        multiplier = min(
+            max(
+                1.0,
+                float(self.cfg.behavior.negative_streak_max_multiplier),
+            ),
+            1.0
+            + max(
+                0.0,
+                float(self.cfg.behavior.negative_streak_multiplier_step),
+            )
+            * max(0, streak["count"] - 1),
+        )
+        delta = -min(
+            0.25,
+            max(0.0, float(affinity_step)) * multiplier,
+        )
+        if delta >= 0.0:
+            return None
+
+        new_affinity = self.language.adjust_user_affinity(
+            member.id,
+            member.display_name,
+            delta,
+        )
+
+        penalty = -min(
+            0.35,
+            max(0.0, abs(float(brain_penalty))) * multiplier,
+        )
+        async with self._brain_lock:
+            self.brain.inject(stimulus, 0.60, 128)
+            self.brain.inject(
+                f"{stimulus}:user:{member.id}",
+                0.48,
+                96,
+            )
+            self.brain.inject(
+                "social:user-avoids-me",
+                min(1.0, 0.50 + 0.08 * streak["count"]),
+                128,
+            )
+            self.brain.inject(
+                f"social:user-avoids-me:user:{member.id}",
+                min(1.0, 0.42 + 0.07 * streak["count"]),
+                96,
+            )
+            self.brain.inject(
+                "internal:social-failure",
+                min(1.0, 0.42 + 0.06 * streak["count"]),
+                112,
+            )
+            if streak["count"] >= 2:
+                self.brain.inject(
+                    "social:repeated-rejection",
+                    min(1.0, 0.52 + 0.08 * streak["count"]),
+                    144,
+                )
+                self.brain.inject(
+                    f"social:repeated-rejection:user:{member.id}",
+                    min(1.0, 0.45 + 0.07 * streak["count"]),
+                    96,
+                )
+            if penalty < 0.0:
+                if source_learning_trace is not None:
+                    self.brain.reward(
+                        penalty,
+                        action=source_action,
+                        trace=source_learning_trace,
+                    )
+                else:
+                    self.brain.reward(
+                        penalty,
+                        action=source_action,
+                    )
+            self.brain.step(1)
+
+        if penalty < 0.0:
+            self._record_reward(
+                penalty,
+                source_action,
+                event.lower(),
+                guild,
+            )
+
+        self._record_action(
+            "negative_social",
+            (
+                f"{event} • {member.display_name} • "
+                f"affinity {new_affinity:+.3f} • "
+                f"streak {streak['count']} ×{multiplier:.2f}"
+            ),
+            guild,
+        )
+        self._remember_social_event(
+            event,
+            (
+                (detail or stimulus)
+                + f" • affinity {new_affinity:+.3f}"
+                + f" • streak {streak['count']} ×{multiplier:.2f}"
+            ),
+            delta,
+            member,
+        )
+        return new_affinity
+
+    async def _mark_social_voice_arrival(
+        self,
+        guild: discord.Guild,
+        channel: discord.VoiceChannel,
+        action: str,
+        now: float | None = None,
+    ) -> None:
+        now = time.monotonic() if now is None else float(now)
+        if self._chaser_panic_remaining(guild.id, now) > 0.0:
+            self._voice_arrival_members.pop(guild.id, None)
+            self._voice_arrival_channel.pop(guild.id, None)
+            self._voice_arrival_learning.pop(guild.id, None)
+            return
+
+        self._voice_arrival_members[guild.id] = {
+            member.id
+            for member in channel.members
+            if not member.bot
+        }
+        self._voice_arrival_channel[guild.id] = channel.id
+        async with self._brain_lock:
+            learning_trace = self.brain.capture_learning_trace()
+        self._voice_arrival_learning[guild.id] = (
+            action,
+            learning_trace,
+            now,
+            channel.id,
+        )
+
+    def _affinity_rules_snapshot(self) -> dict:
+        behavior = self.cfg.behavior
+
+        positive = [
+            {
+                "event": "Bezpośredni reply do Muchy",
+                "delta": float(behavior.direct_reply_affinity_step),
+                "condition": "reply do wiadomości Muchy",
+            },
+            {
+                "event": "@Mucha / powiedzenie „Mucha” na VC",
+                "delta": float(behavior.mention_affinity_step),
+                "condition": "mention lub rozpoznane imię na voice",
+            },
+            {
+                "event": "Kontynuacja rozmowy",
+                "delta": float(behavior.continued_conversation_affinity_step),
+                "condition": "krótko po wypowiedzi Muchy",
+            },
+            {
+                "event": "Powtórzenie słowa Muchy",
+                "delta": float(behavior.word_reuse_affinity_step),
+                "condition": "słowo ma co najmniej 5 znaków",
+            },
+            {
+                "event": "Powtórzenie frazy Muchy",
+                "delta": float(behavior.phrase_reuse_affinity_step),
+                "condition": "fraza 2–3 wyrazy",
+            },
+            {
+                "event": "Wejście do VC Muchy",
+                "delta": float(behavior.voice_join_affinity_step),
+                "condition": "użytkownik sam dołącza do jej kanału",
+            },
+            {
+                "event": "Zostanie z Muchą na VC",
+                "delta": float(behavior.voice_stay_affinity_step),
+                "condition": f"po {int(behavior.voice_stay_seconds)} s",
+            },
+            {
+                "event": "Zostanie po TTS",
+                "delta": float(behavior.tts_stay_affinity_step),
+                "condition": f"po {int(behavior.tts_stay_seconds)} s",
+            },
+        ]
+        for emoji, weight in POSITIVE_REACTION_WEIGHT.items():
+            positive.append({
+                "event": f"Reakcja {emoji}",
+                "delta": float(behavior.user_affinity_positive_step)
+                * float(weight),
+                "condition": "reakcja pod wiadomością Muchy",
+            })
+
+        negative = [
+            {
+                "event": "Wyjście/przeniesienie po wejściu Muchy",
+                "delta": -float(
+                    behavior.voice_leave_after_join_affinity_step
+                ),
+                "condition": (
+                    f"do {int(behavior.voice_leave_after_join_seconds)} s "
+                    "po wejściu Muchy; tylko osoba obecna przed jej wejściem"
+                ),
+            },
+            {
+                "event": "Wyjście/przeniesienie po TTS",
+                "delta": -float(behavior.tts_leave_affinity_step),
+                "condition": (
+                    f"do {int(behavior.tts_leave_seconds)} s "
+                    "od rozpoczęcia TTS"
+                ),
+            },
+        ]
+        for emoji, weight in NEGATIVE_REACTION_WEIGHT.items():
+            negative.append({
+                "event": f"Reakcja {emoji}",
+                "delta": -float(behavior.user_affinity_negative_step)
+                * float(weight),
+                "condition": "reakcja pod wiadomością Muchy",
+            })
+
+        verbal = []
+        seen: set[tuple[str, float]] = set()
+        for _, label, severity in VERBAL_REJECTION_PATTERNS:
+            key = (label, float(severity))
+            if key in seen:
+                continue
+            seen.add(key)
+            delta = -min(
+                0.30,
+                max(
+                    0.01,
+                    float(behavior.user_affinity_negative_step)
+                    * (0.45 + 1.05 * float(severity)),
+                ),
+            )
+            verbal.append({
+                "phrase": label,
+                "severity": float(severity),
+                "delta": delta,
+            })
+        verbal.sort(
+            key=lambda row: (row["severity"], row["phrase"]),
+            reverse=True,
+        )
+
+        return {
+            "positive": positive,
+            "negative": negative,
+            "verbal_rejections": verbal,
+            "positive_cooldown_seconds": int(
+                behavior.positive_contact_cooldown_seconds
+            ),
+            "negative_cooldown_seconds": int(
+                behavior.negative_contact_cooldown_seconds
+            ),
+            "negative_streak": {
+                "window_seconds": int(
+                    behavior.negative_streak_window_seconds
+                ),
+                "step": float(
+                    behavior.negative_streak_multiplier_step
+                ),
+                "max_multiplier": float(
+                    behavior.negative_streak_max_multiplier
+                ),
+            },
+            "thresholds": {
+                "familiar": float(
+                    behavior.familiar_affinity_threshold
+                ),
+                "liked": 0.35,
+                "avoid": float(behavior.user_avoid_threshold),
+            },
+            "avoid_effects": [
+                "nie odpisuje użytkownikowi",
+                "nie reaguje na jego wiadomości",
+                "omija kanały voice z tym użytkownikiem",
+                "próbuje wyjść, gdy użytkownik wejdzie na jej VC",
+            ],
+            "chaser_exception": (
+                "Podczas aktywnej ucieczki przed Chaserem social avoidance "
+                "nie ogranicza wyboru kanału i naturalne kary za uciekanie z VC "
+                "są pomijane."
+            ),
+        }
+
     async def _grant_positive_social(
         self,
         member: discord.Member,
