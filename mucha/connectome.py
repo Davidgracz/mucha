@@ -15,6 +15,7 @@ class Connectome:
     output: np.ndarray
     modulatory: np.ndarray
     metadata: dict
+    neuron_meta: dict[str, np.ndarray]
 
     @property
     def n_neurons(self) -> int:
@@ -27,6 +28,7 @@ class Connectome:
         roots_path = d / "root_ids.npy"
         pools_path = d / "pools.npz"
         meta_path = d / "manifest.json"
+        neuron_meta_path = d / "neuron_meta.npz"
 
         missing = [p.name for p in (matrix_path, roots_path, pools_path, meta_path) if not p.exists()]
         if missing:
@@ -39,6 +41,14 @@ class Connectome:
         root_ids = np.load(roots_path, allow_pickle=False)
         pools = np.load(pools_path, allow_pickle=False)
         metadata = json.loads(meta_path.read_text(encoding="utf-8"))
+        neuron_meta: dict[str, np.ndarray] = {}
+        if neuron_meta_path.exists():
+            packed = np.load(neuron_meta_path, allow_pickle=False)
+            neuron_meta = {
+                key: packed[key]
+                for key in packed.files
+                if len(packed[key]) == len(root_ids)
+            }
         return cls(
             matrix=matrix,
             root_ids=root_ids,
@@ -46,4 +56,5 @@ class Connectome:
             output=pools["output"].astype(np.int32),
             modulatory=pools["modulatory"].astype(np.int32),
             metadata=metadata,
+            neuron_meta=neuron_meta,
         )
