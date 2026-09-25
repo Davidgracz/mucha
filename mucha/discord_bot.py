@@ -2964,8 +2964,6 @@ class MuchaClient(discord.Client):
         pcm: bytes,
         duration: float,
     ) -> None:
-        self._stt_pending += 1
-        self._stt_debug["pending"] = self._stt_pending
         try:
             guild = self.get_guild(int(segment["guild_id"]))
             if guild is None:
@@ -3333,6 +3331,8 @@ class MuchaClient(discord.Client):
                     "updated_at": time.time(),
                 })
                 continue
+            self._stt_pending += 1
+            self._stt_debug["pending"] = self._stt_pending
             asyncio.create_task(
                 self._transcribe_voice_segment(
                     segment,
