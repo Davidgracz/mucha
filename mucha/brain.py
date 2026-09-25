@@ -413,6 +413,168 @@ class FlyBrain:
             for i, v in zip(idx_cpu, values_cpu)
         ]
 
+    def connectome_visual_snapshot(
+        self,
+        count: int = 42,
+        edge_limit: int = 140,
+    ) -> dict:
+        """Compact live graph for the dashboard.
+
+        This is a functional view of the currently active part of the
+        connectome, not an anatomical reconstruction. Matrix rows are targets
+        and columns are sources because propagation uses matrix.dot(state).
+        """
+        count = max(12, min(int(count), 72, self.c.n_neurons))
+        edge_limit = max(16, min(int(edge_limit), 240))
+
+        state_cpu = self.compute.to_cpu(self.state).astype(
+            np.float32,
+            copy=False,
+        )
+        eligibility_cpu = self.compute.to_cpu(self.eligibility).astype(
+            np.float32,
+            copy=False,
+        )
+        bias_cpu = self.compute.to_cpu(self.plastic_bias).astype(
+            np.float32,
+            copy=False,
+        )
+
+        def strongest(pool: np.ndarray, limit: int) -> list[int]:
+            if limit <= 0 or len(pool) == 0:
+                return []
+            pool = np.asarray(pool, dtype=np.int32)
+            values = np.abs(state_cpu[pool])
+            k = min(limit, len(pool))
+            if k >= len(pool):
+                order = np.argsort(values)[::-1]
+            else:
+                part = np.argpartition(values, -k)[-k:]
+                order = part[np.argsort(values[part])[::-1]]
+            return [int(pool[i]) for i in order[:k]]
+
+        # Keep each functional pool visible even when the globally strongest
+        # cells happen to come from only one region.
+        sensory_n = max(3, count // 6)
+        output_n = max(4, count // 5)
+        modulatory_n = max(2, count // 10)
+        selected: list[int] = []
+        selected.extend(strongest(self.c.sensory, sensory_n))
+        selected.extend(strongest(self.c.output, output_n))
+        selected.extend(strongest(self.c.modulatory, modulatory_n))
+
+        abs_state = np.abs(state_cpu)
+        remaining = max(0, count - len(set(selected)))
+        if remaining:
+            k = min(
+                self.c.n_neurons,
+                max(count * 4, remaining),
+            )
+            if k >= self.c.n_neurons:
+                candidates = np.argsort(abs_state)[::-1]
+            else:
+                part = np.argpartition(abs_state, -k)[-k:]
+                candidates = part[np.argsort(abs_state[part])[::-1]]
+            selected.extend(int(i) for i in candidates)
+
+        unique: list[int] = []
+        seen: set[int] = set()
+        for idx in selected:
+            if idx in seen:
+                continue
+            seen.add(idx)
+            unique.append(idx)
+            if len(unique) >= count:
+                break
+
+        selected_arr = np.asarray(unique, dtype=np.int32)
+        sensory_set = set(int(i) for i in self.c.sensory.tolist())
+        output_set = set(int(i) for i in self.c.output.tolist())
+        modulatory_set = set(int(i) for i in self.c.modulatory.tolist())
+
+        nodes = []
+        for idx in unique:
+            roles = []
+            if idx in sensory_set:
+                roles.append("sensory")
+            if idx in output_set:
+                roles.append("output")
+            if idx in modulatory_set:
+                roles.append("modulatory")
+            if not roles:
+                roles.append("internal")
+            nodes.append({
+                "id": str(int(self.c.root_ids[idx])),
+                "index": int(idx),
+                "activation": float(state_cpu[idx]),
+                "eligibility": float(eligibility_cpu[idx]),
+                "bias": float(bias_cpu[idx]),
+                "role": roles[0],
+                "roles": roles,
+            })
+
+        edges: list[dict] = []
+        if len(selected_arr) >= 2:
+            sub = self.c.matrix[selected_arr][:, selected_arr].tocoo()
+            ranked = []
+            for row, col, weight in zip(
+                sub.row,
+                sub.col,
+                sub.data,
+            ):
+                if row == col:
+                    continue
+                source_idx = int(selected_arr[int(col)])
+                target_idx = int(selected_arr[int(row)])
+                weight_f = float(weight)
+                activity = (
+                    0.20
+                    + abs(float(state_cpu[source_idx]))
+                    + 0.35 * abs(float(state_cpu[target_idx]))
+                )
+                importance = abs(weight_f) * activity
+                ranked.append(
+                    (
+                        importance,
+                        source_idx,
+                        target_idx,
+                        weight_f,
+                    )
+                )
+            ranked.sort(key=lambda item: item[0], reverse=True)
+            for importance, source_idx, target_idx, weight in ranked[:edge_limit]:
+                edges.append({
+                    "source": str(int(self.c.root_ids[source_idx])),
+                    "target": str(int(self.c.root_ids[target_idx])),
+                    "weight": float(weight),
+                    "importance": float(importance),
+                })
+
+        role_counts = {
+            "sensory": sum(1 for n in nodes if "sensory" in n["roles"]),
+            "internal": sum(1 for n in nodes if n["role"] == "internal"),
+            "modulatory": sum(
+                1 for n in nodes if "modulatory" in n["roles"]
+            ),
+            "output": sum(1 for n in nodes if "output" in n["roles"]),
+        }
+
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "role_counts": role_counts,
+            "selected_neurons": len(nodes),
+            "selected_edges": len(edges),
+            "total_neurons": int(self.c.n_neurons),
+            "total_connections": int(self.c.matrix.nnz),
+            "mean_abs_activation": float(
+                np.mean(np.abs(state_cpu)) if len(state_cpu) else 0.0
+            ),
+            "max_abs_activation": float(
+                np.max(np.abs(state_cpu)) if len(state_cpu) else 0.0
+            ),
+        }
+
     def learning_since_start_diagnostics(self) -> dict:
         current_bias = (
             self.compute.to_cpu(self.plastic_bias)
