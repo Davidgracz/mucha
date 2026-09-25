@@ -247,6 +247,7 @@ class MuchaClient(discord.Client):
             "error": "",
             "updated_at": time.time(),
         }
+        self._audio_playback_token = 0
         self._audio_debug: dict = {
             "status": "STARTUP",
             "stage": "init",
@@ -3189,7 +3190,8 @@ class MuchaClient(discord.Client):
                     member.guild,
                     reason="discord_voice_state_left",
                 )
-                self._stt_buffers.clear()
+                with self._stt_buffer_lock:
+                    self._stt_buffers.clear()
             if (
                 after.channel is not None
                 and self._is_voice_guild_blocked(member.guild)
@@ -3764,12 +3766,70 @@ class MuchaClient(discord.Client):
             volume=volume,
         )
 
+    def _audio_playback_done(
+        self,
+        token: int,
+        guild_id: int,
+        label: str,
+        error: Exception | None,
+    ) -> None:
+        if int(self._audio_debug.get("playback_token", -1)) != token:
+            return
+
+        guild = self.get_guild(guild_id)
+        vc = guild.voice_client if guild is not None else None
+        connected = bool(vc is not None and vc.is_connected())
+        self._audio_debug.update({
+            "status": "IDLE" if error is None else "ERROR",
+            "stage": "finished",
+            "playing": False,
+            "connected": connected,
+            "error": "" if error is None else f"{label}: {error}",
+            "channel": (
+                getattr(vc.channel, "name", None)
+                if connected and vc is not None
+                else None
+            ),
+            "updated_at": time.time(),
+        })
+
+    def _play_voice_source(
+        self,
+        vc: discord.VoiceClient,
+        source: discord.AudioSource,
+        label: str,
+    ) -> int:
+        self._audio_playback_token += 1
+        token = self._audio_playback_token
+        loop = asyncio.get_running_loop()
+        guild_id = vc.guild.id
+        self._audio_debug["playback_token"] = token
+
+        def finished(error: Exception | None) -> None:
+            loop.call_soon_threadsafe(
+                self._audio_playback_done,
+                token,
+                guild_id,
+                label,
+                error,
+            )
+
+        vc.play(source, after=finished)
+        return token
+
     async def _verify_voice_playback(
         self,
         vc: discord.VoiceClient,
         label: str,
+        token: int | None = None,
     ) -> None:
         await asyncio.sleep(0.35)
+        if (
+            token is not None
+            and int(self._audio_debug.get("playback_token", -1)) != token
+        ):
+            return
+
         connected = bool(vc.is_connected())
         playing = bool(vc.is_playing()) if connected else False
         if not connected:
@@ -3778,6 +3838,10 @@ class MuchaClient(discord.Client):
                 reason=f"{label}_voice_disconnected",
             )
             return
+
+        if not playing and self._audio_debug.get("stage") == "finished":
+            return
+
         self._audio_debug.update({
             "playing": playing,
             "connected": connected,
@@ -4624,9 +4688,17 @@ class MuchaClient(discord.Client):
                 source_path,
                 self.cfg.voice.chaser_scream_volume,
             )
-            vc.play(source)
+            playback_token = self._play_voice_source(
+                vc,
+                source,
+                "chaser_scream",
+            )
             asyncio.create_task(
-                self._verify_voice_playback(vc, "chaser_scream")
+                self._verify_voice_playback(
+                    vc,
+                    "chaser_scream",
+                    playback_token,
+                )
             )
 
             self._audio_debug.update({
@@ -4783,7 +4855,11 @@ class MuchaClient(discord.Client):
                 wav_path,
                 self.cfg.voice.tts_volume,
             )
-            vc.play(source)
+            playback_token = self._play_voice_source(
+                vc,
+                source,
+                "tts",
+            )
             self._last_tts_trace[guild.id] = SentTrace(
                 trigrams=trigrams,
                 created=time.monotonic(),
@@ -4808,7 +4884,11 @@ class MuchaClient(discord.Client):
                 ],
             )
             asyncio.create_task(
-                self._verify_voice_playback(vc, "tts")
+                self._verify_voice_playback(
+                    vc,
+                    "tts",
+                    playback_token,
+                )
             )
             self._audio_debug.update({
                 "status": "PLAYING",
@@ -4900,9 +4980,17 @@ class MuchaClient(discord.Client):
                 )
                 self.brain.step(2)
 
-            vc.play(source)
+            playback_token = self._play_voice_source(
+                vc,
+                source,
+                "rare_audio",
+            )
             asyncio.create_task(
-                self._verify_voice_playback(vc, "rare_audio")
+                self._verify_voice_playback(
+                    vc,
+                    "rare_audio",
+                    playback_token,
+                )
             )
             self._last_brain_event = (
                 f"RARE AUDIO • {guild.name} • {channel_name}"
@@ -6024,9 +6112,17 @@ class MuchaClient(discord.Client):
                     wav_path,
                     self.cfg.voice.tts_volume,
                 )
-                vc.play(source)
+                playback_token = self._play_voice_source(
+                    vc,
+                    source,
+                    "audiotest",
+                )
                 asyncio.create_task(
-                    self._verify_voice_playback(vc, "audiotest")
+                    self._verify_voice_playback(
+                        vc,
+                        "audiotest",
+                        playback_token,
+                    )
                 )
                 self._audio_debug.update({
                     "status": "PLAYING",
