@@ -761,3 +761,44 @@ Sam brak odpowiedzi lub AFK nie obniża affinity.
 Kolejne negatywne sygnały w oknie `negative_streak_window_seconds` zwiększają mnożnik o `negative_streak_multiplier_step`, maksymalnie do `negative_streak_max_multiplier`. Pozytywne interakcje stopniowo wygaszają ten streak.
 
 Podczas aktywnej ucieczki przed Chaserem naturalne kary za opuszczanie kanału po wejściu Muchy są pomijane, a social avoidance nie ogranicza kanału ucieczki.
+
+
+## Lokalna konfiguracja VPS
+
+`config.toml` jest bazową konfiguracją śledzoną przez Git. Zmiany wykonywane z dashboardu są zapisywane do `config.local.toml`, który jest ignorowany przez Git.
+
+Przy starcie Mucha ładuje `config.toml`, a następnie nakłada na niego wartości z `config.local.toml`. Dzięki temu nowe opcje z repo są automatycznie dostępne, a ustawienia konkretnego VPS nie powodują konfliktów przy `git pull`.
+
+Jednorazowa migracja ze starszej instalacji może polegać na skopiowaniu lokalnie zmodyfikowanego `config.toml` do `config.local.toml`, a następnie przywróceniu bazowego `config.toml` z repo. Stare klucze językowe `min_tokens_before_speaking`, `min_unique_tokens_before_speaking` i `max_generated_tokens` są ignorowane, gdy bazowy config zawiera nowe odpowiedniki znakowe.
+
+## Hybrydowe uczenie języka
+
+Model językowy uczy się jednocześnie przejść znakowych oraz słownych. Warstwa słów zapisuje lokalnie w SQLite:
+
+- unigramy słów,
+- bigramy słów,
+- trigramy słów,
+- początki wypowiedzi,
+- reward i czas ostatniego wystąpienia.
+
+Świeżo nauczone przejścia mogą dostać czasowy `word_recent_boost`, dzięki czemu nowe zwroty zaczynają wpływać na generację szybciej, bez usuwania starszej pamięci. Character model pozostaje fallbackiem i nadal odpowiada za bardziej swobodne składanie tekstu.
+
+Domyślne ustawienia szybszego uczenia:
+
+```toml
+min_chars_before_speaking = 800
+min_unique_chars_before_speaking = 16
+max_generated_chars = 120
+hybrid_word_enabled = true
+word_model_probability = 0.90
+word_max_tokens = 14
+word_recent_window_seconds = 3600
+word_recent_boost = 2.00
+word_frequency_exponent = 0.95
+word_arousal_flatten = 0.12
+char_frequency_exponent = 0.90
+char_arousal_flatten = 0.15
+word_reward_scale = 0.12
+```
+
+Te parametry są dostępne także w `/config`.
