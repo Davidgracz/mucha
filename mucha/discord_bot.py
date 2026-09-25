@@ -2992,6 +2992,7 @@ class MuchaClient(discord.Client):
             "reaction_debug": reaction_debug,
             "learning_debug": self.brain.learning_diagnostics(),
             "learning_since_start": learning_since_start,
+            "affinity_rules": self._affinity_rules_snapshot(),
             "social_debug": dict(self._social_debug),
             "user_affinities": self.language.user_affinities(50),
             "word_feedback": self.language.top_word_feedback(30),
