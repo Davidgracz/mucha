@@ -701,3 +701,23 @@ social:user-continued-conversation
 Jeśli użytkownik powie do Muchy wulgarną frazę odrzucającą albo zrobi to do 20 sekund po jej TTS, może to dać ujemny reward do śladu neuronalnego ostatniego TTS oraz obniżyć affinity. Powtarzanie słów/fraz z TTS i normalne kontynuowanie rozmowy mogą dać dodatni feedback.
 
 W `/details` jest kafel `Voice Recognition / STT` z ostatnią transkrypcją, użytkownikiem, językiem, pewnością i kolejką. Ustawienia STT są dostępne również w `/config`.
+
+
+## Learning Since Startup
+
+Zakładka `/details` zawiera kafel `Learning Since Startup`, który zeruje się przy każdym uruchomieniu procesu i pokazuje zmiany od tego momentu.
+
+Kafel mierzy:
+
+- nowe znaki nauczone przez model języka,
+- nowe próbki wiadomości/wypowiedzi,
+- nowe unikalne przejścia znakowe,
+- liczbę udanych transkrypcji voice,
+- liczbę dodatnich i ujemnych reward events,
+- skumulowany dodatni i ujemny reward,
+- liczbę unikalnych neuronów zmienionych przez `brain.reward()`,
+- sumę operacji aktualizacji bias,
+- średnie i maksymalne skumulowane `|Δ bias|`,
+- neuron FlyWire `root_id`, który dostał największą skumulowaną zmianę od rewardów.
+
+Metryki reward-learning są liczone bezpośrednio w `FlyBrain.reward()`. Są oddzielone od zwykłego `plasticity_decay`, dzięki czemu zanik wcześniej zapisanych biasów nie jest błędnie prezentowany jako nowa nauka.
