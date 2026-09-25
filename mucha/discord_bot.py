@@ -493,9 +493,12 @@ class MuchaClient(discord.Client):
             ("voice", "random_audio_enabled"): (bool, None, None),
         }
 
-        config_path = Path("config.toml")
-        with config_path.open("rb") as handle:
-            raw = tomllib.load(handle)
+        config_path = Path("config.local.toml")
+        if config_path.exists():
+            with config_path.open("rb") as handle:
+                raw = tomllib.load(handle)
+        else:
+            raw = {}
 
         changed = []
         for (section, key), (kind, minimum, maximum) in allowed.items():
