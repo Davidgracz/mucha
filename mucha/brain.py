@@ -52,6 +52,12 @@ class FlyBrain:
         )
         self._connectome_visual_stable_indices: list[int] = []
         self._connectome_visual_stable_updated = 0.0
+        self._neuro_map_coords = np.zeros((n, 3), dtype=np.float32)
+        self._neuro_map_real_mask = np.zeros(n, dtype=bool)
+        self._neuro_map_reference_indices = np.empty(0, dtype=np.int32)
+        self._neuro_map_regions: dict[str, np.ndarray] = {}
+        self._action_output_pools: dict[str, np.ndarray] = {}
+        self._init_neuro_map_metadata()
         self.last_learning: dict = {
             "amount": 0.0,
             "action": None,
@@ -79,6 +85,150 @@ class FlyBrain:
             self.c.n_neurons,
             dtype=np.float32,
         )
+
+    def _init_neuro_map_metadata(self) -> None:
+        """Prepare compact spatial/annotation caches for the web neuro-map."""
+        n = self.c.n_neurons
+        meta = self.c.neuron_meta or {}
+
+        def string_meta(key: str) -> np.ndarray:
+            arr = meta.get(key)
+            if arr is None or len(arr) != n:
+                return np.full(n, "", dtype="<U1")
+            return np.asarray(arr).astype(str, copy=False)
+
+        x = np.asarray(
+            meta.get("x", np.full(n, np.nan, dtype=np.float32)),
+            dtype=np.float32,
+        )
+        y = np.asarray(
+            meta.get("y", np.full(n, np.nan, dtype=np.float32)),
+            dtype=np.float32,
+        )
+        z = np.asarray(
+            meta.get("z", np.full(n, np.nan, dtype=np.float32)),
+            dtype=np.float32,
+        )
+        real_mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+        self._neuro_map_real_mask = real_mask
+
+        coords = np.zeros((n, 3), dtype=np.float32)
+        raw_axes = (x, y, z)
+        for axis, raw in enumerate(raw_axes):
+            finite = raw[np.isfinite(raw)]
+            if len(finite) >= 8:
+                low, high = np.percentile(finite, [1.0, 99.0])
+                if high <= low:
+                    low = float(np.min(finite))
+                    high = float(np.max(finite))
+                span = max(1e-6, float(high - low))
+                coords[:, axis] = np.clip(
+                    (raw - low) / span,
+                    0.0,
+                    1.0,
+                )
+            else:
+                coords[:, axis] = np.nan
+
+        # Deterministic brain-shaped fallback for neurons without coordinates.
+        # It is clearly flagged in the UI and never presented as anatomy.
+        rng = np.random.default_rng(self.cfg.seed + 90210)
+        angle = rng.uniform(0.0, 2.0 * np.pi, size=n)
+        radius = np.sqrt(rng.uniform(0.0, 1.0, size=n))
+        fallback = np.empty((n, 3), dtype=np.float32)
+        fallback[:, 0] = (
+            0.5 + 0.46 * radius * np.cos(angle)
+        ).astype(np.float32)
+        fallback[:, 1] = (
+            0.5 + 0.36 * radius * np.sin(angle)
+        ).astype(np.float32)
+        fallback[:, 2] = np.clip(
+            0.5 + rng.normal(0.0, 0.22, size=n),
+            0.02,
+            0.98,
+        ).astype(np.float32)
+
+        side = string_meta("side")
+        left = np.char.find(np.char.lower(side), "left") >= 0
+        right = np.char.find(np.char.lower(side), "right") >= 0
+        fallback[left, 0] = np.minimum(
+            fallback[left, 0],
+            0.47,
+        )
+        fallback[right, 0] = np.maximum(
+            fallback[right, 0],
+            0.53,
+        )
+
+        missing = ~real_mask
+        coords[missing] = fallback[missing]
+        coords[~np.isfinite(coords)] = fallback[~np.isfinite(coords)]
+        self._neuro_map_coords = coords
+
+        # Region grouping uses Codex class first, then super_class. These are
+        # biological annotations, unlike Mucha's artificial Discord readouts.
+        cell_class = string_meta("cell_class")
+        super_class = string_meta("super_class")
+        region_labels = np.where(
+            np.char.str_len(cell_class) > 0,
+            cell_class,
+            super_class,
+        )
+        regions: dict[str, list[int]] = {}
+        for idx, raw_label in enumerate(region_labels):
+            label = str(raw_label).strip()
+            if not label:
+                continue
+            regions.setdefault(label, []).append(idx)
+        self._neuro_map_regions = {
+            label: np.asarray(indices, dtype=np.int32)
+            for label, indices in regions.items()
+            if len(indices) >= 2
+        }
+
+        self._action_output_pools = {
+            action: self._subset(
+                "output:action:" + action,
+                self.c.output,
+                128,
+            )
+            for action in self.ACTIONS
+        }
+
+        # Fixed low-density point cloud gives the eye a stable outline of the
+        # whole brain while only active neurons are drawn brightly.
+        sample_n = min(1800, n)
+        sample_rng = np.random.default_rng(self.cfg.seed + 4242)
+        if sample_n >= n:
+            ref = np.arange(n, dtype=np.int32)
+        else:
+            real_idx = np.flatnonzero(real_mask)
+            keep_real = min(len(real_idx), int(sample_n * 0.85))
+            chosen: list[int] = []
+            if keep_real:
+                chosen.extend(
+                    sample_rng.choice(
+                        real_idx,
+                        size=keep_real,
+                        replace=False,
+                    ).astype(np.int32).tolist()
+                )
+            remaining = sample_n - len(chosen)
+            if remaining:
+                pool = np.setdiff1d(
+                    np.arange(n, dtype=np.int32),
+                    np.asarray(chosen, dtype=np.int32),
+                    assume_unique=False,
+                )
+                chosen.extend(
+                    sample_rng.choice(
+                        pool,
+                        size=min(remaining, len(pool)),
+                        replace=False,
+                    ).astype(np.int32).tolist()
+                )
+            ref = np.asarray(chosen, dtype=np.int32)
+        self._neuro_map_reference_indices = ref
 
     @property
     def backend_name(self) -> str:
@@ -692,6 +842,185 @@ class FlyBrain:
             "stable_age_seconds": float(stable_age),
             "refresh_in_seconds": float(refresh_in),
             "replacements": int(replacements),
+        }
+
+    def neuro_map_snapshot(
+        self,
+        count: int = 220,
+        projection: str = "xy",
+    ) -> dict:
+        """Return a spatial activity map with biological annotations.
+
+        Coordinates come from FlyWire Codex marked-neuron coordinates when
+        neuron_meta.npz is present. Missing positions use an explicit synthetic
+        fallback so the dashboard remains usable on older caches.
+        """
+        projection = str(projection or "xy").lower()
+        if projection not in {"xy", "xz", "yz"}:
+            projection = "xy"
+
+        count = max(40, min(int(count), 360, self.c.n_neurons))
+        state_cpu = self.compute.to_cpu(self.state).astype(
+            np.float32,
+            copy=False,
+        )
+        eligibility_cpu = self.compute.to_cpu(self.eligibility).astype(
+            np.float32,
+            copy=False,
+        )
+        bias_cpu = self.compute.to_cpu(self.plastic_bias).astype(
+            np.float32,
+            copy=False,
+        )
+        abs_state = np.abs(state_cpu)
+
+        if count >= self.c.n_neurons:
+            selected = np.argsort(abs_state)[::-1].astype(np.int32)
+        else:
+            part = np.argpartition(abs_state, -count)[-count:]
+            selected = part[
+                np.argsort(abs_state[part])[::-1]
+            ].astype(np.int32)
+
+        meta = self.c.neuron_meta or {}
+
+        def text_at(key: str, idx: int) -> str:
+            arr = meta.get(key)
+            if arr is None or len(arr) != self.c.n_neurons:
+                return ""
+            return str(arr[idx]).strip()
+
+        # Vectorized direct connectivity into Mucha's artificial action
+        # readout populations. This is system influence, not a biological claim.
+        action_influence: dict[str, np.ndarray] = {}
+        for action, targets in self._action_output_pools.items():
+            if len(targets) == 0 or len(selected) == 0:
+                action_influence[action] = np.zeros(
+                    len(selected),
+                    dtype=np.float32,
+                )
+                continue
+            sub = abs(self.c.matrix[targets][:, selected])
+            action_influence[action] = np.asarray(
+                sub.sum(axis=0)
+            ).ravel().astype(np.float32, copy=False)
+
+        nodes: list[dict] = []
+        sensory_set = self._sensory_lookup
+        output_set = self._output_lookup
+        modulatory_set = self._modulatory_lookup
+        for pos, idx_raw in enumerate(selected):
+            idx = int(idx_raw)
+            roles = []
+            if idx in sensory_set:
+                roles.append("sensory")
+            if idx in output_set:
+                roles.append("output")
+            if idx in modulatory_set:
+                roles.append("modulatory")
+            if not roles:
+                roles.append("internal")
+
+            actions = sorted(
+                (
+                    {
+                        "name": action,
+                        "strength": float(values[pos]),
+                    }
+                    for action, values in action_influence.items()
+                    if float(values[pos]) > 0.0
+                ),
+                key=lambda item: item["strength"],
+                reverse=True,
+            )[:3]
+
+            nodes.append({
+                "id": str(int(self.c.root_ids[idx])),
+                "index": idx,
+                "x": float(self._neuro_map_coords[idx, 0]),
+                "y": float(self._neuro_map_coords[idx, 1]),
+                "z": float(self._neuro_map_coords[idx, 2]),
+                "real_position": bool(self._neuro_map_real_mask[idx]),
+                "activation": float(state_cpu[idx]),
+                "eligibility": float(eligibility_cpu[idx]),
+                "bias": float(bias_cpu[idx]),
+                "role": roles[0],
+                "roles": roles,
+                "super_class": text_at("super_class", idx),
+                "cell_class": text_at("cell_class", idx),
+                "sub_class": text_at("sub_class", idx),
+                "side": text_at("side", idx),
+                "flow": text_at("flow", idx),
+                "nerve": text_at("nerve", idx),
+                "primary_type": text_at("primary_type", idx),
+                "nt_type": text_at("nt_type", idx),
+                "system_actions": actions,
+            })
+
+        regions: list[dict] = []
+        for label, indices in self._neuro_map_regions.items():
+            if len(indices) == 0:
+                continue
+            values = abs_state[indices]
+            mean_abs = float(np.mean(values))
+            max_abs = float(np.max(values))
+            active_count = int(np.count_nonzero(values > 0.1))
+            # Prefer regions that are both strongly and broadly active.
+            score = mean_abs * (
+                1.0 + math.log1p(active_count) * 0.35
+            )
+            coords = self._neuro_map_coords[indices]
+            regions.append({
+                "name": label,
+                "mean_abs": mean_abs,
+                "max_abs": max_abs,
+                "active_count": active_count,
+                "total": int(len(indices)),
+                "score": float(score),
+                "x": float(np.mean(coords[:, 0])),
+                "y": float(np.mean(coords[:, 1])),
+                "z": float(np.mean(coords[:, 2])),
+            })
+        regions.sort(key=lambda item: item["score"], reverse=True)
+        regions = regions[:24]
+
+        reference = [
+            {
+                "x": float(self._neuro_map_coords[idx, 0]),
+                "y": float(self._neuro_map_coords[idx, 1]),
+                "z": float(self._neuro_map_coords[idx, 2]),
+                "real": bool(self._neuro_map_real_mask[idx]),
+            }
+            for idx in self._neuro_map_reference_indices
+        ]
+
+        real_count = int(np.count_nonzero(self._neuro_map_real_mask))
+        coverage = real_count / max(1, self.c.n_neurons)
+        if coverage >= 0.70:
+            coordinate_mode = "real"
+        elif coverage > 0.0:
+            coordinate_mode = "hybrid"
+        else:
+            coordinate_mode = "synthetic"
+
+        return {
+            "projection": projection,
+            "coordinate_mode": coordinate_mode,
+            "coordinate_coverage": float(coverage),
+            "coordinate_neurons": real_count,
+            "nodes": nodes,
+            "regions": regions,
+            "reference": reference,
+            "total_neurons": int(self.c.n_neurons),
+            "active_abs_gt_0_1": int(
+                np.count_nonzero(abs_state > 0.1)
+            ),
+            "mean_abs_activation": float(
+                np.mean(abs_state) if len(abs_state) else 0.0
+            ),
+            "max_abs_activation": float(
+                np.max(abs_state) if len(abs_state) else 0.0
+            ),
         }
 
     def learning_since_start_diagnostics(self) -> dict:
