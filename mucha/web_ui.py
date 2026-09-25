@@ -619,6 +619,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
         <div class="kpi"><small>nowe znaki</small><strong id="session-chars">—</strong></div>
         <div class="kpi"><small>nowe wiadomości / wypowiedzi</small><strong id="session-messages">—</strong></div>
         <div class="kpi"><small>nowe przejścia znaków</small><strong id="session-transitions">—</strong></div>
+        <div class="kpi"><small>nowe tokeny słów</small><strong id="session-word-tokens">—</strong></div>
+        <div class="kpi"><small>nowe słowa w słowniku</small><strong id="session-word-vocab">—</strong></div>
+        <div class="kpi"><small>nowe trigramy słów</small><strong id="session-word-trigrams">—</strong></div>
         <div class="kpi"><small>transkrypcje voice</small><strong id="session-stt">—</strong></div>
         <div class="kpi"><small>reward events</small><strong id="session-rewards">—</strong></div>
         <div class="kpi"><small>łączny +reward</small><strong class="ok" id="session-positive">—</strong></div>
@@ -880,6 +883,9 @@ function renderLearningSinceStart(x){
   $("session-chars").textContent="+"+nfmt(x.language_chars||0);
   $("session-messages").textContent="+"+nfmt(x.language_messages||0);
   $("session-transitions").textContent="+"+nfmt(x.language_transitions||0);
+  $("session-word-tokens").textContent="+"+nfmt(x.language_word_tokens||0);
+  $("session-word-vocab").textContent="+"+nfmt(x.language_word_vocab||0);
+  $("session-word-trigrams").textContent="+"+nfmt(x.language_word_trigrams||0);
   $("session-stt").textContent=nfmt(x.voice_transcripts||0);
   $("session-rewards").textContent=nfmt(x.reward_events||0)+
     " ("+nfmt(x.positive_reward_events||0)+"+ / "+
