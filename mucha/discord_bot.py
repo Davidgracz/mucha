@@ -3339,6 +3339,26 @@ class MuchaClient(discord.Client):
                 int(language_diag.get("unique_chars", 0))
                 - int(language_start.get("unique_chars", 0)),
             ),
+            "language_word_tokens": max(
+                0,
+                int(language_diag.get("word_tokens", 0))
+                - int(language_start.get("word_tokens", 0)),
+            ),
+            "language_word_vocab": max(
+                0,
+                int(language_diag.get("word_vocab", 0))
+                - int(language_start.get("word_vocab", 0)),
+            ),
+            "language_word_bigrams": max(
+                0,
+                int(language_diag.get("word_bigrams", 0))
+                - int(language_start.get("word_bigrams", 0)),
+            ),
+            "language_word_trigrams": max(
+                0,
+                int(language_diag.get("word_trigrams", 0))
+                - int(language_start.get("word_trigrams", 0)),
+            ),
             "voice_transcripts": int(
                 self._stt_transcripts_since_start
             ),
