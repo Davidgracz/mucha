@@ -3838,12 +3838,16 @@ class MuchaClient(discord.Client):
         )
         if targeted_rejection and rejection is not None:
             label, severity = rejection
+            streak_count, streak_multiplier = self._advance_negative_streak(
+                member.id
+            )
             affinity_delta = -min(
                 0.30,
                 max(
                     0.01,
                     float(self.cfg.behavior.user_affinity_negative_step)
-                    * (0.45 + 1.05 * severity),
+                    * (0.45 + 1.05 * severity)
+                    * streak_multiplier,
                 ),
             )
             new_affinity = self.language.adjust_user_affinity(
@@ -3852,7 +3856,10 @@ class MuchaClient(discord.Client):
                 affinity_delta,
                 "negative",
             )
-            penalty = -min(0.35, 0.06 + 0.24 * severity)
+            penalty = -min(
+                0.35,
+                (0.06 + 0.24 * severity) * streak_multiplier,
+            )
             async with self._brain_lock:
                 self.brain.inject(
                     "social:user-told-me-stop",
@@ -3874,6 +3881,17 @@ class MuchaClient(discord.Client):
                     0.60 + 0.60 * severity,
                     144,
                 )
+                if streak_count >= 2:
+                    self.brain.inject(
+                        "social:repeated-rejection",
+                        min(1.0, 0.52 + 0.08 * streak_count),
+                        144,
+                    )
+                    self.brain.inject(
+                        f"social:repeated-rejection:user:{member.id}",
+                        min(1.0, 0.45 + 0.07 * streak_count),
+                        96,
+                    )
                 if recent_tts and last_tts is not None:
                     self.brain.reward(
                         penalty,
@@ -3891,7 +3909,10 @@ class MuchaClient(discord.Client):
             )
             self._remember_social_event(
                 "VOICE_REJECTION",
-                f"{label} • affinity {new_affinity:+.2f}",
+                (
+                    f"{label} • streak {streak_count} "
+                    f"×{streak_multiplier:.2f} • affinity {new_affinity:+.2f}"
+                ),
                 affinity_delta,
                 member,
             )
