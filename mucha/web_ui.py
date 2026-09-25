@@ -39,6 +39,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 <div class="card"><h2>Voice / TTS</h2><div class="fields" id="voice-fields"></div></div>
 <div class="card"><h2>Wykluczone kanały tekstowe</h2><div class="channels" id="text-channels"></div></div>
 <div class="card"><h2>Wykluczone kanały Voice</h2><div class="channels" id="voice-channels"></div></div>
+<div class="card"><h2>Wykluczone serwery Voice</h2><div class="channels" id="voice-guilds"></div></div>
 </div>
 <div class="bar"><div id="status">Ładowanie konfiguracji…</div><button id="save">Zapisz konfigurację</button></div>
 </main><script>
@@ -118,12 +119,16 @@ function renderChannels(kind){
  const root=$(kind+"-channels"), items=state.channels[kind]||[];
  root.innerHTML=items.map(ch=>'<label class="channel"><input type="checkbox" data-'+kind+'="'+ch.id+'" '+(ch.blocked?'checked':'')+'><div><b>'+esc(ch.name)+'</b><br><small>'+esc(ch.guild)+'</small></div><small>'+ch.id+'</small></label>').join("")||"<small>Brak kanałów.</small>";
 }
+function renderVoiceGuilds(){
+ const root=$("voice-guilds"),items=state.guilds||[];
+ root.innerHTML=items.map(g=>'<label class="channel"><input type="checkbox" data-voice-guild="'+g.id+'" '+(g.voice_blocked?'checked':'')+'><div><b>'+esc(g.name)+'</b><br><small>Całkowity zakaz VC</small></div><small>'+g.id+'</small></label>').join("")||"<small>Brak serwerów.</small>";
+}
 function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 async function load(){
  const r=await fetch("/api/config",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);state=await r.json();
  $("behavior-fields").innerHTML=fields.behavior.map(f=>renderField("behavior",f)).join("");
  $("voice-fields").innerHTML=fields.voice.map(f=>renderField("voice",f)).join("");
- renderChannels("text");renderChannels("voice");$("status").textContent="Gotowe.";
+ renderChannels("text");renderChannels("voice");renderVoiceGuilds();$("status").textContent="Gotowe.";
 }
 function collect(){
  const out={behavior:{},voice:{}};
@@ -132,6 +137,7 @@ function collect(){
  }
  out.blocked_text_channel_ids=[...document.querySelectorAll("[data-text]:checked")].map(x=>Number(x.dataset.text));
  out.blocked_voice_channel_ids=[...document.querySelectorAll("[data-voice]:checked")].map(x=>Number(x.dataset.voice));
+ out.blocked_voice_guild_ids=[...document.querySelectorAll("[data-voice-guild]:checked")].map(x=>Number(x.dataset.voiceGuild));
  return out;
 }
 $("save").onclick=async()=>{
@@ -140,7 +146,7 @@ $("save").onclick=async()=>{
   const r=await fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(collect())});
   const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||("HTTP "+r.status));
   state=d.config;$("status").textContent="Zapisano: "+(d.changed||[]).join(", ");$("status").className="ok";
-  renderChannels("text");renderChannels("voice");
+  renderChannels("text");renderChannels("voice");renderVoiceGuilds();
  }catch(e){$("status").textContent="Błąd: "+e.message;$("status").className="bad"}
  finally{$("save").disabled=false}
 };
