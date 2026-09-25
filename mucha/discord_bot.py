@@ -3375,6 +3375,10 @@ class MuchaClient(discord.Client):
             learning_since_start = (
                 self.brain.learning_since_start_diagnostics()
             )
+            connectome_visual = self.brain.connectome_visual_snapshot(
+                count=42,
+                edge_limit=140,
+            )
 
         language_total, language_unique = self.language.stats()
         language_diag = self.language.diagnostics()
@@ -3480,6 +3484,7 @@ class MuchaClient(discord.Client):
             "diag": diag,
             "scores": scores,
             "top_neurons": top_neurons,
+            "connectome_visual": connectome_visual,
             "language_tokens": language_total,
             "language_unique": language_unique,
             "language_ready": self.language.ready(),
