@@ -24,13 +24,29 @@ def main():
         b.reward(1)
         b.save()
 
-        lang = OnlineLanguage(td / "lang.sqlite3", 5, 3, 20)
-        for s in ["siema co tam", "co tam u ciebie", "siema no co", "u mnie git"]:
+        lang = OnlineLanguage(
+            td / "lang.sqlite3",
+            5,
+            3,
+            80,
+            word_model_probability=1.0,
+            word_recent_boost=2.0,
+        )
+        for s in [
+            "siema co tam",
+            "co tam u ciebie",
+            "siema no co",
+            "u mnie git",
+        ]:
             lang.learn(s)
         assert lang.ready()
+        diag = lang.diagnostics()
+        assert diag["word_vocab"] >= 6
+        assert diag["word_bigrams"] >= 4
         text, tri = lang.generate("siema")
         assert text
-        lang.reinforce(tri, 1)
+        assert lang.diagnostics()["last_generator"] == "words"
+        lang.reinforce_text(text, 1)
         lang.close()
         print("SMOKE TEST OK", text)
     finally:
