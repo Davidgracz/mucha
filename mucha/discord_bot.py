@@ -190,7 +190,7 @@ class MuchaClient(discord.Client):
         self._piper_model_path: str | None = None
         self._piper_lock = threading.Lock()
         self._piper_warning_shown = False
-        self._stt_buffers: dict[int, dict] = {}
+        self._stt_buffers: dict[tuple[int, int], dict] = {}
         self._stt_buffer_lock = threading.Lock()
         self._stt_model = None
         self._stt_model_key: tuple | None = None
@@ -2724,6 +2724,579 @@ class MuchaClient(discord.Client):
 
         return path.is_file() and path.stat().st_size > 44
 
+    def _ensure_voice_listener(self, vc: discord.VoiceClient) -> None:
+        if not self.cfg.voice.stt_enabled:
+            return
+        if voice_recv is None:
+            self._stt_debug.update({
+                "status": "ERROR",
+                "error": "discord-ext-voice-recv nie jest zainstalowany",
+                "updated_at": time.time(),
+            })
+            return
+        if not isinstance(vc, voice_recv.VoiceRecvClient):
+            self._stt_debug.update({
+                "status": "WAIT_RECONNECT",
+                "error": (
+                    "Aktualne połączenie voice nie obsługuje odbioru audio; "
+                    "potrzebny reconnect VC"
+                ),
+                "updated_at": time.time(),
+            })
+            return
+        if vc.is_listening():
+            return
+        try:
+            vc.listen(voice_recv.BasicSink(self._on_voice_pcm))
+            self._stt_debug.update({
+                "status": "LISTENING",
+                "error": "",
+                "guild": vc.guild.name,
+                "channel": getattr(vc.channel, "name", None),
+                "updated_at": time.time(),
+            })
+            log.info(
+                "STT listening: %s/%s",
+                vc.guild.name,
+                getattr(vc.channel, "name", "voice"),
+            )
+        except Exception as exc:
+            self._stt_debug.update({
+                "status": "ERROR",
+                "error": f"{type(exc).__name__}: {exc}",
+                "updated_at": time.time(),
+            })
+            log.exception("Nie udało się uruchomić nasłuchu voice")
+
+    def _stop_voice_playback(self, vc: discord.VoiceClient) -> None:
+        if not vc.is_playing():
+            return
+        stop_playing = getattr(vc, "stop_playing", None)
+        if callable(stop_playing):
+            stop_playing()
+        else:
+            vc.stop()
+
+    def _on_voice_pcm(self, user, data) -> None:
+        if not self.cfg.voice.stt_enabled or user is None:
+            return
+        if getattr(user, "bot", False):
+            return
+        if self.user is not None and user.id == self.user.id:
+            return
+        pcm = getattr(data, "pcm", b"")
+        if not pcm:
+            return
+
+        guild = getattr(user, "guild", None)
+        voice_state = getattr(user, "voice", None)
+        channel = getattr(voice_state, "channel", None)
+        if guild is None or channel is None:
+            return
+
+        now = time.monotonic()
+        key = (guild.id, user.id)
+        max_seconds = max(
+            2.0,
+            float(self.cfg.voice.stt_max_segment_seconds),
+        )
+        hard_limit = int(max_seconds * 192000 * 1.35)
+
+        with self._stt_buffer_lock:
+            state = self._stt_buffers.get(key)
+            if (
+                state is None
+                or state.get("channel_id") != channel.id
+                or now - float(state.get("last_packet", now))
+                > max(3.0, float(self.cfg.voice.stt_silence_seconds) * 4.0)
+            ):
+                state = {
+                    "guild_id": guild.id,
+                    "user_id": user.id,
+                    "channel_id": channel.id,
+                    "started": now,
+                    "last_packet": now,
+                    "pcm": bytearray(),
+                }
+                self._stt_buffers[key] = state
+
+            state["last_packet"] = now
+            state["pcm"].extend(pcm)
+            if len(state["pcm"]) > hard_limit:
+                del state["pcm"][: len(state["pcm"]) - hard_limit]
+
+    def _load_stt_model_sync(self):
+        if WhisperModel is None:
+            raise RuntimeError(
+                "faster-whisper nie jest zainstalowany"
+            )
+
+        model_key = (
+            self.cfg.voice.stt_model,
+            self.cfg.voice.stt_device,
+            self.cfg.voice.stt_compute_type,
+            int(self.cfg.voice.stt_cpu_threads),
+            self.cfg.voice.stt_download_root,
+        )
+        with self._stt_model_lock:
+            if (
+                self._stt_model is not None
+                and self._stt_model_key == model_key
+            ):
+                return self._stt_model
+
+            download_root = Path(self.cfg.voice.stt_download_root)
+            download_root.mkdir(parents=True, exist_ok=True)
+            log.info(
+                "Ładowanie STT model=%s device=%s compute=%s",
+                self.cfg.voice.stt_model,
+                self.cfg.voice.stt_device,
+                self.cfg.voice.stt_compute_type,
+            )
+            model = WhisperModel(
+                self.cfg.voice.stt_model,
+                device=self.cfg.voice.stt_device,
+                compute_type=self.cfg.voice.stt_compute_type,
+                cpu_threads=max(
+                    1,
+                    int(self.cfg.voice.stt_cpu_threads),
+                ),
+                num_workers=1,
+                download_root=str(download_root),
+            )
+            self._stt_model = model
+            self._stt_model_key = model_key
+            return model
+
+    @staticmethod
+    def _discord_pcm_to_whisper(pcm: bytes) -> np.ndarray:
+        if len(pcm) < 4:
+            return np.empty(0, dtype=np.float32)
+        usable = len(pcm) - (len(pcm) % 4)
+        samples = np.frombuffer(
+            pcm[:usable],
+            dtype="<i2",
+        ).reshape(-1, 2)
+        mono = samples.astype(np.float32).mean(axis=1)
+        audio = resample_poly(mono, 1, 3).astype(np.float32)
+        audio /= 32768.0
+        return np.clip(audio, -1.0, 1.0)
+
+    def _transcribe_pcm_sync(
+        self,
+        pcm: bytes,
+    ) -> tuple[str, str | None, float | None]:
+        audio = self._discord_pcm_to_whisper(pcm)
+        if audio.size < 1600:
+            return "", None, None
+
+        model = self._load_stt_model_sync()
+        language = self.cfg.voice.stt_language.strip() or None
+        segments, info = model.transcribe(
+            audio,
+            language=language,
+            beam_size=max(1, int(self.cfg.voice.stt_beam_size)),
+            vad_filter=True,
+            condition_on_previous_text=False,
+        )
+        text = " ".join(
+            segment.text.strip()
+            for segment in segments
+            if segment.text.strip()
+        ).strip()
+        return (
+            text,
+            getattr(info, "language", None),
+            getattr(info, "language_probability", None),
+        )
+
+    async def _transcribe_voice_segment(
+        self,
+        segment: dict,
+        pcm: bytes,
+        duration: float,
+    ) -> None:
+        self._stt_pending += 1
+        self._stt_debug["pending"] = self._stt_pending
+        try:
+            guild = self.get_guild(int(segment["guild_id"]))
+            if guild is None:
+                return
+            member = guild.get_member(int(segment["user_id"]))
+            if member is None or member.bot:
+                return
+            channel = guild.get_channel(int(segment["channel_id"]))
+
+            self._stt_debug.update({
+                "status": "TRANSCRIBING",
+                "user": member.display_name,
+                "user_id": member.id,
+                "guild": guild.name,
+                "channel": getattr(channel, "name", str(segment["channel_id"])),
+                "duration": duration,
+                "error": "",
+                "updated_at": time.time(),
+            })
+
+            async with self._stt_inference_lock:
+                text, language, probability = await asyncio.to_thread(
+                    self._transcribe_pcm_sync,
+                    pcm,
+                )
+
+            text = re.sub(r"\s+", " ", text).strip()
+            if len(text) < max(1, int(self.cfg.voice.stt_min_chars)):
+                self._stt_debug.update({
+                    "status": "NO_SPEECH",
+                    "text": text,
+                    "language": language,
+                    "language_probability": probability,
+                    "updated_at": time.time(),
+                })
+                return
+
+            self._stt_debug.update({
+                "status": "HEARD",
+                "text": text,
+                "language": language,
+                "language_probability": probability,
+                "updated_at": time.time(),
+            })
+            await self._handle_voice_transcript(
+                guild,
+                member,
+                channel,
+                text,
+            )
+        except Exception as exc:
+            self._stt_debug.update({
+                "status": "ERROR",
+                "error": f"{type(exc).__name__}: {exc}",
+                "updated_at": time.time(),
+            })
+            log.exception("Błąd rozpoznawania mowy z Discord voice")
+        finally:
+            self._stt_pending = max(0, self._stt_pending - 1)
+            self._stt_debug["pending"] = self._stt_pending
+
+    async def _handle_voice_transcript(
+        self,
+        guild: discord.Guild,
+        member: discord.Member,
+        channel,
+        text: str,
+    ) -> None:
+        normalized = OnlineLanguage.normalize(text).lower()
+        mentioned = bool(
+            re.search(r"\bmucha\b", normalized, flags=re.UNICODE)
+        )
+        channel_name = getattr(channel, "name", "voice")
+
+        self.last_text_context[guild.id] = text
+        self.last_text_author[guild.id] = member.id
+        self.language.learn(text)
+
+        affinity = self._user_affinity(member.id)
+        async with self._brain_lock:
+            self.brain.inject(
+                "voice:speech-heard",
+                0.75,
+                144,
+            )
+            self.brain.inject(
+                f"voice:speech:user:{member.id}",
+                0.55,
+                96,
+            )
+            self.brain.inject_text(
+                text,
+                member.id,
+                mentioned,
+            )
+            if affinity >= float(
+                self.cfg.behavior.familiar_affinity_threshold
+            ):
+                self.brain.inject(
+                    "social:familiar-user",
+                    min(1.0, 0.35 + abs(affinity)),
+                    128,
+                )
+            if affinity >= 0.35:
+                self.brain.inject(
+                    "social:liked-user",
+                    min(1.0, affinity),
+                    128,
+                )
+            elif affinity <= float(
+                self.cfg.behavior.user_avoid_threshold
+            ):
+                self.brain.inject(
+                    "social:disliked-user",
+                    min(1.0, abs(affinity)),
+                    128,
+                )
+            self.brain.step(self.cfg.brain.steps_per_event)
+
+        self._last_brain_event = (
+            f"VOICE SPEECH • {member.display_name} • "
+            f"{channel_name}: {text[:80]}"
+        )
+        self._record_action(
+            "voice_heard",
+            f"{member.display_name} • {channel_name}: {text[:140]}",
+            guild,
+        )
+
+        last_tts = self._last_tts_trace.get(guild.id)
+        recent_tts = bool(
+            last_tts is not None
+            and last_tts.channel_id == getattr(channel, "id", None)
+            and time.monotonic() - last_tts.created <= 120.0
+        )
+
+        rejection = self._detect_verbal_rejection(text)
+        targeted_rejection = bool(
+            rejection
+            and (
+                mentioned
+                or (
+                    recent_tts
+                    and time.monotonic() - last_tts.created <= 20.0
+                )
+            )
+        )
+        if targeted_rejection and rejection is not None:
+            label, severity = rejection
+            affinity_delta = -min(
+                0.30,
+                max(
+                    0.01,
+                    float(self.cfg.behavior.user_affinity_negative_step)
+                    * (0.45 + 1.05 * severity),
+                ),
+            )
+            new_affinity = self.language.adjust_user_affinity(
+                member.id,
+                member.display_name,
+                affinity_delta,
+                "negative",
+            )
+            penalty = -min(0.35, 0.06 + 0.24 * severity)
+            async with self._brain_lock:
+                self.brain.inject(
+                    "social:user-told-me-stop",
+                    0.55 + 0.65 * severity,
+                    160,
+                )
+                self.brain.inject(
+                    "social:user-rejected-me",
+                    0.50 + 0.70 * severity,
+                    160,
+                )
+                self.brain.inject(
+                    "internal:social-failure",
+                    0.35 + 0.65 * severity,
+                    128,
+                )
+                self.brain.inject(
+                    "voice:spoken-rejection",
+                    0.60 + 0.60 * severity,
+                    144,
+                )
+                if recent_tts and last_tts is not None:
+                    self.brain.reward(
+                        penalty,
+                        action=last_tts.action,
+                        trace=last_tts.learning_trace,
+                    )
+                else:
+                    self.brain.reward(penalty)
+                self.brain.step(2)
+            self._record_reward(
+                penalty,
+                last_tts.action if recent_tts and last_tts else None,
+                f"spoken rejection • {label}",
+                guild,
+            )
+            self._remember_social_event(
+                "VOICE_REJECTION",
+                f"{label} • affinity {new_affinity:+.2f}",
+                affinity_delta,
+                member,
+            )
+            return
+
+        if mentioned:
+            await self._grant_positive_social(
+                member,
+                "VOICE_MENTION",
+                "social:user-mentioned-me",
+                self.cfg.behavior.mention_affinity_step,
+                guild,
+                detail="powiedział Mucha na voice",
+            )
+
+        if not recent_tts or last_tts is None:
+            return
+
+        heard_words = self._social_words(text)
+        tts_words = self._social_words(last_tts.text)
+        heard_set = set(heard_words)
+        phrase_match = None
+        for size in (3, 2):
+            heard_phrases = {
+                tuple(heard_words[i:i + size])
+                for i in range(max(0, len(heard_words) - size + 1))
+            }
+            for i in range(max(0, len(tts_words) - size + 1)):
+                phrase = tuple(tts_words[i:i + size])
+                if (
+                    phrase in heard_phrases
+                    and sum(len(word) for word in phrase) >= 8
+                ):
+                    phrase_match = phrase
+                    break
+            if phrase_match is not None:
+                break
+
+        if phrase_match is not None:
+            phrase_text = " ".join(phrase_match)
+            amount = float(self.cfg.behavior.phrase_reuse_reward)
+            self.language.reinforce_text(phrase_text, amount)
+            async with self._brain_lock:
+                self.brain.inject("social:phrase-reused", 0.65, 128)
+                self.brain.inject("voice:phrase-reused", 0.60, 112)
+                self.brain.reward(
+                    min(0.20, amount * 0.35),
+                    action=last_tts.action,
+                    trace=last_tts.learning_trace,
+                )
+                self.brain.step(1)
+            await self._grant_positive_social(
+                member,
+                "VOICE_PHRASE_REUSE",
+                "social:user-reused-phrase",
+                self.cfg.behavior.phrase_reuse_affinity_step,
+                guild,
+                detail=phrase_text,
+            )
+            self._remember_social_event(
+                "VOICE_PHRASE_REUSE",
+                phrase_text,
+                amount,
+                member,
+            )
+            return
+
+        shared_words = [
+            word
+            for word in set(tts_words) & heard_set
+            if len(word) >= 5
+        ]
+        if shared_words:
+            word = max(shared_words, key=len)
+            amount = float(self.cfg.behavior.word_reuse_reward)
+            self.language.reinforce_text(word, amount)
+            self.language.record_word_feedback(
+                word,
+                member.id,
+                amount,
+            )
+            async with self._brain_lock:
+                self.brain.inject("social:word-reused", 0.65, 128)
+                self.brain.inject("voice:word-reused", 0.60, 112)
+                self.brain.reward(
+                    min(0.15, amount * 0.35),
+                    action=last_tts.action,
+                    trace=last_tts.learning_trace,
+                )
+                self.brain.step(1)
+            await self._grant_positive_social(
+                member,
+                "VOICE_WORD_REUSE",
+                "social:user-reused-word",
+                self.cfg.behavior.word_reuse_affinity_step,
+                guild,
+                detail=word,
+            )
+            self._remember_social_event(
+                "VOICE_WORD_REUSE",
+                word,
+                amount,
+                member,
+            )
+            return
+
+        await self._grant_positive_social(
+            member,
+            "VOICE_CONVERSATION",
+            "social:user-continued-conversation",
+            self.cfg.behavior.continued_conversation_affinity_step,
+            guild,
+            detail="odpowiedział głosem po TTS",
+            source_trace=last_tts,
+            brain_reward=0.025,
+        )
+
+    @tasks.loop(seconds=0.25)
+    async def stt_segment_loop(self):
+        await self.wait_until_ready()
+        if self.paused or not self.cfg.voice.stt_enabled:
+            return
+
+        now = time.monotonic()
+        silence = max(
+            0.2,
+            float(self.cfg.voice.stt_silence_seconds),
+        )
+        minimum = max(
+            0.2,
+            float(self.cfg.voice.stt_min_segment_seconds),
+        )
+        maximum = max(
+            minimum,
+            float(self.cfg.voice.stt_max_segment_seconds),
+        )
+        ready: list[tuple[dict, bytes, float]] = []
+
+        with self._stt_buffer_lock:
+            for key, state in list(self._stt_buffers.items()):
+                pcm = state["pcm"]
+                duration = len(pcm) / 192000.0
+                quiet_for = now - float(state["last_packet"])
+                should_flush = (
+                    duration >= maximum
+                    or quiet_for >= silence
+                )
+                if not should_flush:
+                    continue
+
+                self._stt_buffers.pop(key, None)
+                if duration >= minimum:
+                    ready.append(
+                        (dict(state), bytes(pcm), duration)
+                    )
+
+        for segment, pcm, duration in ready:
+            if self._stt_pending >= 4:
+                self._stt_debug.update({
+                    "status": "DROP_BUSY",
+                    "error": "kolejka STT pełna",
+                    "updated_at": time.time(),
+                })
+                continue
+            asyncio.create_task(
+                self._transcribe_voice_segment(
+                    segment,
+                    pcm,
+                    duration,
+                )
+            )
+
+    @stt_segment_loop.before_loop
+    async def before_stt_segment_loop(self):
+        await self.wait_until_ready()
+
     async def _play_chaser_scream(
         self,
         guild: discord.Guild,
@@ -2761,7 +3334,7 @@ class MuchaClient(discord.Client):
 
         try:
             if vc.is_playing():
-                vc.stop()
+                self._stop_voice_playback(vc)
 
             async with self._brain_lock:
                 self.brain.inject("internal:panic-scream", 1.6, 128)
