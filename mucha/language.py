@@ -1099,16 +1099,54 @@ class OnlineLanguage:
 
         self.db.commit()
 
+    def _reinforce_words(self, text: str, amount: float) -> None:
+        tokens = self.words(text)
+        if not tokens:
+            return
+
+        amount = max(-1.0, min(1.0, float(amount)))
+        scale = self.word_reward_scale * amount
+        cur = self.db.cursor()
+
+        unigram_counts = Counter(tokens)
+        for token, mult in unigram_counts.items():
+            cur.execute(
+                "UPDATE word_unigram "
+                "SET reward=MAX(-2.0,MIN(2.0,reward+?)) "
+                "WHERE token=?",
+                (scale * min(mult, 4), token),
+            )
+
+        bigram_counts = Counter(zip(tokens, tokens[1:]))
+        for (a, b), mult in bigram_counts.items():
+            cur.execute(
+                "UPDATE word_bigram "
+                "SET reward=MAX(-2.0,MIN(2.0,reward+?)) "
+                "WHERE a=? AND b=?",
+                (scale * min(mult, 4), a, b),
+            )
+
+        trigram_counts = Counter(zip(tokens, tokens[1:], tokens[2:]))
+        for (a, b, cc), mult in trigram_counts.items():
+            cur.execute(
+                "UPDATE word_trigram "
+                "SET reward=MAX(-2.0,MIN(2.0,reward+?)) "
+                "WHERE a=? AND b=? AND c=?",
+                (scale * min(mult, 4), a, b, cc),
+            )
+
+        self.db.commit()
+
     def reinforce_text(self, text: str, amount: float) -> None:
         chars = self.characters(text)
-        if not chars:
-            return
-        seq = [START_A, START_B] + chars
-        trigrams = [
-            (a, b, c)
-            for a, b, c in zip(seq, seq[1:], seq[2:])
-        ]
-        self.reinforce(trigrams, amount)
+        if chars:
+            seq = [START_A, START_B] + chars
+            trigrams = [
+                (a, b, cc)
+                for a, b, cc in zip(seq, seq[1:], seq[2:])
+            ]
+            self.reinforce(trigrams, amount)
+        self._reinforce_words(text, amount)
 
     def get_user_affinity(self, user_id: int) -> float:
         row = self.db.execute(
