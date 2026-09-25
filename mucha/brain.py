@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import re
 import time
 from typing import Iterable
 
@@ -153,6 +154,41 @@ class FlyBrain:
             self.inject("text:exclamation", 0.30, 48)
         if stripped.isupper() and len(stripped) > 3:
             self.inject("text:loud", 0.45, 64)
+
+        # Give learned words stable sensory populations. The language model can
+        # later read the current connectome state for the same words, so word
+        # choice is influenced by what the fly brain is currently processing.
+        seen: set[str] = set()
+        words = re.findall(
+            r"[^\W_]{3,}",
+            stripped.lower(),
+            flags=re.UNICODE,
+        )
+        concept_words: list[str] = []
+        for word in words:
+            if word in seen:
+                continue
+            seen.add(word)
+            concept_words.append(word)
+            if len(concept_words) >= 12:
+                break
+
+        concept_mag = 0.18 + (0.04 if mentioned else 0.0)
+        for word in concept_words:
+            self.inject(
+                f"text:word:{word}",
+                concept_mag,
+                32,
+            )
+
+        # A few adjacent pairs provide a weak association trace without turning
+        # entire sentences into atomic memories.
+        for a, b in zip(concept_words, concept_words[1:6]):
+            self.inject(
+                f"text:pair:{a}|{b}",
+                0.10,
+                24,
+            )
 
     def inject_voice_snapshot(self, guild_id: int, channel_id: int, user_ids: Iterable[int]) -> None:
         users = list(user_ids)
@@ -324,6 +360,35 @@ class FlyBrain:
         # Reward trace is a mild global arousal signal. Most learning is now
         # action-specific in reward(), so feedback no longer lifts every action equally.
         return _sigmoid(3.2 * raw + 0.08 * self.reward_trace)
+
+    def language_word_score(self, token: str, width: int = 32) -> float:
+        """Return a connectome-state preference score for one learned word."""
+        token = str(token).strip().lower()
+        if not token:
+            return 0.5
+
+        width = max(8, min(int(width), 64))
+        sensory_cpu = self._subset(
+            "sensory:text:word:" + token,
+            self.c.sensory,
+            width,
+        )
+        output_cpu = self._subset(
+            "output:language:word:" + token,
+            self.c.output,
+            width,
+        )
+        sensory = self._backend_indices(sensory_cpu)
+        output = self._backend_indices(output_cpu)
+
+        sensory_raw = self.compute.scalar(
+            self.xp.mean(self.state[sensory])
+        )
+        output_raw = self.compute.scalar(
+            self.xp.mean(self.state[output])
+        )
+        raw = 0.35 * sensory_raw + 0.65 * output_raw
+        return _sigmoid(3.0 * raw + 0.06 * self.reward_trace)
 
     def action_scores(self) -> dict[str, float]:
         return {name: self.readout("action:" + name, 128) for name in self.ACTIONS}
