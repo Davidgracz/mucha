@@ -3491,6 +3491,7 @@ class MuchaClient(discord.Client):
         pcm = discord.FFmpegPCMAudio(
             str(path),
             executable=self.cfg.voice.ffmpeg_executable,
+            before_options="-loglevel error",
             options="-vn",
         )
         return discord.PCMVolumeTransformer(
@@ -5618,8 +5619,51 @@ class MuchaClient(discord.Client):
                 or not vc.is_connected()
                 or vc.channel is None
             ):
-                await message.add_reaction("⚠️")
-                return
+                author_voice = getattr(message.author, "voice", None)
+                target_channel = getattr(author_voice, "channel", None)
+                if target_channel is None:
+                    self._record_action(
+                        "audio_test",
+                        "pominięto: Mucha nie jest na voice i admin też nie",
+                        message.guild,
+                    )
+                    await message.add_reaction("⚠️")
+                    return
+
+                try:
+                    connect_kwargs = {
+                        "self_deaf": not bool(self.cfg.voice.stt_enabled),
+                    }
+                    if (
+                        self.cfg.voice.stt_enabled
+                        and voice_recv is not None
+                    ):
+                        connect_kwargs["cls"] = voice_recv.VoiceRecvClient
+                    vc = await target_channel.connect(**connect_kwargs)
+                    self._ensure_voice_listener(vc)
+                    self.voice_arrived[message.guild.id] = time.monotonic()
+                    self._record_action(
+                        "audio_test_join",
+                        f"→ {target_channel.name}",
+                        message.guild,
+                    )
+                except (
+                    discord.ClientException,
+                    discord.Forbidden,
+                    discord.HTTPException,
+                ) as exc:
+                    self._audio_debug.update({
+                        "status": "ERROR",
+                        "stage": "audiotest_join",
+                        "error": f"{type(exc).__name__}: {exc}",
+                        "updated_at": time.time(),
+                    })
+                    log.exception(
+                        "Audiotest nie mógł wejść na voice na serwerze %s",
+                        message.guild.id,
+                    )
+                    await message.add_reaction("❌")
+                    return
 
             # Audiotest is an explicit admin action: interrupt any current
             # playback instead of refusing with a warning while TTS/rare audio
