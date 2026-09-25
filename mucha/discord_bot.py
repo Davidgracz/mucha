@@ -669,6 +669,62 @@ class MuchaClient(discord.Client):
             "updated_at": time.time(),
         }
 
+    def _advance_negative_streak(
+        self,
+        user_id: int,
+        now: float | None = None,
+    ) -> tuple[int, float]:
+        now = time.monotonic() if now is None else float(now)
+        window = max(
+            1.0,
+            float(self.cfg.behavior.negative_streak_window_seconds),
+        )
+        streak = self._social_negative_streak.get(
+            int(user_id),
+            {"count": 0, "last": 0.0},
+        )
+        if now - float(streak.get("last", 0.0)) > window:
+            streak = {"count": 0, "last": 0.0}
+        streak_count = int(streak.get("count", 0)) + 1
+        streak["last"] = now
+        self._social_negative_streak[int(user_id)] = streak
+
+        multiplier = min(
+            max(
+                1.0,
+                float(self.cfg.behavior.negative_streak_max_multiplier),
+            ),
+            1.0
+            + max(
+                0.0,
+                float(self.cfg.behavior.negative_streak_multiplier_step),
+            )
+            * max(0, streak["count"] - 1),
+        )
+        return int(streak["count"]), float(multiplier)
+
+    def _soften_negative_streak(
+        self,
+        user_id: int,
+        now: float | None = None,
+    ) -> None:
+        now = time.monotonic() if now is None else float(now)
+        streak = self._social_negative_streak.get(int(user_id))
+        if streak is None:
+            return
+        window = max(
+            1.0,
+            float(self.cfg.behavior.negative_streak_window_seconds),
+        )
+        if now - float(streak.get("last", 0.0)) > window:
+            self._social_negative_streak.pop(int(user_id), None)
+            return
+        count = max(0, int(streak.get("count", 0)) - 1)
+        if count <= 0:
+            self._social_negative_streak.pop(int(user_id), None)
+        else:
+            streak["count"] = count
+
     async def _grant_negative_social(
         self,
         member: discord.Member,
@@ -698,31 +754,9 @@ class MuchaClient(discord.Client):
             return None
         self._social_negative_last[cooldown_key] = now
 
-        streak_window = max(
-            cooldown,
-            float(self.cfg.behavior.negative_streak_window_seconds),
-        )
-        streak = self._social_negative_streak.get(
+        streak_count, multiplier = self._advance_negative_streak(
             member.id,
-            {"count": 0, "last": 0.0},
-        )
-        if now - float(streak.get("last", 0.0)) > streak_window:
-            streak = {"count": 0, "last": 0.0}
-        streak["count"] = int(streak.get("count", 0)) + 1
-        streak["last"] = now
-        self._social_negative_streak[member.id] = streak
-
-        multiplier = min(
-            max(
-                1.0,
-                float(self.cfg.behavior.negative_streak_max_multiplier),
-            ),
-            1.0
-            + max(
-                0.0,
-                float(self.cfg.behavior.negative_streak_multiplier_step),
-            )
-            * max(0, streak["count"] - 1),
+            now,
         )
         delta = -min(
             0.25,
@@ -1128,6 +1162,7 @@ class MuchaClient(discord.Client):
         if now - last < cooldown:
             return None
         self._social_positive_last[cooldown_key] = now
+        self._soften_negative_streak(member.id, now)
 
         delta = max(0.0, min(0.25, float(affinity_delta)))
         if delta <= 0.0:
