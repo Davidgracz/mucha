@@ -179,12 +179,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 
   <div class="card">
     <h2>➕ Co zwiększa affinity</h2>
-    <table><thead><tr><th>Zdarzenie</th><th>Warunek</th><th>Δ</th></tr></thead><tbody id="positive"></tbody></table>
+    <table><thead><tr><th>Zdarzenie</th><th>Warunek</th><th>Δ bazowe</th></tr></thead><tbody id="positive"></tbody></table>
   </div>
 
   <div class="card">
     <h2>➖ Co obniża affinity</h2>
-    <table><thead><tr><th>Zdarzenie</th><th>Warunek</th><th>Δ</th></tr></thead><tbody id="negative"></tbody></table>
+    <table><thead><tr><th>Zdarzenie</th><th>Warunek</th><th>Δ bazowe</th></tr></thead><tbody id="negative"></tbody></table>
   </div>
 
   <div class="card span2">
