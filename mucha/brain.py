@@ -45,6 +45,11 @@ class FlyBrain:
         self.reward_trace = 0.0
         self.tick_count = 0
         self._pool_cache: dict[tuple[str, int], np.ndarray] = {}
+        self._sensory_lookup = set(int(i) for i in self.c.sensory.tolist())
+        self._output_lookup = set(int(i) for i in self.c.output.tolist())
+        self._modulatory_lookup = set(
+            int(i) for i in self.c.modulatory.tolist()
+        )
         self.last_learning: dict = {
             "amount": 0.0,
             "action": None,
@@ -488,9 +493,9 @@ class FlyBrain:
                 break
 
         selected_arr = np.asarray(unique, dtype=np.int32)
-        sensory_set = set(int(i) for i in self.c.sensory.tolist())
-        output_set = set(int(i) for i in self.c.output.tolist())
-        modulatory_set = set(int(i) for i in self.c.modulatory.tolist())
+        sensory_set = self._sensory_lookup
+        output_set = self._output_lookup
+        modulatory_set = self._modulatory_lookup
 
         nodes = []
         for idx in unique:
