@@ -9,5 +9,5 @@ emoji==2.16.0
 pyttsx3>=2.98,<3
 piper-tts>=1.4,<2
 tomli-w>=1.2,<2
-discord-ext-voice-recv==0.5.2a179
+discord-ext-voice-recv @ git+https://github.com/rdphillips7/discord-ext-voice-recv.git@ddd28601fe556f585b869e215f29c8236b95f88f
 faster-whisper==1.2.1
