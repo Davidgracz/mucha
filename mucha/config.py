@@ -25,13 +25,23 @@ class BrainConfig:
 @dataclass(slots=True)
 class LanguageConfig:
     database: Path
-    min_chars_before_speaking: int = 1200
-    min_unique_chars_before_speaking: int = 18
-    max_generated_chars: int = 220
+    min_chars_before_speaking: int = 800
+    min_unique_chars_before_speaking: int = 16
+    max_generated_chars: int = 120
     spontaneous_text: bool = True
     reply_cooldown_seconds: int = 35
     spontaneous_cooldown_seconds: int = 180
     learn_from_bots: bool = False
+    hybrid_word_enabled: bool = True
+    word_model_probability: float = 0.82
+    word_max_tokens: int = 18
+    word_recent_window_seconds: int = 3600
+    word_recent_boost: float = 1.80
+    word_frequency_exponent: float = 0.95
+    word_arousal_flatten: float = 0.12
+    char_frequency_exponent: float = 0.90
+    char_arousal_flatten: float = 0.15
+    word_reward_scale: float = 0.12
 
 
 @dataclass(slots=True)
