@@ -139,6 +139,16 @@ class MuchaClient(discord.Client):
             cfg.language.min_unique_chars_before_speaking,
             cfg.language.max_generated_chars,
             seed=cfg.brain.seed,
+            hybrid_word_enabled=cfg.language.hybrid_word_enabled,
+            word_model_probability=cfg.language.word_model_probability,
+            word_max_tokens=cfg.language.word_max_tokens,
+            word_recent_window_seconds=cfg.language.word_recent_window_seconds,
+            word_recent_boost=cfg.language.word_recent_boost,
+            word_frequency_exponent=cfg.language.word_frequency_exponent,
+            word_arousal_flatten=cfg.language.word_arousal_flatten,
+            char_frequency_exponent=cfg.language.char_frequency_exponent,
+            char_arousal_flatten=cfg.language.char_arousal_flatten,
+            word_reward_scale=cfg.language.word_reward_scale,
         )
         self._language_start_diag = self.language.diagnostics()
         self._stt_transcripts_since_start = 0
@@ -2732,7 +2742,7 @@ class MuchaClient(discord.Client):
                             float(self.cfg.behavior.self_repeat_penalty),
                         ),
                     )
-                    self.language.reinforce(trigrams, -penalty)
+                    self.language.reinforce_text(text, -penalty)
                     async with self._brain_lock:
                         self.brain.inject(
                             "internal:self-repeat",
@@ -2827,7 +2837,7 @@ class MuchaClient(discord.Client):
                 f"REACTION • {emoji} • reward {amount:+.0f} • "
                 f"affinity {new_affinity:+.2f}"
             )
-            self.language.reinforce(trace.trigrams, amount)
+            self.language.reinforce_text(trace.text, amount)
             async with self._brain_lock:
                 if amount < 0 and reaction_streak_count >= 2:
                     self.brain.inject(
