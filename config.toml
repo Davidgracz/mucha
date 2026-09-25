@@ -32,6 +32,10 @@ word_arousal_flatten = 0.12
 char_frequency_exponent = 0.90
 char_arousal_flatten = 0.15
 word_reward_scale = 0.12
+connectome_word_control_enabled = true
+connectome_word_control_min_vocab = 1500
+connectome_word_control_strength = 0.35
+connectome_word_control_candidates = 24
 
 [voice]
 enabled = true
