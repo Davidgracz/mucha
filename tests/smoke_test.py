@@ -12,6 +12,7 @@ from mucha.config import BrainConfig
 from mucha.connectome import Connectome
 from mucha.brain import FlyBrain
 from mucha.language import OnlineLanguage
+from mucha.web_ui import CONNECTOME_HTML, NEUROMAP_HTML
 
 
 def main():
@@ -33,6 +34,9 @@ def main():
         assert len(neuro["nodes"]) >= 40
         assert len(neuro["reference"]) > 0
         assert neuro["regions"]
+        assert "Fly Brain Neuro-map" in NEUROMAP_HTML
+        assert "/api/neuromap" in NEUROMAP_HTML
+        assert "FOLLOW ACTIVITY" in CONNECTOME_HTML
 
         visual = b.connectome_visual_snapshot(24, 60)
         assert visual["selected_neurons"] >= 12
