@@ -34,11 +34,52 @@ def main():
     output = np.arange(max(0,n-n//5), n, dtype=np.int32)
     modulatory = rng.choice(np.arange(n, dtype=np.int32), size=min(100, n), replace=False)
     np.savez_compressed(out / "pools.npz", sensory=sensory, output=output, modulatory=modulatory)
+
+    # Synthetic anatomical metadata lets the dashboard exercise the same
+    # neuro-map path as a real FlyWire cache without pretending to be real.
+    angle = rng.uniform(0.0, 2.0 * np.pi, size=n)
+    radius = np.sqrt(rng.uniform(0.0, 1.0, size=n))
+    x = (radius * np.cos(angle) * 0.95).astype(np.float32)
+    y = (radius * np.sin(angle) * 0.72).astype(np.float32)
+    z = (rng.normal(0.0, 0.35, size=n)).astype(np.float32)
+    side = np.where(x < -0.08, "left", np.where(x > 0.08, "right", "midline"))
+    super_class = np.full(n, "central", dtype="<U20")
+    super_class[sensory] = "sensory"
+    super_class[output] = "descending"
+    cell_class = np.full(n, "central", dtype="<U24")
+    cell_class[sensory] = "sensory-demo"
+    cell_class[output] = "motor-demo"
+    sub_class = np.full(n, "", dtype="<U32")
+    flow = np.full(n, "central", dtype="<U16")
+    flow[sensory] = "sensory"
+    flow[output] = "descending"
+    nt_type = rng.choice(
+        np.array(["ACH", "GABA", "GLUT", "DA"], dtype="<U8"),
+        size=n,
+        p=[0.55, 0.20, 0.20, 0.05],
+    )
+    primary_type = np.full(n, "demo-neuron", dtype="<U32")
+    np.savez_compressed(
+        out / "neuron_meta.npz",
+        x=x,
+        y=y,
+        z=z,
+        super_class=super_class,
+        cell_class=cell_class,
+        sub_class=sub_class,
+        side=side.astype("<U12"),
+        flow=flow,
+        nerve=np.full(n, "", dtype="<U24"),
+        primary_type=primary_type,
+        nt_type=nt_type,
+    )
     (out / "manifest.json").write_text(json.dumps({
         "source": "synthetic demo graph - NOT FlyWire",
         "neurons": n,
         "connections": int(m.nnz),
         "demo": True,
+        "neuron_meta": True,
+        "coordinate_source": "synthetic demo coordinates",
     }, indent=2), encoding="utf-8")
     print(f"Demo connectome zapisany: {n} neuronów, {m.nnz} połączeń -> {out}")
 
