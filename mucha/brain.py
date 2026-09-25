@@ -425,6 +425,53 @@ class FlyBrain:
             self.reward_trace *= 0.96
             self.tick_count += 1
 
+    def mark_language_output(self, text: str) -> None:
+        """Leave an eligibility trace for the words Mucha is about to send.
+
+        This is an internal efference copy, not a new sensory message. It makes
+        later Discord reward target the actual generated words and adjacent
+        word pairs as well as the context that produced the reply.
+        """
+        words = re.findall(
+            r"[^\W_]{3,}(?:['’][^\W_]+)?",
+            str(text or "").lower(),
+            flags=re.UNICODE,
+        )[:18]
+        if not words:
+            return
+
+        seen: set[str] = set()
+        for word in words:
+            if word in seen:
+                continue
+            seen.add(word)
+            idx_cpu = self._subset(
+                "output:language:word:" + word,
+                self.c.output,
+                32,
+            )
+            idx = self._backend_indices(idx_cpu)
+            self.state[idx] += np.float32(0.10)
+            self.eligibility[idx] = self.xp.maximum(
+                self.eligibility[idx],
+                np.float32(0.55),
+            )
+
+        for a, b in zip(words, words[1:]):
+            idx_cpu = self._subset(
+                f"sensory:text:pair:{a}|{b}",
+                self.c.sensory,
+                24,
+            )
+            idx = self._backend_indices(idx_cpu)
+            self.state[idx] += np.float32(0.06)
+            self.eligibility[idx] = self.xp.maximum(
+                self.eligibility[idx],
+                np.float32(0.42),
+            )
+
+        self.xp.clip(self.state, -3.0, 3.0, out=self.state)
+
     def capture_learning_trace(self, count: int = 4096) -> tuple[np.ndarray, np.ndarray]:
         """Capture a compact CPU copy of the strongest eligibility values."""
         count = max(64, min(int(count), self.c.n_neurons))
