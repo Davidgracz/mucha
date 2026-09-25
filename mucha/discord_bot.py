@@ -2516,6 +2516,7 @@ class MuchaClient(discord.Client):
             "paused": self.paused,
             "voice_debug": list(self._voice_debug.values()),
             "audio_debug": dict(self._audio_debug),
+            "stt_debug": dict(self._stt_debug),
             "reaction_debug": reaction_debug,
             "learning_debug": self.brain.learning_diagnostics(),
             "social_debug": dict(self._social_debug),
@@ -3508,6 +3509,15 @@ class MuchaClient(discord.Client):
                 self.cfg.voice.tts_volume,
             )
             vc.play(source)
+            self._last_tts_trace[guild.id] = SentTrace(
+                trigrams=trigrams,
+                created=time.monotonic(),
+                action="speak",
+                learning_trace=learning_trace,
+                text=text_out,
+                guild_id=guild.id,
+                channel_id=vc.channel.id,
+            )
             self._schedule_tts_social_stay(
                 guild,
                 vc.channel.id,
@@ -3644,6 +3654,8 @@ class MuchaClient(discord.Client):
             try:
                 await self._voice_decision(guild)
                 vc = guild.voice_client
+                if vc is not None and vc.is_connected():
+                    self._ensure_voice_listener(vc)
                 if (
                     vc is not None
                     and vc.is_connected()
@@ -3966,7 +3978,16 @@ class MuchaClient(discord.Client):
                 f"{exploration.get(target.id, {}).get('exploration_score', target_aff):.3f}"
             )
             try:
-                await target.connect(self_deaf=True)
+                connect_kwargs = {
+                    "self_deaf": not bool(self.cfg.voice.stt_enabled),
+                }
+                if (
+                    self.cfg.voice.stt_enabled
+                    and voice_recv is not None
+                ):
+                    connect_kwargs["cls"] = voice_recv.VoiceRecvClient
+                new_vc = await target.connect(**connect_kwargs)
+                self._ensure_voice_listener(new_vc)
                 self.voice_arrived[guild.id] = now
                 self._mark_voice_visit(guild.id, target.id, now)
                 self._last_overstay_punish.pop(guild.id, None)
