@@ -4,6 +4,7 @@ import hashlib
 import math
 import re
 import time
+from collections import Counter, deque
 from typing import Iterable
 
 import numpy as np
@@ -56,6 +57,9 @@ class FlyBrain:
         self._neuro_map_real_mask = np.zeros(n, dtype=bool)
         self._neuro_map_reference_indices = np.empty(0, dtype=np.int32)
         self._neuro_map_regions: dict[str, np.ndarray] = {}
+        self._neuro_map_region_types: dict[str, list[dict]] = {}
+        self._neuro_map_region_source = "cell_class"
+        self._neuro_map_history = deque(maxlen=180)
         self._action_output_pools: dict[str, np.ndarray] = {}
         self._init_neuro_map_metadata()
         self.last_learning: dict = {
@@ -179,15 +183,31 @@ class FlyBrain:
         coords[~np.isfinite(coords)] = fallback[~np.isfinite(coords)]
         self._neuro_map_coords = coords
 
-        # Region grouping uses Codex class first, then super_class. These are
-        # biological annotations, unlike Mucha's artificial Discord readouts.
+        # Prefer named FlyWire neuropils when the metadata builder could
+        # derive them from the connection table. A neuron can span several
+        # neuropils; this compact dashboard groups it by its strongest incident
+        # synapse-count neuropil and exposes the top three in the inspector.
+        primary_neuropil = string_meta("primary_neuropil")
         cell_class = string_meta("cell_class")
         super_class = string_meta("super_class")
-        region_labels = np.where(
-            np.char.str_len(cell_class) > 0,
-            cell_class,
-            super_class,
+        primary_type = string_meta("primary_type")
+        neuropil_coverage = float(
+            np.count_nonzero(
+                np.char.str_len(primary_neuropil) > 0
+            )
+            / max(1, n)
         )
+        if neuropil_coverage >= 0.10:
+            region_labels = primary_neuropil
+            self._neuro_map_region_source = "neuropil"
+        else:
+            region_labels = np.where(
+                np.char.str_len(cell_class) > 0,
+                cell_class,
+                super_class,
+            )
+            self._neuro_map_region_source = "cell_class"
+
         regions: dict[str, list[int]] = {}
         for idx, raw_label in enumerate(region_labels):
             label = str(raw_label).strip()
@@ -199,6 +219,21 @@ class FlyBrain:
             for label, indices in regions.items()
             if len(indices) >= 2
         }
+
+        self._neuro_map_region_types = {}
+        for label, indices in self._neuro_map_regions.items():
+            names = []
+            for idx in indices:
+                value = str(primary_type[int(idx)]).strip()
+                if not value:
+                    value = str(cell_class[int(idx)]).strip()
+                if value:
+                    names.append(value)
+            counts = Counter(names)
+            self._neuro_map_region_types[label] = [
+                {"name": name, "count": int(count)}
+                for name, count in counts.most_common(5)
+            ]
 
         self._action_output_pools = {
             action: self._subset(
@@ -865,9 +900,9 @@ class FlyBrain:
     ) -> dict:
         """Return a spatial activity map with biological annotations.
 
-        Coordinates come from FlyWire Codex marked-neuron coordinates when
-        neuron_meta.npz is present. Missing positions use an explicit synthetic
-        fallback so the dashboard remains usable on older caches.
+        Regions are named FlyWire neuropils when connection-derived metadata is
+        available. Otherwise the dashboard explicitly falls back to biological
+        classification groups.
         """
         projection = str(projection or "xy").lower()
         if projection not in {"xy", "xz", "yz"}:
@@ -903,6 +938,15 @@ class FlyBrain:
             if arr is None or len(arr) != self.c.n_neurons:
                 return ""
             return str(arr[idx]).strip()
+
+        def float_at(key: str, idx: int) -> float:
+            arr = meta.get(key)
+            if arr is None or len(arr) != self.c.n_neurons:
+                return 0.0
+            try:
+                return float(arr[idx])
+            except (TypeError, ValueError):
+                return 0.0
 
         # Vectorized direct connectivity into Mucha's artificial action
         # readout populations. This is system influence, not a biological claim.
@@ -948,6 +992,28 @@ class FlyBrain:
                 reverse=True,
             )[:3]
 
+            neuropils = []
+            total_np_mass = max(
+                0.0,
+                float_at("neuropil_synapse_mass", idx),
+            )
+            for rank in (1, 2, 3):
+                name = text_at(f"neuropil_{rank}", idx)
+                mass = max(
+                    0.0,
+                    float_at(f"neuropil_{rank}_mass", idx),
+                )
+                if name and mass > 0.0:
+                    neuropils.append({
+                        "name": name,
+                        "mass": mass,
+                        "share": (
+                            mass / total_np_mass
+                            if total_np_mass > 0.0
+                            else 0.0
+                        ),
+                    })
+
             nodes.append({
                 "id": str(int(self.c.root_ids[idx])),
                 "index": idx,
@@ -968,10 +1034,16 @@ class FlyBrain:
                 "nerve": text_at("nerve", idx),
                 "primary_type": text_at("primary_type", idx),
                 "nt_type": text_at("nt_type", idx),
+                "primary_neuropil": text_at(
+                    "primary_neuropil",
+                    idx,
+                ),
+                "neuropils": neuropils,
                 "system_actions": actions,
             })
 
-        regions: list[dict] = []
+        region_rows: list[dict] = []
+        region_values: dict[str, float] = {}
         for label, indices in self._neuro_map_regions.items():
             if len(indices) == 0:
                 continue
@@ -979,12 +1051,45 @@ class FlyBrain:
             mean_abs = float(np.mean(values))
             max_abs = float(np.max(values))
             active_count = int(np.count_nonzero(values > 0.1))
-            # Prefer regions that are both strongly and broadly active.
             score = mean_abs * (
                 1.0 + math.log1p(active_count) * 0.35
             )
             coords = self._neuro_map_coords[indices]
-            regions.append({
+            region_values[label] = mean_abs
+
+            top_k = min(8, len(indices))
+            if top_k >= len(indices):
+                local_order = np.argsort(values)[::-1]
+            else:
+                local_part = np.argpartition(
+                    values,
+                    -top_k,
+                )[-top_k:]
+                local_order = local_part[
+                    np.argsort(values[local_part])[::-1]
+                ]
+            top_neurons = []
+            for local_idx in local_order[:top_k]:
+                neuron_idx = int(indices[int(local_idx)])
+                top_neurons.append({
+                    "id": str(
+                        int(self.c.root_ids[neuron_idx])
+                    ),
+                    "activation": float(
+                        state_cpu[neuron_idx]
+                    ),
+                    "primary_type": (
+                        text_at("primary_type", neuron_idx)
+                        or text_at("cell_class", neuron_idx)
+                        or text_at("super_class", neuron_idx)
+                    ),
+                    "nt_type": text_at(
+                        "nt_type",
+                        neuron_idx,
+                    ),
+                })
+
+            region_rows.append({
                 "name": label,
                 "mean_abs": mean_abs,
                 "max_abs": max_abs,
@@ -994,9 +1099,83 @@ class FlyBrain:
                 "x": float(np.mean(coords[:, 0])),
                 "y": float(np.mean(coords[:, 1])),
                 "z": float(np.mean(coords[:, 2])),
+                "dominant_types": list(
+                    self._neuro_map_region_types.get(
+                        label,
+                        [],
+                    )
+                ),
+                "top_neurons": top_neurons,
             })
-        regions.sort(key=lambda item: item["score"], reverse=True)
-        regions = regions[:24]
+
+        scores_now = self.action_scores()
+        self._neuro_map_history.append({
+            "time": float(time.time()),
+            "regions": region_values,
+            "scores": {
+                key: float(value)
+                for key, value in scores_now.items()
+            },
+        })
+
+        def correlation(
+            xs: list[float],
+            ys: list[float],
+        ) -> float | None:
+            if len(xs) < 8 or len(ys) != len(xs):
+                return None
+            xa = np.asarray(xs, dtype=np.float64)
+            ya = np.asarray(ys, dtype=np.float64)
+            if (
+                float(np.std(xa)) < 1e-8
+                or float(np.std(ya)) < 1e-8
+            ):
+                return None
+            value = float(np.corrcoef(xa, ya)[0, 1])
+            if not math.isfinite(value):
+                return None
+            return max(-1.0, min(1.0, value))
+
+        history = list(self._neuro_map_history)
+        for row in region_rows:
+            label = row["name"]
+            activity_series = [
+                float(sample["regions"].get(label, 0.0))
+                for sample in history
+            ]
+            row["history"] = activity_series[-90:]
+            correlations = []
+            for action in self.ACTIONS:
+                action_series = [
+                    float(sample["scores"].get(action, 0.0))
+                    for sample in history
+                ]
+                corr = correlation(
+                    activity_series,
+                    action_series,
+                )
+                if corr is None:
+                    continue
+                correlations.append({
+                    "action": action,
+                    "correlation": corr,
+                })
+            correlations.sort(
+                key=lambda item: abs(
+                    item["correlation"]
+                ),
+                reverse=True,
+            )
+            row["readout_correlations"] = correlations[:4]
+            row["correlation_samples"] = len(
+                activity_series
+            )
+
+        region_rows.sort(
+            key=lambda item: item["score"],
+            reverse=True,
+        )
+        regions = region_rows[:32]
 
         reference = [
             {
@@ -1008,7 +1187,11 @@ class FlyBrain:
             for idx in self._neuro_map_reference_indices
         ]
 
-        real_count = int(np.count_nonzero(self._neuro_map_real_mask))
+        real_count = int(
+            np.count_nonzero(
+                self._neuro_map_real_mask
+            )
+        )
         coverage = real_count / max(1, self.c.n_neurons)
         if coverage >= 0.70:
             coordinate_mode = "real"
@@ -1017,11 +1200,39 @@ class FlyBrain:
         else:
             coordinate_mode = "synthetic"
 
+        neuropil_coverage = float(
+            self.c.metadata.get(
+                "neuropil_coverage",
+                0.0,
+            )
+            or 0.0
+        )
+        if self._neuro_map_region_source == "neuropil":
+            region_source_detail = (
+                "FlyWire neuropil z największą sumą syn_count "
+                "na wejściach i wyjściach neuronu"
+            )
+        else:
+            region_source_detail = (
+                "Fallback: FlyWire class/super_class; "
+                "brak mapy neuropili w cache"
+            )
+
         return {
             "projection": projection,
             "coordinate_mode": coordinate_mode,
             "coordinate_coverage": float(coverage),
             "coordinate_neurons": real_count,
+            "region_source": self._neuro_map_region_source,
+            "region_source_detail": region_source_detail,
+            "neuropil_coverage": neuropil_coverage,
+            "neuropil_labels": int(
+                self.c.metadata.get(
+                    "neuropil_labels",
+                    0,
+                )
+                or 0
+            ),
             "nodes": nodes,
             "regions": regions,
             "reference": reference,
@@ -1030,11 +1241,16 @@ class FlyBrain:
                 np.count_nonzero(abs_state > 0.1)
             ),
             "mean_abs_activation": float(
-                np.mean(abs_state) if len(abs_state) else 0.0
+                np.mean(abs_state)
+                if len(abs_state)
+                else 0.0
             ),
             "max_abs_activation": float(
-                np.max(abs_state) if len(abs_state) else 0.0
+                np.max(abs_state)
+                if len(abs_state)
+                else 0.0
             ),
+            "history_samples": len(history),
         }
 
     def learning_since_start_diagnostics(self) -> dict:
