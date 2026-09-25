@@ -581,6 +581,11 @@ class MuchaClient(discord.Client):
             elif self.random_audio_loop.is_running():
                 self.random_audio_loop.cancel()
 
+        if "voice.blocked_voice_guild_ids" in changed and self.is_ready():
+            for guild in self.guilds:
+                if self._is_voice_guild_blocked(guild):
+                    asyncio.create_task(self._voice_decision(guild))
+
         self._record_action(
             "config",
             ", ".join(changed) if changed else "brak zmian",
