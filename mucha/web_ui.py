@@ -548,7 +548,7 @@ body{margin:0;color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-
 body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.20;background-image:
  linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
  linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);background-size:32px 32px}
-main{max-width:1700px;margin:auto;padding:22px}
+main{max-width:1740px;margin:auto;padding:22px}
 .top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}
 .brand{display:flex;gap:13px;align-items:center}.logo{font-size:38px;filter:drop-shadow(0 0 22px rgba(85,234,208,.28))}
 h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}
@@ -560,34 +560,35 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 .toolgroup{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.toolgroup span{font-size:9px;color:#758ba0;text-transform:uppercase;letter-spacing:.1em;margin-right:3px}
 .btn{border:1px solid #263d52;background:#08121b;color:#9db0c2;border-radius:999px;padding:7px 10px;font-size:9px;font-weight:850;letter-spacing:.06em;cursor:pointer}
 .btn:hover{border-color:#527593;color:white}.btn.on{border-color:rgba(85,234,208,.55);background:rgba(85,234,208,.10);color:var(--cyan);box-shadow:0 0 18px rgba(85,234,208,.08)}
-.badge{padding:6px 9px;border-radius:999px;font-size:9px;font-weight:850;letter-spacing:.08em;border:1px solid #284055;background:#071019;color:#9eb2c3}.badge.real{color:var(--good);border-color:rgba(85,223,151,.4);background:rgba(85,223,151,.09)}.badge.hybrid{color:var(--warn);border-color:rgba(255,209,102,.35);background:rgba(255,209,102,.08)}.badge.synthetic{color:var(--bad);border-color:rgba(255,116,116,.35);background:rgba(255,116,116,.08)}
-.grid{display:grid;grid-template-columns:minmax(0,2.25fr) minmax(360px,.85fr);gap:12px}.card{padding:14px;min-width:0}.card-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.card h2{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#9db0c0}.live{display:inline-flex;align-items:center;gap:7px;color:var(--good);font-size:9px;font-weight:850;letter-spacing:.1em}.live i{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 14px var(--good);animation:pulse 1.2s infinite}@keyframes pulse{50%{opacity:.35;transform:scale(.75)}}
-.map-wrap{position:relative;height:760px;border-radius:15px;overflow:hidden;border:1px solid #162637;background:
+.badge{padding:6px 9px;border-radius:999px;font-size:9px;font-weight:850;letter-spacing:.08em;border:1px solid #284055;background:#071019;color:#9eb2c3}.badge.real,.badge.neuropil{color:var(--good);border-color:rgba(85,223,151,.4);background:rgba(85,223,151,.09)}.badge.hybrid{color:var(--warn);border-color:rgba(255,209,102,.35);background:rgba(255,209,102,.08)}.badge.synthetic,.badge.fallback{color:var(--bad);border-color:rgba(255,116,116,.35);background:rgba(255,116,116,.08)}
+.grid{display:grid;grid-template-columns:minmax(0,2.15fr) minmax(390px,.85fr);gap:12px}.card{padding:14px;min-width:0}.card-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.card h2{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#9db0c0}.live{display:inline-flex;align-items:center;gap:7px;color:var(--good);font-size:9px;font-weight:850;letter-spacing:.1em}.live i{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 14px var(--good);animation:pulse 1.2s infinite}@keyframes pulse{50%{opacity:.35;transform:scale(.75)}}
+.map-wrap{position:relative;height:790px;border-radius:15px;overflow:hidden;border:1px solid #162637;background:
  radial-gradient(circle at 50% 48%,rgba(85,234,208,.035),transparent 42%),
  linear-gradient(180deg,#050a10,#07101a)}
 #brain{width:100%;height:100%;display:block}.map-title{position:absolute;left:12px;top:10px;color:#6f879a;font-size:9px;text-transform:uppercase;letter-spacing:.14em;background:rgba(4,9,14,.68);border:1px solid #172839;padding:6px 8px;border-radius:999px;backdrop-filter:blur(7px)}
-.tooltip{position:absolute;z-index:5;display:none;pointer-events:none;min-width:220px;max-width:310px;padding:10px 11px;border-radius:11px;background:rgba(4,9,14,.96);border:1px solid #2b4760;box-shadow:0 16px 45px rgba(0,0,0,.45);font-size:10px;line-height:1.5}.tooltip b{font-size:11px}.tooltip .mut{color:#7890a4}.tooltip .acc{color:var(--cyan)}
+.tooltip{position:absolute;z-index:5;display:none;pointer-events:none;min-width:230px;max-width:320px;padding:10px 11px;border-radius:11px;background:rgba(4,9,14,.96);border:1px solid #2b4760;box-shadow:0 16px 45px rgba(0,0,0,.45);font-size:10px;line-height:1.5}.tooltip b{font-size:11px}.tooltip .mut{color:#7890a4}.tooltip .acc{color:var(--cyan)}
 .side{display:flex;flex-direction:column;gap:12px}.now{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{padding:10px;border:1px solid #172636;background:#071019;border-radius:11px}.mini small{display:block;color:#71889c;font-size:9px;text-transform:uppercase;letter-spacing:.1em}.mini strong{display:block;margin-top:4px;font-size:12px;word-break:break-word}
 .actions{display:flex;flex-direction:column;gap:7px}.act{display:grid;grid-template-columns:86px 1fr 40px;gap:8px;align-items:center;font-size:10px}.track{height:7px;background:#050b11;border:1px solid #172637;border-radius:999px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));border-radius:999px;box-shadow:0 0 12px rgba(85,234,208,.2)}
-.regions{display:flex;flex-direction:column;gap:6px;max-height:330px;overflow:auto}.region{display:grid;grid-template-columns:1fr 72px 44px;gap:8px;align-items:center;padding:8px;border:1px solid #172637;background:#071019;border-radius:10px;cursor:pointer}.region:hover,.region.on{border-color:#34536c;background:#091722}.region b{font-size:10px}.region small{color:#70879b;font-size:9px}.rtrack{height:6px;background:#050b11;border:1px solid #162536;border-radius:999px;overflow:hidden}.rfill{height:100%;background:linear-gradient(90deg,var(--violet),var(--pink));border-radius:999px}
-.inspector{min-height:260px}.empty{color:#71879a;font-size:11px;line-height:1.55;padding:10px 0}.ins-title{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ins-title strong{font-size:14px;word-break:break-all}.role{padding:4px 7px;border-radius:999px;font-size:8px;font-weight:850;letter-spacing:.08em;border:1px solid #274056;color:#a8bac9}
+.regions{display:flex;flex-direction:column;gap:6px;max-height:310px;overflow:auto}.region{display:grid;grid-template-columns:1fr 72px 44px;gap:8px;align-items:center;padding:8px;border:1px solid #172637;background:#071019;border-radius:10px;cursor:pointer}.region:hover,.region.on{border-color:#34536c;background:#091722}.region b{font-size:10px}.region small{color:#70879b;font-size:9px}.rtrack{height:6px;background:#050b11;border:1px solid #162536;border-radius:999px;overflow:hidden}.rfill{height:100%;background:linear-gradient(90deg,var(--violet),var(--pink));border-radius:999px}
+.inspector{min-height:230px}.empty{color:#71879a;font-size:11px;line-height:1.55;padding:10px 0}.ins-title{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ins-title strong{font-size:14px;word-break:break-all}.role{padding:4px 7px;border-radius:999px;font-size:8px;font-weight:850;letter-spacing:.08em;border:1px solid #274056;color:#a8bac9}
 .meta{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.meta div{padding:8px;background:#071019;border:1px solid #172637;border-radius:9px}.meta small{display:block;color:#6f879b;font-size:8px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:3px}.meta b{font-size:10px;word-break:break-word}
 .effects{margin-top:9px;padding:9px;background:#061019;border:1px solid #172637;border-radius:10px}.effects small{display:block;color:#71899e;font-size:8px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px}.effect{display:grid;grid-template-columns:80px 1fr auto;gap:7px;align-items:center;font-size:9px;margin-top:5px}.effect .efill{height:6px;background:#08141f;border-radius:999px;overflow:hidden}.effect .efill i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan))}
 .note{color:#71879a;font-size:9px;line-height:1.5;margin-top:8px}.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;color:#748b9f;font-size:9px}.legend span{display:inline-flex;align-items:center;gap:5px}.legend i{width:8px;height:8px;border-radius:50%}.sens{background:var(--cyan)}.internal{background:var(--blue)}.mod{background:var(--violet)}.out{background:var(--pink)}
-@media(max-width:1150px){.grid{grid-template-columns:1fr}.map-wrap{height:620px}.hero{grid-template-columns:repeat(3,1fr)}}
+.region-inspector{min-height:300px}.spark-wrap{height:76px;border:1px solid #172637;background:#050c12;border-radius:10px;margin-top:9px;padding:5px}.spark-wrap canvas{width:100%;height:100%}.chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.chip{font-size:8px;padding:4px 6px;border-radius:999px;border:1px solid #263c50;background:#071019;color:#9db0c1}.corr{display:grid;grid-template-columns:82px 1fr 42px;gap:7px;align-items:center;margin-top:6px;font-size:9px}.corrbar{height:6px;background:#07131d;border-radius:999px;overflow:hidden;position:relative}.corrbar:after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#28445b}.corrfill{height:100%;position:absolute;top:0}.corrfill.pos{left:50%;background:var(--cyan)}.corrfill.neg{right:50%;background:var(--pink)}.neuron-list{display:flex;flex-direction:column;gap:5px;margin-top:7px}.nrow{display:grid;grid-template-columns:1fr 62px;gap:8px;font-size:9px;padding:6px 7px;border:1px solid #172637;background:#071019;border-radius:8px}.nrow span{color:#9fb1c1}.nrow b{text-align:right}
+@media(max-width:1150px){.grid{grid-template-columns:1fr}.map-wrap{height:650px}.hero{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:720px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.map-wrap{height:540px}.meta{grid-template-columns:1fr}}
 </style>
 </head>
 <body><main>
 <div class="top">
- <div class="brand"><div class="logo">🧠</div><div><h1>Fly Brain Neuro-map</h1><div class="sub">Anatomiczna projekcja aktywności z adnotacjami FlyWire + osobno oznaczony wpływ na zachowanie Muchy.</div></div></div>
+ <div class="brand"><div class="logo">🧠</div><div><h1>Fly Brain Neuro-map</h1><div class="sub">Aktywność przestrzenna, nazwane neuropile, typy neuronów i runtime korelacje z zachowaniem Muchy.</div></div></div>
  <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a class="active" href="/neuromap">🧠 Neuro-map</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
  <div class="kpi"><small>Pozycje neuronów</small><strong id="coverage">—</strong><em id="coord-count">—</em></div>
+ <div class="kpi"><small>Mapa neuropili</small><strong id="neuropil-coverage">—</strong><em id="neuropil-count">—</em></div>
  <div class="kpi"><small>Aktywne |a| &gt; .1</small><strong id="active">—</strong><em>cały runtime</em></div>
- <div class="kpi"><small>Mean |activation|</small><strong id="mean">—</strong><em id="max">max —</em></div>
  <div class="kpi"><small>Najaktywniejszy region</small><strong id="top-region">—</strong><em id="top-region-detail">—</em></div>
  <div class="kpi"><small>Dominujący readout</small><strong id="dominant">—</strong><em id="dominant-score">—</em></div>
 </section>
@@ -595,7 +596,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 <div class="toolbar">
  <div class="toolgroup"><span>Projekcja</span><button class="btn proj on" data-proj="xy">XY</button><button class="btn proj" data-proj="xz">XZ</button><button class="btn proj" data-proj="yz">YZ</button></div>
  <div class="toolgroup"><span>Warstwa</span><button class="btn role on" data-role="all">ALL</button><button class="btn role" data-role="sensory">SENSORY</button><button class="btn role" data-role="internal">INTERNAL</button><button class="btn role" data-role="modulatory">MODULATORY</button><button class="btn role" data-role="output">OUTPUT</button></div>
- <div class="toolgroup"><span>Widok</span><button class="btn on" id="regions-btn">REGION HEAT</button><button class="btn on" id="trail-btn">ACTIVITY TRAIL</button><span class="badge" id="coord-badge">COORDINATES</span></div>
+ <div class="toolgroup"><span>Widok</span><button class="btn on" id="regions-btn">REGION HEAT</button><button class="btn on" id="trail-btn">ACTIVITY TRAIL</button><span class="badge" id="region-source">REGIONS</span><span class="badge" id="coord-badge">COORDINATES</span></div>
 </div>
 
 <section class="grid">
@@ -606,7 +607,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
    <div class="map-title" id="map-title">XY PROJECTION</div>
    <div class="tooltip" id="tip"></div>
   </div>
-  <div class="legend"><span><i class="sens"></i> sensory</span><span><i class="internal"></i> internal</span><span><i class="mod"></i> modulatory</span><span><i class="out"></i> output</span><span>• jasność = aktualna aktywacja • duży halo = region aktywny</span></div>
+  <div class="legend"><span><i class="sens"></i> sensory</span><span><i class="internal"></i> internal</span><span><i class="mod"></i> modulatory</span><span><i class="out"></i> output</span><span>• halo = aktywny region • kliknij region po prawej, aby go odizolować</span></div>
  </div>
 
  <div class="side">
@@ -615,9 +616,11 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
    <div class="actions" id="actions" style="margin-top:10px"></div>
   </div>
 
-  <div class="card"><div class="card-head"><h2>Najaktywniejsze rejony</h2><span class="badge" id="region-filter">ALL</span></div><div class="regions" id="regions"></div></div>
+  <div class="card"><div class="card-head"><h2>Najaktywniejsze neuropile / rejony</h2><span class="badge" id="region-filter">ALL</span></div><div class="regions" id="regions"></div><div class="note" id="region-note">—</div></div>
 
-  <div class="card inspector"><div class="card-head"><h2>Neuron inspector</h2><span class="badge" id="picked">kliknij neuron</span></div><div id="inspector" class="empty">Najedź na punkt, żeby zobaczyć skrót. Kliknij neuron, aby zablokować szczegóły: klasy biologiczne, neuroprzekaźnik, aktywację i jego bezpośrednie połączenia do sztucznych readoutów Muchy.</div></div>
+  <div class="card region-inspector"><div class="card-head"><h2>Region inspector</h2><span class="badge" id="region-picked">kliknij region</span></div><div id="region-inspector" class="empty">Wybierz region z listy. Zobaczysz historię aktywności od otwarcia Neuro-map, najaktywniejsze neurony, dominujące typy komórek oraz korelacje z readoutami Muchy.</div></div>
+
+  <div class="card inspector"><div class="card-head"><h2>Neuron inspector</h2><span class="badge" id="picked">kliknij neuron</span></div><div id="inspector" class="empty">Kliknij świecący neuron na mapie, aby zobaczyć jego adnotacje biologiczne, top neuropile, aktywację i bezpośrednie połączenia do sztucznych readoutów Muchy.</div></div>
  </div>
 </section>
 </main>
@@ -633,7 +636,7 @@ function axes(p){return p==="xy"?["x","y"]:p==="xz"?["x","z"]:["y","z"]}
 function point(o,w,h,pad=30){const [a,b]=axes(projection);return {x:pad+clamp(Number(o[a]||0),0,1)*(w-pad*2),y:pad+(1-clamp(Number(o[b]||0),0,1))*(h-pad*2)}}
 function resize(){const r=wrap.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0)}
 function roleVisible(n){return roleFilter==="all"||n.role===roleFilter}
-function regionOf(n){return (n.cell_class||n.super_class||"").trim()}
+function regionOf(n){if(!data)return "";return data.region_source==="neuropil"?(n.primary_neuropil||"").trim():(n.cell_class||n.super_class||"").trim()}
 function drawReference(w,h){
  if(!data)return;ctx.save();ctx.globalCompositeOperation="lighter";
  for(const p0 of (data.reference||[])){const p=point(p0,w,h,24);ctx.fillStyle=p0.real?"rgba(100,145,178,.075)":"rgba(100,145,178,.025)";ctx.beginPath();ctx.arc(p.x,p.y,p0.real?1.05:.75,0,Math.PI*2);ctx.fill()}
@@ -642,9 +645,9 @@ function drawReference(w,h){
 function drawRegions(w,h){
  if(!data||!showRegions)return;const regs=(data.regions||[]),max=Math.max(.0001,...regs.map(r=>Number(r.score||0)));
  ctx.save();ctx.globalCompositeOperation="lighter";
- for(const r of regs){if(selectedRegion&&r.name!==selectedRegion)continue;const p=point(r,w,h,36),q=clamp(Number(r.score||0)/max,0,1),rad=18+q*60;
-  const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rad);g.addColorStop(0,"rgba(182,139,255,"+(0.08+q*.19)+")");g.addColorStop(.45,"rgba(107,166,255,"+(0.04+q*.10)+")");g.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);ctx.fill();
-  if(q>.32){ctx.globalCompositeOperation="source-over";ctx.fillStyle="rgba(170,190,208,"+(0.42+q*.35)+")";ctx.font="9px Inter,system-ui";ctx.fillText(r.name,p.x+7,p.y-7);ctx.globalCompositeOperation="lighter"}
+ for(const r of regs){if(selectedRegion&&r.name!==selectedRegion)continue;const p=point(r,w,h,36),q=clamp(Number(r.score||0)/max,0,1),rad=18+q*62;
+  const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rad);g.addColorStop(0,"rgba(182,139,255,"+(0.08+q*.21)+")");g.addColorStop(.45,"rgba(107,166,255,"+(0.04+q*.11)+")");g.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);ctx.fill();
+  if(q>.25||selectedRegion===r.name){ctx.globalCompositeOperation="source-over";ctx.fillStyle="rgba(178,199,216,"+(0.42+q*.4)+")";ctx.font="9px Inter,system-ui";ctx.fillText(r.name,p.x+7,p.y-7);ctx.globalCompositeOperation="lighter"}
  }
  ctx.restore();
 }
@@ -673,14 +676,42 @@ function renderActions(scores){
  $("actions").innerHTML=order.map(k=>{const v=clamp(Number(scores[k]||0),0,1);return '<div class="act"><span>'+k+'</span><div class="track"><div class="fill" style="width:'+(v*100).toFixed(1)+'%"></div></div><b>'+v.toFixed(2)+'</b></div>'}).join("");
  const best=order.map(k=>[k,Number(scores[k]||0)]).sort((a,b)=>b[1]-a[1])[0]||["—",0];$("dominant").textContent=best[0];$("dominant-score").textContent="score "+best[1].toFixed(3)
 }
+function sparkline(canvasEl,values){
+ const r=canvasEl.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1);canvasEl.width=Math.max(1,Math.floor(r.width*dpr));canvasEl.height=Math.max(1,Math.floor(r.height*dpr));const c=canvasEl.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);const w=r.width,h=r.height;c.clearRect(0,0,w,h);
+ if(!values||values.length<2)return;const min=Math.min(...values),max=Math.max(...values),span=Math.max(.000001,max-min);
+ c.strokeStyle="rgba(85,234,208,.92)";c.lineWidth=1.4;c.shadowColor="rgba(85,234,208,.45)";c.shadowBlur=7;c.beginPath();
+ values.forEach((v,i)=>{const x=i/(values.length-1)*w,y=h-5-((v-min)/span)*(h-10);if(i===0)c.moveTo(x,y);else c.lineTo(x,y)});c.stroke();c.shadowBlur=0
+}
+function corrRows(rows){
+ if(!rows||!rows.length)return '<div class="note">Za mało próbek albo brak zmienności. Korelacje pojawią się po kilku sekundach działania Neuro-map.</div>';
+ return rows.map(x=>{const c=clamp(Number(x.correlation||0),-1,1),width=Math.abs(c)*50;return '<div class="corr"><span>'+esc(x.action)+'</span><div class="corrbar"><i class="corrfill '+(c>=0?"pos":"neg")+'" style="width:'+width.toFixed(1)+'%"></i></div><b>'+(c>=0?"+":"")+c.toFixed(2)+'</b></div>'}).join("")
+}
+function regionInspector(){
+ const root=$("region-inspector");if(!data||!selectedRegion){$("region-picked").textContent="kliknij region";root.className="empty";root.innerHTML="Wybierz region z listy. Zobaczysz historię aktywności od otwarcia Neuro-map, najaktywniejsze neurony, dominujące typy komórek oraz korelacje z readoutami Muchy.";return}
+ const r=(data.regions||[]).find(x=>x.name===selectedRegion);if(!r){root.className="empty";root.textContent="Wybrany region nie jest teraz w TOP aktywnych regionów.";return}
+ $("region-picked").textContent=data.region_source==="neuropil"?"NEUROPIL":"CLASS GROUP";root.className="";
+ const types=(r.dominant_types||[]).map(x=>'<span class="chip">'+esc(x.name)+' ×'+nfmt(x.count)+'</span>').join("")||'<span class="chip">brak typów</span>';
+ const neurons=(r.top_neurons||[]).map(n=>'<div class="nrow"><span>'+esc(n.id)+' • '+esc(n.primary_type||"—")+' • '+esc(n.nt_type||"—")+'</span><b class="'+(Number(n.activation)>=0?"plus":"minus")+'">'+(Number(n.activation)>=0?"+":"")+Number(n.activation||0).toFixed(4)+'</b></div>').join("");
+ root.innerHTML='<div class="ins-title"><div><strong>'+esc(r.name)+'</strong><div class="note">'+nfmt(r.active_count)+' / '+nfmt(r.total)+' neuronów ma |a| &gt; 0.1</div></div><span class="role">mean '+Number(r.mean_abs||0).toFixed(4)+'</span></div>'+
+ '<div class="meta"><div><small>max activation</small><b>'+Number(r.max_abs||0).toFixed(4)+'</b></div><div><small>history samples</small><b>'+nfmt(r.correlation_samples||0)+'</b></div></div>'+
+ '<div class="spark-wrap"><canvas id="region-spark"></canvas></div>'+
+ '<div class="effects"><small>Dominujące typy neuronów</small><div class="chips">'+types+'</div></div>'+
+ '<div class="effects"><small>Runtime correlation z readoutami</small>'+corrRows(r.readout_correlations||[])+'<div class="note">To korelacja czasowa aktywności regionu z readoutem Muchy, nie dowód biologicznej funkcji ani przyczynowości.</div></div>'+
+ '<div class="effects"><small>Najaktywniejsze neurony w regionie</small><div class="neuron-list">'+neurons+'</div></div>';
+ requestAnimationFrame(()=>{const c=$("region-spark");if(c)sparkline(c,r.history||[])})
+}
 function renderRegions(){
  const regs=data.regions||[],max=Math.max(.0001,...regs.map(r=>Number(r.score||0)));
- $("regions").innerHTML=regs.slice(0,16).map(r=>{const q=clamp(Number(r.score||0)/max,0,1);return '<div class="region '+(selectedRegion===r.name?"on":"")+'" data-region="'+esc(r.name)+'"><div><b>'+esc(r.name)+'</b><br><small>'+nfmt(r.active_count)+' / '+nfmt(r.total)+' active</small></div><div class="rtrack"><div class="rfill" style="width:'+(q*100).toFixed(1)+'%"></div></div><small>'+Number(r.mean_abs||0).toFixed(3)+'</small></div>'}).join("")||'<div class="empty">Brak adnotowanych regionów. Dodaj classification.csv.gz przez augment_connectome_map.py.</div>';
- document.querySelectorAll("[data-region]").forEach(el=>el.onclick=()=>{const name=el.dataset.region;selectedRegion=selectedRegion===name?"":name;$("region-filter").textContent=selectedRegion||"ALL";renderRegions()})
+ $("regions").innerHTML=regs.slice(0,20).map(r=>{const q=clamp(Number(r.score||0)/max,0,1);return '<div class="region '+(selectedRegion===r.name?"on":"")+'" data-region="'+esc(r.name)+'"><div><b>'+esc(r.name)+'</b><br><small>'+nfmt(r.active_count)+' / '+nfmt(r.total)+' active</small></div><div class="rtrack"><div class="rfill" style="width:'+(q*100).toFixed(1)+'%"></div></div><small>'+Number(r.mean_abs||0).toFixed(3)+'</small></div>'}).join("")||'<div class="empty">Brak nazwanych regionów w aktualnym cache.</div>';
+ document.querySelectorAll("[data-region]").forEach(el=>el.onclick=()=>{const name=el.dataset.region;selectedRegion=selectedRegion===name?"":name;$("region-filter").textContent=selectedRegion||"ALL";renderRegions();regionInspector();updateTrail()})
 }
 function effectRows(n){
  const xs=n.system_actions||[];if(!xs.length)return '<div class="note">Brak bezpośredniego połączenia tego neuronu do sztucznych populacji action-readout w pokazanym kierunku.</div>';
  const max=Math.max(...xs.map(x=>Number(x.strength||0)),.0001);return xs.map(x=>'<div class="effect"><span>'+esc(x.name)+'</span><div class="efill"><i style="width:'+(Number(x.strength||0)/max*100).toFixed(1)+'%"></i></div><b>'+Number(x.strength||0).toFixed(4)+'</b></div>').join("")
+}
+function neuropilRows(n){
+ const xs=n.neuropils||[];if(!xs.length)return '<div class="note">Brak summary neuropili dla tego neuronu. Przebuduj neuron_meta.npz z plikiem connections_princeton.csv.gz.</div>';
+ return xs.map(x=>'<div class="effect"><span>'+esc(x.name)+'</span><div class="efill"><i style="width:'+(clamp(Number(x.share||0),0,1)*100).toFixed(1)+'%"></i></div><b>'+(Number(x.share||0)*100).toFixed(0)+'%</b></div>').join("")
 }
 function inspect(n){
  selected=n||selected;if(!selected)return;const n0=selected;$("picked").textContent=n0.real_position?"REAL POSITION":"FALLBACK POSITION";
@@ -688,26 +719,29 @@ function inspect(n){
  '<div class="meta"><div><small>activation</small><b>'+(Number(n0.activation)>=0?"+":"")+Number(n0.activation||0).toFixed(5)+'</b></div><div><small>eligibility</small><b>'+Number(n0.eligibility||0).toFixed(5)+'</b></div>'+
  '<div><small>class</small><b>'+esc(n0.cell_class||"—")+'</b></div><div><small>sub_class</small><b>'+esc(n0.sub_class||"—")+'</b></div>'+
  '<div><small>super_class</small><b>'+esc(n0.super_class||"—")+'</b></div><div><small>side / flow</small><b>'+esc((n0.side||"—")+" / "+(n0.flow||"—"))+'</b></div>'+
- '<div><small>neurotransmitter</small><b>'+esc(n0.nt_type||"—")+'</b></div><div><small>nerve</small><b>'+esc(n0.nerve||"—")+'</b></div></div>'+
+ '<div><small>neurotransmitter</small><b>'+esc(n0.nt_type||"—")+'</b></div><div><small>primary neuropil</small><b>'+esc(n0.primary_neuropil||"—")+'</b></div></div>'+
+ '<div class="effects"><small>Top neuropile wg incident synapse mass</small>'+neuropilRows(n0)+'</div>'+
  '<div class="effects"><small>Wpływ na systemowe readouty Muchy</small>'+effectRows(n0)+'</div>'+
- '<div class="note">Klasy/typ/strona/neuroprzekaźnik pochodzą z danych FlyWire, jeśli są dostępne. Pasek „readout” opisuje wyłącznie sztuczny interfejs Discordowego mózgu Muchy — nie biologiczną funkcję neuronu.</div>'
+ '<div class="note">Neuropil jest skrótem opartym o sumę syn_count połączeń neuronu w regionach FlyWire. Readout opisuje sztuczny interfejs Muchy, a nie biologiczną funkcję neuronu.</div>'
 }
-canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.inside=true;if(hover){tip.style.display="block";tip.style.left=Math.min(r.width-245,mouse.x+13)+"px";tip.style.top=Math.min(r.height-145,mouse.y+13)+"px";tip.innerHTML='<b>'+esc(hover.id)+'</b><br><span class="mut">'+esc(hover.primary_type||hover.cell_class||hover.super_class||hover.role)+'</span><br><span class="acc">activation '+Number(hover.activation||0).toFixed(5)+'</span><br>'+esc(hover.side||"")+' '+esc(hover.nt_type||"")}else tip.style.display="none"});
+canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.inside=true;if(hover){tip.style.display="block";tip.style.left=Math.min(r.width-255,mouse.x+13)+"px";tip.style.top=Math.min(r.height-155,mouse.y+13)+"px";tip.innerHTML='<b>'+esc(hover.id)+'</b><br><span class="mut">'+esc(hover.primary_type||hover.cell_class||hover.super_class||hover.role)+'</span><br><span class="acc">activation '+Number(hover.activation||0).toFixed(5)+'</span><br>neuropil '+esc(hover.primary_neuropil||"—")+'<br>'+esc(hover.side||"")+' '+esc(hover.nt_type||"")}else tip.style.display="none"});
 canvas.addEventListener("mouseleave",()=>{mouse.inside=false;tip.style.display="none"});
 canvas.addEventListener("click",()=>{if(hover){selected=hover;inspect(selected)}});
 
 document.querySelectorAll(".proj").forEach(b=>b.onclick=()=>{projection=b.dataset.proj;document.querySelectorAll(".proj").forEach(x=>x.classList.toggle("on",x===b));$("map-title").textContent=projection.toUpperCase()+" PROJECTION";update()});
-document.querySelectorAll(".role").forEach(b=>b.onclick=()=>{roleFilter=b.dataset.role;document.querySelectorAll(".role").forEach(x=>x.classList.toggle("on",x===b));selectedRegion="";$("region-filter").textContent=roleFilter.toUpperCase();updateTrail()});
+document.querySelectorAll(".role").forEach(b=>b.onclick=()=>{roleFilter=b.dataset.role;document.querySelectorAll(".role").forEach(x=>x.classList.toggle("on",x===b));selectedRegion="";$("region-filter").textContent=roleFilter.toUpperCase();regionInspector();updateTrail()});
 $("regions-btn").onclick=()=>{showRegions=!showRegions;$("regions-btn").classList.toggle("on",showRegions)};
 $("trail-btn").onclick=()=>{showTrail=!showTrail;$("trail-btn").classList.toggle("on",showTrail);if(!showTrail)trail.clear()};
 
 function render(payload){
  const m=payload.brain_map||{};data=m;updateTrail();const scores=payload.scores||{};
  const coverage=Number(m.coordinate_coverage||0);$("coverage").textContent=(coverage*100).toFixed(1)+"%";$("coord-count").textContent=nfmt(m.coordinate_neurons)+" / "+nfmt(m.total_neurons)+" neurons";
- $("active").textContent=nfmt(m.active_abs_gt_0_1);$("mean").textContent=Number(m.mean_abs_activation||0).toFixed(5);$("max").textContent="max "+Number(m.max_abs_activation||0).toFixed(5);
+ $("neuropil-coverage").textContent=(Number(m.neuropil_coverage||0)*100).toFixed(1)+"%";$("neuropil-count").textContent=nfmt(m.neuropil_labels)+" nazwanych neuropili";
+ $("active").textContent=nfmt(m.active_abs_gt_0_1);
  const top=(m.regions||[])[0];$("top-region").textContent=top?top.name:"—";$("top-region-detail").textContent=top?(nfmt(top.active_count)+" active • mean "+Number(top.mean_abs||0).toFixed(3)):"brak adnotacji";
  const badge=$("coord-badge"),mode=m.coordinate_mode||"synthetic";badge.textContent=mode==="real"?"REAL FAFB COORDS":mode==="hybrid"?"HYBRID COORDS":"FALLBACK LAYOUT";badge.className="badge "+mode;
- $("event").textContent=payload.last_event||"—";$("last-action").textContent=payload.last_action||"—";$("source").textContent=(payload.source||"runtime").includes("FlyWire")?"FAFB v783":"runtime";renderActions(scores);renderRegions();
+ const rs=$("region-source");rs.textContent=m.region_source==="neuropil"?"NAMED NEUROPILS":"CLASS FALLBACK";rs.className="badge "+(m.region_source==="neuropil"?"neuropil":"fallback");$("region-note").textContent=m.region_source_detail||"—";
+ $("event").textContent=payload.last_event||"—";$("last-action").textContent=payload.last_action||"—";$("source").textContent=(payload.source||"runtime").includes("FlyWire")?"FAFB v783":"runtime";renderActions(scores);renderRegions();regionInspector();
  if(selected){const fresh=(m.nodes||[]).find(n=>n.id===selected.id);if(fresh){selected=fresh;inspect(fresh)}}
  $("live").textContent="LIVE";lastFetch=Date.now()
 }
@@ -718,7 +752,6 @@ async function update(){
 window.addEventListener("resize",resize);resize();draw();setInterval(update,1100);update();
 </script>
 </body></html>"""
-
 LOGIN_HTML = r"""<!doctype html>
 <html lang="pl">
 <head>
