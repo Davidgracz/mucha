@@ -26,6 +26,11 @@ def main():
         scores = b.action_scores()
         assert 0 <= scores["speak"] <= 1
         assert 0 <= b.language_word_score("siema") <= 1
+        visual = b.connectome_visual_snapshot(24, 60)
+        assert visual["selected_neurons"] >= 12
+        assert len(visual["nodes"]) == visual["selected_neurons"]
+        assert visual["total_neurons"] == c.n_neurons
+        assert visual["total_connections"] == int(c.matrix.nnz)
         b.reward(1)
         b.save()
 
