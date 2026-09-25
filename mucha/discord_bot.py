@@ -2294,6 +2294,7 @@ class MuchaClient(discord.Client):
         await asyncio.sleep(self.random.uniform(delay_min, delay_max))
 
         first_escape = True
+        predator_missing_since: float | None = None
         while self._chaser_panic_remaining(guild_id) > 0.0:
             guild = self.get_guild(guild_id)
             if guild is None or self._is_voice_guild_blocked(guild):
@@ -2321,12 +2322,56 @@ class MuchaClient(discord.Client):
                 else None
             )
 
+            now = time.monotonic()
+            if predator_channel is None:
+                if predator_missing_since is None:
+                    predator_missing_since = now
+                if now - predator_missing_since >= 2.5:
+                    self._chaser_panic_until.pop(guild_id, None)
+                    if (
+                        self._audio_debug.get("stage") in {
+                            "chaser_scream",
+                            "playing_check",
+                        }
+                        and vc.is_playing()
+                    ):
+                        self._stop_voice_playback(vc)
+                    self._audio_debug.update({
+                        "status": "IDLE",
+                        "stage": "chaser_finished",
+                        "playing": False,
+                        "connected": bool(vc.is_connected()),
+                        "error": "",
+                        "updated_at": time.time(),
+                    })
+                    self._last_brain_event = "CHASER • pościg zakończony"
+                    self._last_brain_action = "PANIC END"
+                    self._record_action(
+                        "chaser_end",
+                        f"predator {predator_id} opuścił voice",
+                        guild,
+                    )
+                    log.info(
+                        "CHASER END guild=%s predator=%s reason=left_voice",
+                        guild.id,
+                        predator_id,
+                    )
+                    return
+                await asyncio.sleep(0.10)
+                continue
+
+            predator_missing_since = None
+            # Keep the panic alive while the predator is genuinely present on
+            # voice. The chase therefore lasts as long as the chaser does,
+            # instead of expiring halfway through a long pursuit.
+            self._chaser_panic_until[guild_id] = max(
+                self._chaser_panic_until.get(guild_id, 0.0),
+                now + 5.0,
+            )
+
             # Do not hop endlessly on our own. Wait until the chaser is
             # actually on the same channel again.
-            if (
-                predator_channel is None
-                or predator_channel.id != current.id
-            ):
+            if predator_channel.id != current.id:
                 await asyncio.sleep(0.10)
                 continue
 
