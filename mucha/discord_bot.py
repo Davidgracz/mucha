@@ -686,6 +686,7 @@ class MuchaClient(discord.Client):
         if now - float(streak.get("last", 0.0)) > window:
             streak = {"count": 0, "last": 0.0}
         streak_count = int(streak.get("count", 0)) + 1
+        streak["count"] = streak_count
         streak["last"] = now
         self._social_negative_streak[int(user_id)] = streak
 
@@ -699,9 +700,9 @@ class MuchaClient(discord.Client):
                 0.0,
                 float(self.cfg.behavior.negative_streak_multiplier_step),
             )
-            * max(0, streak["count"] - 1),
+            * max(0, streak_count - 1),
         )
-        return int(streak["count"]), float(multiplier)
+        return streak_count, float(multiplier)
 
     def _soften_negative_streak(
         self,
@@ -784,28 +785,28 @@ class MuchaClient(discord.Client):
             )
             self.brain.inject(
                 "social:user-avoids-me",
-                min(1.0, 0.50 + 0.08 * streak["count"]),
+                min(1.0, 0.50 + 0.08 * streak_count),
                 128,
             )
             self.brain.inject(
                 f"social:user-avoids-me:user:{member.id}",
-                min(1.0, 0.42 + 0.07 * streak["count"]),
+                min(1.0, 0.42 + 0.07 * streak_count),
                 96,
             )
             self.brain.inject(
                 "internal:social-failure",
-                min(1.0, 0.42 + 0.06 * streak["count"]),
+                min(1.0, 0.42 + 0.06 * streak_count),
                 112,
             )
-            if streak["count"] >= 2:
+            if streak_count >= 2:
                 self.brain.inject(
                     "social:repeated-rejection",
-                    min(1.0, 0.52 + 0.08 * streak["count"]),
+                    min(1.0, 0.52 + 0.08 * streak_count),
                     144,
                 )
                 self.brain.inject(
                     f"social:repeated-rejection:user:{member.id}",
-                    min(1.0, 0.45 + 0.07 * streak["count"]),
+                    min(1.0, 0.45 + 0.07 * streak_count),
                     96,
                 )
             if penalty < 0.0:
@@ -835,7 +836,7 @@ class MuchaClient(discord.Client):
             (
                 f"{event} • {member.display_name} • "
                 f"affinity {new_affinity:+.3f} • "
-                f"streak {streak['count']} ×{multiplier:.2f}"
+                f"streak {streak_count} ×{multiplier:.2f}"
             ),
             guild,
         )
@@ -844,7 +845,7 @@ class MuchaClient(discord.Client):
             (
                 (detail or stimulus)
                 + f" • affinity {new_affinity:+.3f}"
-                + f" • streak {streak['count']} ×{multiplier:.2f}"
+                + f" • streak {streak_count} ×{multiplier:.2f}"
             ),
             delta,
             member,
