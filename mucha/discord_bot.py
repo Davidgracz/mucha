@@ -149,6 +149,18 @@ class MuchaClient(discord.Client):
             char_frequency_exponent=cfg.language.char_frequency_exponent,
             char_arousal_flatten=cfg.language.char_arousal_flatten,
             word_reward_scale=cfg.language.word_reward_scale,
+            connectome_word_control_enabled=(
+                cfg.language.connectome_word_control_enabled
+            ),
+            connectome_word_control_min_vocab=(
+                cfg.language.connectome_word_control_min_vocab
+            ),
+            connectome_word_control_strength=(
+                cfg.language.connectome_word_control_strength
+            ),
+            connectome_word_control_candidates=(
+                cfg.language.connectome_word_control_candidates
+            ),
         )
         self._language_start_diag = self.language.diagnostics()
         self._stt_transcripts_since_start = 0
@@ -295,6 +307,10 @@ class MuchaClient(discord.Client):
             "char_frequency_exponent",
             "char_arousal_flatten",
             "word_reward_scale",
+            "connectome_word_control_enabled",
+            "connectome_word_control_min_vocab",
+            "connectome_word_control_strength",
+            "connectome_word_control_candidates",
         ]
         behavior_fields = [
             "speak_threshold",
@@ -433,6 +449,18 @@ class MuchaClient(discord.Client):
             ("language", "char_frequency_exponent"): (float, 0.1, 2.0),
             ("language", "char_arousal_flatten"): (float, 0.0, 1.0),
             ("language", "word_reward_scale"): (float, 0.0, 1.0),
+            ("language", "connectome_word_control_enabled"): (
+                bool, None, None
+            ),
+            ("language", "connectome_word_control_min_vocab"): (
+                int, 8, 100000
+            ),
+            ("language", "connectome_word_control_strength"): (
+                float, 0.0, 2.0
+            ),
+            ("language", "connectome_word_control_candidates"): (
+                int, 4, 96
+            ),
             ("behavior", "speak_threshold"): (float, 0.0, 1.0),
             ("behavior", "reaction_threshold"): (float, 0.0, 1.0),
             ("behavior", "reaction_cooldown_seconds"): (int, 0, 3600),
@@ -628,6 +656,27 @@ class MuchaClient(discord.Client):
         self.language.word_reward_scale = max(
             0.0,
             min(1.0, float(self.cfg.language.word_reward_scale)),
+        )
+        self.language.connectome_word_control_enabled = bool(
+            self.cfg.language.connectome_word_control_enabled
+        )
+        self.language.connectome_word_control_min_vocab = max(
+            8,
+            int(self.cfg.language.connectome_word_control_min_vocab),
+        )
+        self.language.connectome_word_control_strength = max(
+            0.0,
+            min(
+                2.0,
+                float(self.cfg.language.connectome_word_control_strength),
+            ),
+        )
+        self.language.connectome_word_control_candidates = max(
+            4,
+            min(
+                96,
+                int(self.cfg.language.connectome_word_control_candidates),
+            ),
         )
 
         self.voice_loop.change_interval(
@@ -2781,7 +2830,11 @@ class MuchaClient(discord.Client):
     ):
         if self._is_text_channel_blocked(channel):
             return
-        text, trigrams = self.language.generate(context=context, arousal=arousal)
+        text, trigrams = self.language.generate(
+            context=context,
+            arousal=arousal,
+            brain_word_score=self.brain.language_word_score,
+        )
         if not text:
             return
         try:
@@ -4434,6 +4487,7 @@ class MuchaClient(discord.Client):
         text_out, trigrams = self.language.generate(
             context=context,
             arousal=scores["explore"],
+            brain_word_score=self.brain.language_word_score,
         )
         if not text_out:
             return
@@ -5553,7 +5607,11 @@ class MuchaClient(discord.Client):
                 f"neurony: `{d['neurons']:,}` | połączenia: `{d['connections']:,}`\n"
                 f"aktywne >0.1: `{d['active_abs_gt_0_1']:,}` | mean |a|: `{d['mean_abs']:.4f}`\n"
                 f"język: `{total:,}` znaków / `{unique:,}` unikalnych | "
+                f"słownik: `{lang['word_vocab']:,}` słów | "
                 f"przejścia: `{lang['transitions']:,}` | gotowa: `{self.language.ready()}`\n"
+                f"connectom→słowa: "
+                f"`{'AKTYWNY' if lang['connectome_word_control_ready'] else 'UCZY SŁOWNIK'}` "
+                f"(`{lang['word_vocab']:,}/{lang['connectome_word_control_min_vocab']:,}`)\n"
                 f"reward trace: `{d['reward_trace']:.3f}` | ticks: `{d['ticks']:,}`\n"
                 f"speak `{scores['speak']:.2f}` move `{scores['voice_move']:.2f}` join `{scores['voice_join']:.2f}` leave `{scores['voice_leave']:.2f}`"
             )
