@@ -31,6 +31,17 @@ def main():
         assert len(visual["nodes"]) == visual["selected_neurons"]
         assert visual["total_neurons"] == c.n_neurons
         assert visual["total_connections"] == int(c.matrix.nnz)
+        assert visual["mode"] == "stable"
+        stable_ids = [node["id"] for node in visual["nodes"]]
+        b.step(1)
+        stable_again = b.connectome_visual_snapshot(24, 60)
+        assert [node["id"] for node in stable_again["nodes"]] == stable_ids
+        followed = b.connectome_visual_snapshot(
+            24,
+            60,
+            follow_activity=True,
+        )
+        assert followed["mode"] == "follow_activity"
         b.reward(1)
         b.save()
 
