@@ -71,6 +71,8 @@ const fields={
   ["voice_leave_after_join_seconds","Okno ucieczki po wejściu Muchy [s]","number",1],
   ["tts_leave_affinity_step","Affinity - za wyjście po TTS","number",0.001],
   ["tts_leave_seconds","Okno wyjścia po TTS [s]","number",1],
+  ["ignored_reply_affinity_step","Affinity - za aktywne ignorowanie odpowiedzi","number",0.001],
+  ["ignored_reply_seconds","Okno ignorowania odpowiedzi [s]","number",1],
   ["negative_contact_cooldown_seconds","Cooldown naturalnych minusów [s]","number",1],
   ["negative_streak_window_seconds","Okno negative streak [s]","number",10],
   ["negative_streak_multiplier_step","Wzrost mnożnika negative streak","number",0.05],
