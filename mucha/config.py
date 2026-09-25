@@ -136,6 +136,8 @@ class BehaviorConfig:
     voice_leave_after_join_seconds: int = 20
     tts_leave_affinity_step: float = 0.008
     tts_leave_seconds: int = 10
+    ignored_reply_affinity_step: float = 0.003
+    ignored_reply_seconds: int = 45
     negative_contact_cooldown_seconds: int = 20
     negative_streak_window_seconds: int = 600
     negative_streak_multiplier_step: float = 0.15
