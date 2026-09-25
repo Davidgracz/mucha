@@ -90,7 +90,7 @@ Po zakończeniu `data/connectome/manifest.json` powinien pokazać około **139 2
 
 ### Neuro-map: współrzędne i biologiczne adnotacje
 
-Runtime connectome może zostać wzbogacony bez przebudowy macierzy połączeń. Jeżeli w folderze z danymi Codex masz `classification.csv.gz`, `neurons.csv.gz`, opcjonalnie `coordinates.csv.gz` i `consolidated_cell_types.csv.gz`, uruchom:
+Runtime connectome może zostać wzbogacony bez przebudowy macierzy połączeń. Jeżeli w folderze z danymi Codex masz `classification.csv.gz`, `neurons.csv.gz`, `coordinates.csv.gz`, `consolidated_cell_types.csv.gz` oraz `connections_princeton.csv.gz` (lub `connections.csv.gz`), uruchom:
 
 ```bash
 python tools/augment_connectome_map.py \
@@ -98,7 +98,7 @@ python tools/augment_connectome_map.py \
   --connectome data/connectome
 ```
 
-Skrypt tworzy `data/connectome/neuron_meta.npz`. Neuro-map wykorzystuje wtedy klasy biologiczne, stronę mózgu, predicted neurotransmitter i — gdy dostępny jest `coordinates.csv.gz` — rzeczywiste oznaczone współrzędne FlyWire. Brakujące pozycje mają jawnie oznaczony fallback i nie są prezentowane jako anatomia.
+Skrypt tworzy `data/connectome/neuron_meta.npz`. Neuro-map wykorzystuje wtedy klasy biologiczne, stronę mózgu, predicted neurotransmitter i — gdy dostępny jest `coordinates.csv.gz` — rzeczywiste oznaczone współrzędne FlyWire. Z tabeli połączeń wylicza też dla każdego neuronu trzy neuropile z największą sumą `syn_count` na wejściach i wyjściach; pierwszy z nich jest używany jako kompaktowe przypisanie neuronu do regionu. To nie oznacza, że neuron biologicznie należy wyłącznie do jednego neuropilu — wiele neuronów przebiega przez kilka regionów. Brakujące pozycje mają jawnie oznaczony fallback i nie są prezentowane jako anatomia.
 
 Potem po prostu:
 
