@@ -175,6 +175,7 @@ class MuchaClient(discord.Client):
         self._voice_arrival_members: dict[int, set[int]] = {}
         self._voice_arrival_channel: dict[int, int] = {}
         self._voice_arrival_learning: dict[int, tuple[str, tuple, float, int]] = {}
+        self._pending_direct_replies: dict[tuple[int, int], dict] = {}
         self._social_debug: dict = {
             "event": "BRAK",
             "detail": "",
@@ -292,6 +293,8 @@ class MuchaClient(discord.Client):
             "voice_leave_after_join_seconds",
             "tts_leave_affinity_step",
             "tts_leave_seconds",
+            "ignored_reply_affinity_step",
+            "ignored_reply_seconds",
             "negative_contact_cooldown_seconds",
             "negative_streak_window_seconds",
             "negative_streak_multiplier_step",
@@ -395,6 +398,8 @@ class MuchaClient(discord.Client):
             ("behavior", "voice_leave_after_join_seconds"): (int, 1, 300),
             ("behavior", "tts_leave_affinity_step"): (float, 0.0, 0.25),
             ("behavior", "tts_leave_seconds"): (int, 1, 300),
+            ("behavior", "ignored_reply_affinity_step"): (float, 0.0, 0.10),
+            ("behavior", "ignored_reply_seconds"): (int, 5, 600),
             ("behavior", "negative_contact_cooldown_seconds"): (int, 1, 3600),
             ("behavior", "negative_streak_window_seconds"): (int, 30, 86400),
             ("behavior", "negative_streak_multiplier_step"): (float, 0.0, 1.0),
@@ -911,6 +916,15 @@ class MuchaClient(discord.Client):
                 "condition": (
                     f"do {int(behavior.tts_leave_seconds)} s "
                     "od rozpoczęcia TTS"
+                ),
+            },
+            {
+                "event": "Ignorowanie bezpośredniej odpowiedzi Muchy",
+                "delta": -float(behavior.ignored_reply_affinity_step),
+                "condition": (
+                    f"przez {int(behavior.ignored_reply_seconds)} s brak "
+                    "kontynuacji w tym kanale, ale użytkownik aktywnie "
+                    "pisze gdzie indziej na serwerze"
                 ),
             },
         ]
