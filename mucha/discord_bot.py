@@ -170,6 +170,11 @@ class MuchaClient(discord.Client):
         self._social_positive_streak: dict[int, dict] = {}
         self._voice_social_stay_tasks: dict[tuple[int, int], asyncio.Task] = {}
         self._tts_social_stay_tasks: dict[tuple[int, int], asyncio.Task] = {}
+        self._social_negative_last: dict[tuple[int, str], float] = {}
+        self._social_negative_streak: dict[int, dict] = {}
+        self._voice_arrival_members: dict[int, set[int]] = {}
+        self._voice_arrival_channel: dict[int, int] = {}
+        self._voice_arrival_learning: dict[int, tuple[str, tuple, float, int]] = {}
         self._social_debug: dict = {
             "event": "BRAK",
             "detail": "",
@@ -282,6 +287,14 @@ class MuchaClient(discord.Client):
             "voice_stay_seconds",
             "tts_stay_affinity_step",
             "tts_stay_seconds",
+            "voice_leave_after_join_affinity_step",
+            "voice_leave_after_join_seconds",
+            "tts_leave_affinity_step",
+            "tts_leave_seconds",
+            "negative_contact_cooldown_seconds",
+            "negative_streak_window_seconds",
+            "negative_streak_multiplier_step",
+            "negative_streak_max_multiplier",
             "positive_contact_cooldown_seconds",
             "familiar_affinity_threshold",
             "user_avoid_threshold",
@@ -377,6 +390,14 @@ class MuchaClient(discord.Client):
             ("behavior", "voice_stay_seconds"): (int, 5, 3600),
             ("behavior", "tts_stay_affinity_step"): (float, 0.0, 0.25),
             ("behavior", "tts_stay_seconds"): (int, 5, 3600),
+            ("behavior", "voice_leave_after_join_affinity_step"): (float, 0.0, 0.25),
+            ("behavior", "voice_leave_after_join_seconds"): (int, 1, 300),
+            ("behavior", "tts_leave_affinity_step"): (float, 0.0, 0.25),
+            ("behavior", "tts_leave_seconds"): (int, 1, 300),
+            ("behavior", "negative_contact_cooldown_seconds"): (int, 1, 3600),
+            ("behavior", "negative_streak_window_seconds"): (int, 30, 86400),
+            ("behavior", "negative_streak_multiplier_step"): (float, 0.0, 1.0),
+            ("behavior", "negative_streak_max_multiplier"): (float, 1.0, 3.0),
             ("behavior", "positive_contact_cooldown_seconds"): (int, 1, 3600),
             ("behavior", "familiar_affinity_threshold"): (float, -1.0, 1.0),
             ("behavior", "user_avoid_threshold"): (float, -1.0, 1.0),
