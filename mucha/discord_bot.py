@@ -2301,13 +2301,17 @@ class MuchaClient(discord.Client):
 
             vc = guild.voice_client
             me = guild.me
+            if me is None:
+                return
             if (
                 vc is None
                 or not vc.is_connected()
                 or vc.channel is None
-                or me is None
             ):
-                return
+                # Voice transport can disappear briefly during a Discord move
+                # or reconnect. Do not kill the chase task in that window.
+                await asyncio.sleep(0.15)
+                continue
 
             current = vc.channel
             predator = guild.get_member(predator_id)
@@ -2378,7 +2382,7 @@ class MuchaClient(discord.Client):
                 old_name = current.name
                 try:
                     self._stop_voice_playback(vc)
-                    await vc.disconnect(force=False)
+                    await vc.disconnect(force=True)
                     self.voice_arrived[guild.id] = now
                     self._voice_arrival_members.pop(guild.id, None)
                     self._voice_arrival_channel.pop(guild.id, None)
@@ -2398,6 +2402,12 @@ class MuchaClient(discord.Client):
                         "chaser_disconnect_escape",
                         f"← {old_name} • brak kolejnego kanału",
                         guild,
+                    )
+                    log.info(
+                        "CHASER DISCONNECT guild=%s predator=%s from=%s reason=no_escape_channel",
+                        guild.id,
+                        predator_id,
+                        old_name,
                     )
                 except (
                     discord.Forbidden,
@@ -2430,7 +2440,7 @@ class MuchaClient(discord.Client):
                 old_name = current.name
                 try:
                     self._stop_voice_playback(vc)
-                    await vc.disconnect(force=False)
+                    await vc.disconnect(force=True)
                     self.voice_arrived[guild.id] = now
                     self._set_audio_disconnected(
                         guild,
@@ -2446,6 +2456,12 @@ class MuchaClient(discord.Client):
                         "chaser_disconnect_escape",
                         f"← {old_name} • selector bez celu",
                         guild,
+                    )
+                    log.info(
+                        "CHASER DISCONNECT guild=%s predator=%s from=%s reason=no_target",
+                        guild.id,
+                        predator_id,
+                        old_name,
                     )
                 except (
                     discord.Forbidden,
@@ -2503,6 +2519,13 @@ class MuchaClient(discord.Client):
                     f"{current.name} → {target.name}",
                     guild,
                 )
+                log.info(
+                    "CHASER ESCAPE guild=%s predator=%s %s -> %s",
+                    guild.id,
+                    predator_id,
+                    current.name,
+                    target.name,
+                )
                 self._ensure_chaser_scream_loop(guild)
                 if reward > 0.0:
                     self._record_reward(
@@ -2552,6 +2575,7 @@ class MuchaClient(discord.Client):
         task.add_done_callback(clear)
 
     async def _chaser_scream_loop(self, guild_id: int) -> None:
+        """Play panic audio only while the confirmed chaser is with Mucha."""
         while True:
             if self._chaser_panic_remaining(guild_id) <= 0.0:
                 return
@@ -2570,7 +2594,44 @@ class MuchaClient(discord.Client):
                     guild,
                     reason="chaser_escape_disconnected",
                 )
-                return
+                await asyncio.sleep(0.10)
+                continue
+
+            predator_id = self._chaser_confirmed.get(guild_id)
+            predator = (
+                guild.get_member(predator_id)
+                if predator_id is not None
+                else None
+            )
+            predator_channel = getattr(
+                getattr(predator, "voice", None),
+                "channel",
+                None,
+            )
+
+            same_channel = bool(
+                predator_channel is not None
+                and predator_channel.id == vc.channel.id
+            )
+            if not same_channel:
+                if (
+                    self._audio_debug.get("stage") in {
+                        "chaser_scream",
+                        "playing_check",
+                    }
+                    and vc.is_playing()
+                ):
+                    self._stop_voice_playback(vc)
+                    self._audio_debug.update({
+                        "status": "IDLE",
+                        "stage": "chaser_clear",
+                        "playing": False,
+                        "connected": True,
+                        "error": "",
+                        "updated_at": time.time(),
+                    })
+                await asyncio.sleep(0.10)
+                continue
 
             if not self.cfg.voice.chaser_scream_enabled:
                 return
@@ -2580,15 +2641,7 @@ class MuchaClient(discord.Client):
                 continue
 
             await self._play_chaser_scream(guild, vc)
-
             await asyncio.sleep(0.05)
-            while (
-                self._chaser_panic_remaining(guild_id) > 0.0
-                and vc.is_connected()
-                and vc.channel is not None
-                and vc.is_playing()
-            ):
-                await asyncio.sleep(0.05)
 
     def _mark_voice_visit(
         self,
