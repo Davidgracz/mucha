@@ -4071,7 +4071,12 @@ class MuchaClient(discord.Client):
         *,
         reason: str = "voice_disconnected",
     ) -> None:
+        # Invalidate callbacks from the AudioPlayer that belonged to the old
+        # voice connection. Otherwise a late after() callback can overwrite
+        # the disconnected state on the dashboard.
+        self._audio_playback_token += 1
         self._audio_debug.update({
+            "playback_token": self._audio_playback_token,
             "status": "IDLE",
             "stage": "disconnected",
             "playing": False,
