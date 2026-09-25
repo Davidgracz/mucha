@@ -817,6 +817,101 @@ class MuchaClient(discord.Client):
         )
         return new_affinity
 
+    def _note_direct_reply_activity(
+        self,
+        message: discord.Message,
+    ) -> None:
+        if message.guild is None or message.author.bot:
+            return
+        key = (message.guild.id, message.author.id)
+        pending = self._pending_direct_replies.get(key)
+        if pending is None:
+            return
+
+        age = time.monotonic() - float(pending.get("created", 0.0))
+        if age > float(self.cfg.behavior.ignored_reply_seconds):
+            return
+
+        if message.channel.id == int(pending["channel_id"]):
+            self._pending_direct_replies.pop(key, None)
+        else:
+            pending["active_elsewhere"] = True
+            pending["last_elsewhere"] = time.monotonic()
+
+    def _track_direct_reply_target(
+        self,
+        guild: discord.Guild,
+        member: discord.Member,
+        channel_id: int,
+        message_id: int,
+        trace: SentTrace,
+    ) -> None:
+        key = (guild.id, member.id)
+        pending = {
+            "guild_id": guild.id,
+            "user_id": member.id,
+            "channel_id": int(channel_id),
+            "message_id": int(message_id),
+            "created": time.monotonic(),
+            "active_elsewhere": False,
+            "last_elsewhere": 0.0,
+            "trace": trace,
+        }
+        self._pending_direct_replies[key] = pending
+        asyncio.create_task(
+            self._check_ignored_direct_reply(
+                guild.id,
+                member.id,
+                int(message_id),
+            )
+        )
+
+    async def _check_ignored_direct_reply(
+        self,
+        guild_id: int,
+        user_id: int,
+        message_id: int,
+    ) -> None:
+        await asyncio.sleep(
+            max(5, int(self.cfg.behavior.ignored_reply_seconds))
+        )
+        key = (int(guild_id), int(user_id))
+        pending = self._pending_direct_replies.get(key)
+        if (
+            pending is None
+            or int(pending.get("message_id", 0)) != int(message_id)
+        ):
+            return
+        self._pending_direct_replies.pop(key, None)
+
+        if not bool(pending.get("active_elsewhere")):
+            return
+
+        guild = self.get_guild(int(guild_id))
+        if guild is None:
+            return
+        member = guild.get_member(int(user_id))
+        if member is None or member.bot:
+            return
+        trace = pending.get("trace")
+        if not isinstance(trace, SentTrace):
+            return
+
+        await self._grant_negative_social(
+            member,
+            "TEXT_IGNORED_DIRECT_REPLY",
+            "social:user-ignored-me",
+            self.cfg.behavior.ignored_reply_affinity_step,
+            guild,
+            detail=(
+                "Mucha odpowiedziała tej osobie, a ona była aktywna "
+                "na innym kanale bez kontynuacji rozmowy"
+            ),
+            source_action=trace.action,
+            source_learning_trace=trace.learning_trace,
+            brain_penalty=0.02,
+        )
+
     async def _mark_social_voice_arrival(
         self,
         guild: discord.Guild,
@@ -2298,6 +2393,9 @@ class MuchaClient(discord.Client):
         if message.author.bot and not self.cfg.language.learn_from_bots:
             return
 
+        if not message.author.bot:
+            self._note_direct_reply_activity(message)
+
         blocked_text = self._is_text_channel_blocked(message.channel)
         if not blocked_text:
             self.last_text_channel[message.guild.id] = message.channel.id
@@ -2456,10 +2554,25 @@ class MuchaClient(discord.Client):
             and urge >= self.cfg.behavior.speak_threshold
             and now - last >= self.cfg.language.reply_cooldown_seconds
         ):
-            await self._send_learned(message.channel, message.content, scores["explore"])
+            await self._send_learned(
+                message.channel,
+                message.content,
+                scores["explore"],
+                target_member=(
+                    message.author
+                    if isinstance(message.author, discord.Member)
+                    else None
+                ),
+            )
             self.last_reply[message.guild.id] = now
 
-    async def _send_learned(self, channel: discord.abc.Messageable, context: str, arousal: float):
+    async def _send_learned(
+        self,
+        channel: discord.abc.Messageable,
+        context: str,
+        arousal: float,
+        target_member: discord.Member | None = None,
+    ):
         if self._is_text_channel_blocked(channel):
             return
         text, trigrams = self.language.generate(context=context, arousal=arousal)
@@ -2479,6 +2592,19 @@ class MuchaClient(discord.Client):
                 guild_id=guild.id if isinstance(guild, discord.Guild) else None,
                 channel_id=getattr(channel, "id", None),
             )
+
+            if (
+                isinstance(guild, discord.Guild)
+                and target_member is not None
+                and getattr(channel, "id", None) is not None
+            ):
+                self._track_direct_reply_target(
+                    guild,
+                    target_member,
+                    int(channel.id),
+                    sent.id,
+                    self.sent[sent.id],
+                )
 
             if self.cfg.behavior.social_learning_enabled:
                 recent_self = [
