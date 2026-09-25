@@ -4504,6 +4504,12 @@ class MuchaClient(discord.Client):
                 self._ensure_voice_listener(new_vc)
                 self.voice_arrived[guild.id] = now
                 self._mark_voice_visit(guild.id, target.id, now)
+                await self._mark_social_voice_arrival(
+                    guild,
+                    target,
+                    "voice_join",
+                    now,
+                )
                 self._last_overstay_punish.pop(guild.id, None)
                 self._last_brain_action = f"VOICE JOIN → {target.name}"
                 async with self._brain_lock:
@@ -4550,6 +4556,12 @@ class MuchaClient(discord.Client):
                 await vc.move_to(target)
                 self.voice_arrived[guild.id] = now
                 self._mark_voice_visit(guild.id, target.id, now)
+                await self._mark_social_voice_arrival(
+                    guild,
+                    target,
+                    "voice_move",
+                    now,
+                )
                 self._last_overstay_punish.pop(guild.id, None)
                 self._last_brain_action = (
                     f"VOICE BLOCK ESCAPE → {target.name}"
@@ -4591,6 +4603,12 @@ class MuchaClient(discord.Client):
                     await vc.move_to(target)
                     self.voice_arrived[guild.id] = now
                     self._mark_voice_visit(guild.id, target.id, now)
+                    await self._mark_social_voice_arrival(
+                        guild,
+                        target,
+                        "voice_move",
+                        now,
+                    )
                     self._last_brain_action = (
                         f"SOCIAL AVOID → {target.name}"
                     )
@@ -4791,6 +4809,12 @@ class MuchaClient(discord.Client):
                     await vc.move_to(target)
                     self.voice_arrived[guild.id] = now
                     self._mark_voice_visit(guild.id, target.id, now)
+                    await self._mark_social_voice_arrival(
+                        guild,
+                        target,
+                        "voice_move",
+                        now,
+                    )
                     self._last_overstay_punish.pop(guild.id, None)
                     self._mark_deadly_voice_channel(
                         guild.id,
@@ -4880,6 +4904,9 @@ class MuchaClient(discord.Client):
             try:
                 await vc.disconnect(force=False)
                 self.voice_arrived[guild.id] = now
+                self._voice_arrival_members.pop(guild.id, None)
+                self._voice_arrival_channel.pop(guild.id, None)
+                self._voice_arrival_learning.pop(guild.id, None)
                 self._last_overstay_punish.pop(guild.id, None)
                 self._last_brain_action = f"VOICE LEAVE ← {old_name}"
                 async with self._brain_lock:
@@ -4980,6 +5007,12 @@ class MuchaClient(discord.Client):
             await vc.move_to(target)
             self.voice_arrived[guild.id] = now
             self._mark_voice_visit(guild.id, target.id, now)
+            await self._mark_social_voice_arrival(
+                guild,
+                target,
+                "voice_move",
+                now,
+            )
             self._last_overstay_punish.pop(guild.id, None)
             self._last_brain_action = f"VOICE MOVE → {target.name}"
             async with self._brain_lock:
