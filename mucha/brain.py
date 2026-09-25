@@ -67,6 +67,10 @@ class FlyBrain:
         self._session_positive_reward_total = 0.0
         self._session_negative_reward_total = 0.0
         self._session_bias_update_operations = 0
+        self._session_reward_bias_delta = np.zeros(
+            self.c.n_neurons,
+            dtype=np.float32,
+        )
 
     @property
     def backend_name(self) -> str:
@@ -300,8 +304,15 @@ class FlyBrain:
         if len(changed_idx_cpu):
             changed_mask = np.abs(changed_delta_cpu) > 1e-9
             if np.any(changed_mask):
+                changed_indices = changed_idx_cpu[changed_mask]
+                changed_values = changed_delta_cpu[changed_mask]
                 self._session_bias_update_operations += int(
-                    len(np.unique(changed_idx_cpu[changed_mask]))
+                    len(np.unique(changed_indices))
+                )
+                np.add.at(
+                    self._session_reward_bias_delta,
+                    changed_indices,
+                    changed_values,
                 )
 
         return self.last_learning
@@ -342,19 +353,22 @@ class FlyBrain:
             self.compute.to_cpu(self.plastic_bias)
             .astype(np.float32, copy=False)
         )
-        delta = current_bias - self._startup_plastic_bias
-        abs_delta = np.abs(delta)
-        changed_mask = abs_delta > 1e-9
-        changed_unique = int(np.count_nonzero(changed_mask))
+        current_delta = current_bias - self._startup_plastic_bias
+        current_abs_delta = np.abs(current_delta)
 
-        if delta.size and changed_unique:
-            top_idx = int(np.argmax(abs_delta))
+        reward_delta = self._session_reward_bias_delta
+        reward_abs_delta = np.abs(reward_delta)
+        reward_changed_mask = reward_abs_delta > 1e-9
+        changed_unique = int(np.count_nonzero(reward_changed_mask))
+
+        if reward_delta.size and changed_unique:
+            top_idx = int(np.argmax(reward_abs_delta))
             top_neuron = {
                 "root_id": int(self.c.root_ids[top_idx]),
-                "delta": float(delta[top_idx]),
+                "delta": float(reward_delta[top_idx]),
                 "current_bias": float(current_bias[top_idx]),
             }
-            max_abs_delta = float(abs_delta[top_idx])
+            max_abs_delta = float(reward_abs_delta[top_idx])
         else:
             top_neuron = None
             max_abs_delta = 0.0
@@ -383,17 +397,30 @@ class FlyBrain:
             ),
             "unique_neurons_changed": changed_unique,
             "bias_mean_abs_delta": (
-                float(np.mean(abs_delta))
-                if abs_delta.size
+                float(np.mean(reward_abs_delta))
+                if reward_abs_delta.size
                 else 0.0
             ),
             "bias_sum_abs_delta": (
-                float(np.sum(abs_delta))
-                if abs_delta.size
+                float(np.sum(reward_abs_delta))
+                if reward_abs_delta.size
                 else 0.0
             ),
             "bias_max_abs_delta": max_abs_delta,
             "top_changed_neuron": top_neuron,
+            "current_unique_neurons_changed": int(
+                np.count_nonzero(current_abs_delta > 1e-9)
+            ),
+            "current_bias_mean_abs_delta": (
+                float(np.mean(current_abs_delta))
+                if current_abs_delta.size
+                else 0.0
+            ),
+            "current_bias_max_abs_delta": (
+                float(np.max(current_abs_delta))
+                if current_abs_delta.size
+                else 0.0
+            ),
         }
 
     def learning_diagnostics(self) -> dict:
