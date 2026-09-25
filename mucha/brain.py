@@ -109,7 +109,21 @@ class FlyBrain:
             meta.get("z", np.full(n, np.nan, dtype=np.float32)),
             dtype=np.float32,
         )
-        real_mask = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+        finite_positions = (
+            np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+        )
+        coordinate_source = str(
+            self.c.metadata.get("coordinate_source", "")
+        ).lower()
+        coords_are_real = (
+            "flywire" in coordinate_source
+            and not bool(self.c.metadata.get("demo"))
+        )
+        real_mask = (
+            finite_positions
+            if coords_are_real
+            else np.zeros(n, dtype=bool)
+        )
         self._neuro_map_real_mask = real_mask
 
         coords = np.zeros((n, 3), dtype=np.float32)
