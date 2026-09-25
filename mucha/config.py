@@ -42,6 +42,10 @@ class LanguageConfig:
     char_frequency_exponent: float = 0.90
     char_arousal_flatten: float = 0.15
     word_reward_scale: float = 0.12
+    connectome_word_control_enabled: bool = True
+    connectome_word_control_min_vocab: int = 1500
+    connectome_word_control_strength: float = 0.35
+    connectome_word_control_candidates: int = 24
 
 
 @dataclass(slots=True)
