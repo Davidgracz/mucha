@@ -26,6 +26,14 @@ def main():
         scores = b.action_scores()
         assert 0 <= scores["speak"] <= 1
         assert 0 <= b.language_word_score("siema") <= 1
+        assert "x" in c.neuron_meta
+        assert "cell_class" in c.neuron_meta
+        neuro = b.neuro_map_snapshot(80, "xy")
+        assert neuro["coordinate_mode"] == "synthetic"
+        assert len(neuro["nodes"]) >= 40
+        assert len(neuro["reference"]) > 0
+        assert neuro["regions"]
+
         visual = b.connectome_visual_snapshot(24, 60)
         assert visual["selected_neurons"] >= 12
         assert len(visual["nodes"]) == visual["selected_neurons"]
