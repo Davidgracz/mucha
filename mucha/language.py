@@ -336,7 +336,7 @@ class OnlineLanguage:
         if done:
             return
 
-        now = time.time()
+        legacy_seen = 0.0
         cur = self.db.cursor()
         imported = 0
 
@@ -354,7 +354,7 @@ class OnlineLanguage:
                     "ON CONFLICT(token) DO UPDATE SET "
                     "n=word_unigram.n+excluded.n, "
                     "last_seen=MAX(word_unigram.last_seen,excluded.last_seen)",
-                    (token, count, now),
+                    (token, count, legacy_seen),
                 )
                 imported += 1
 
@@ -373,7 +373,7 @@ class OnlineLanguage:
                     "ON CONFLICT(a,b) DO UPDATE SET "
                     "n=word_bigram.n+excluded.n, "
                     "last_seen=MAX(word_bigram.last_seen,excluded.last_seen)",
-                    (a, b, count, now),
+                    (a, b, count, legacy_seen),
                 )
                 imported += 1
 
@@ -398,7 +398,7 @@ class OnlineLanguage:
                     "ON CONFLICT(a,b,c) DO UPDATE SET "
                     "n=word_trigram.n+excluded.n, "
                     "last_seen=MAX(word_trigram.last_seen,excluded.last_seen)",
-                    (a, b, cc, count, now),
+                    (a, b, cc, count, legacy_seen),
                 )
                 imported += 1
 
@@ -423,7 +423,7 @@ class OnlineLanguage:
                     "ON CONFLICT(a,b) DO UPDATE SET "
                     "n=word_starts.n+excluded.n, "
                     "last_seen=MAX(word_starts.last_seen,excluded.last_seen)",
-                    (a, b, count, now),
+                    (a, b, count, legacy_seen),
                 )
 
         cur.execute(
@@ -699,7 +699,11 @@ class OnlineLanguage:
 
         if rows:
             # Higher arousal flattens the distribution, increasing invention.
-            exponent = max(0.38, 0.78 - 0.30 * float(arousal))
+            exponent = max(
+                0.55,
+                self.char_frequency_exponent
+                - self.char_arousal_flatten * float(arousal),
+            )
             weighted: list[tuple[str, float]] = []
             for c, n, reward in rows:
                 repeat_penalty = 1.0
@@ -722,7 +726,11 @@ class OnlineLanguage:
             (b,),
         ).fetchall()
         if rows2:
-            exponent = max(0.35, 0.68 - 0.25 * float(arousal))
+            exponent = max(
+                0.50,
+                (self.char_frequency_exponent - 0.10)
+                - self.char_arousal_flatten * 0.8 * float(arousal),
+            )
             return self._weighted_choice(
                 [(ch, float(n) ** exponent) for ch, n in rows2]
             )
@@ -736,14 +744,289 @@ class OnlineLanguage:
             )
         return None
 
+    def _recent_multiplier(self, last_seen: float) -> float:
+        if last_seen <= 0.0:
+            return 1.0
+        age = max(0.0, time.time() - float(last_seen))
+        window = max(1.0, float(self.word_recent_window_seconds))
+        if age >= window:
+            return 1.0
+        freshness = 1.0 - age / window
+        return 1.0 + (self.word_recent_boost - 1.0) * freshness
+
+    def _word_weight(
+        self,
+        n: int,
+        reward: float,
+        last_seen: float,
+        arousal: float,
+        repeat_penalty: float = 1.0,
+    ) -> float:
+        exponent = max(
+            0.55,
+            self.word_frequency_exponent
+            - self.word_arousal_flatten * float(arousal),
+        )
+        return (
+            (max(1.0, float(n)) ** exponent)
+            * math.exp(max(-2.0, min(2.0, float(reward))))
+            * self._recent_multiplier(float(last_seen))
+            * max(0.01, float(repeat_penalty))
+        )
+
+    def _weighted_word_row(
+        self,
+        rows: list[tuple],
+        arousal: float,
+        token_index: int,
+        out: list[str],
+    ) -> str | None:
+        weighted: list[tuple[str, float]] = []
+        for row in rows:
+            token = str(row[token_index])
+            n = int(row[token_index + 1])
+            reward = float(row[token_index + 2])
+            last_seen = float(row[token_index + 3])
+            repeat_penalty = 1.0
+            if out and token == out[-1]:
+                repeat_penalty *= 0.10
+            if len(out) >= 2 and token == out[-2]:
+                repeat_penalty *= 0.35
+            if (
+                token in {".", "!", "?", ",", ";", ":"}
+                and sum(
+                    1
+                    for item in out
+                    if item not in {".", "!", "?", ",", ";", ":"}
+                ) < 2
+            ):
+                repeat_penalty *= 0.05
+            weighted.append(
+                (
+                    token,
+                    self._word_weight(
+                        n,
+                        reward,
+                        last_seen,
+                        arousal,
+                        repeat_penalty,
+                    ),
+                )
+            )
+        return self._weighted_choice(weighted)
+
+    def _format_word_tokens(self, tokens: list[str]) -> str:
+        text = ""
+        punctuation = {".", "!", "?", ",", ";", ":"}
+        for token in tokens:
+            if token in punctuation:
+                text = text.rstrip() + token
+            else:
+                if text and not text.endswith(" "):
+                    text += " "
+                text += token
+        text = re.sub(r"\s+", " ", text).strip(" ,;:")
+        if text and text[0].isalpha():
+            text = text[0].upper() + text[1:]
+        return text
+
+    def _char_trigrams_for_text(
+        self,
+        text: str,
+    ) -> list[tuple[str, str, str]]:
+        chars = self.characters(text)
+        seq = [START_A, START_B] + chars
+        return [
+            (a, b, cc)
+            for a, b, cc in zip(seq, seq[1:], seq[2:])
+        ]
+
+    def _generate_words(
+        self,
+        context: str,
+        arousal: float,
+    ) -> str | None:
+        if not self.hybrid_word_enabled:
+            return None
+
+        vocab = int(
+            self.db.execute(
+                "SELECT COUNT(*) FROM word_unigram"
+            ).fetchone()[0]
+        )
+        if vocab < 8:
+            return None
+
+        ctx = self.words(context)
+        out: list[str] = []
+        state: tuple[str, str] | None = None
+
+        if len(ctx) >= 2:
+            a, b = ctx[-2], ctx[-1]
+            rows = self.db.execute(
+                "SELECT c,n,reward,last_seen FROM word_trigram "
+                "WHERE a=? AND b=? ORDER BY n DESC LIMIT 100",
+                (a, b),
+            ).fetchall()
+            token = self._weighted_word_row(
+                rows,
+                arousal,
+                0,
+                out,
+            ) if rows else None
+            if token:
+                out.append(token)
+                state = (b, token)
+
+        if state is None and ctx:
+            a = ctx[-1]
+            rows = self.db.execute(
+                "SELECT b,n,reward,last_seen FROM word_bigram "
+                "WHERE a=? ORDER BY n DESC LIMIT 120",
+                (a,),
+            ).fetchall()
+            token = self._weighted_word_row(
+                rows,
+                arousal,
+                0,
+                out,
+            ) if rows else None
+            if token:
+                out.append(token)
+                state = (a, token)
+
+        if state is None:
+            rows = self.db.execute(
+                "SELECT a,b,n,last_seen FROM word_starts "
+                "ORDER BY n DESC LIMIT 250"
+            ).fetchall()
+            weighted: list[tuple[str, float]] = []
+            for a, b, n, last_seen in rows:
+                if a in {".", "!", "?", ",", ";", ":"}:
+                    continue
+                packed = str(a) + "\u0000" + str(b)
+                weighted.append(
+                    (
+                        packed,
+                        (max(1.0, float(n)) ** 0.92)
+                        * self._recent_multiplier(float(last_seen)),
+                    )
+                )
+            packed = self._weighted_choice(weighted)
+            if packed:
+                a, b = packed.split("\u0000", 1)
+                out.extend([a, b])
+                state = (a, b)
+
+        if state is None:
+            return None
+
+        max_tokens = max(4, int(self.word_max_tokens))
+        base_tokens = min(7, max_tokens)
+        target_tokens = min(
+            max_tokens,
+            max(
+                4,
+                int(
+                    base_tokens
+                    + float(arousal)
+                    * max(0, max_tokens - base_tokens)
+                ),
+            ),
+        )
+
+        while len(out) < target_tokens:
+            a, b = state
+            rows = self.db.execute(
+                "SELECT c,n,reward,last_seen FROM word_trigram "
+                "WHERE a=? AND b=? ORDER BY n DESC LIMIT 120",
+                (a, b),
+            ).fetchall()
+            token = self._weighted_word_row(
+                rows,
+                arousal,
+                0,
+                out,
+            ) if rows else None
+
+            if token is None:
+                rows2 = self.db.execute(
+                    "SELECT b,n,reward,last_seen FROM word_bigram "
+                    "WHERE a=? ORDER BY n DESC LIMIT 140",
+                    (b,),
+                ).fetchall()
+                token = self._weighted_word_row(
+                    rows2,
+                    arousal,
+                    0,
+                    out,
+                ) if rows2 else None
+
+            if token is None:
+                rows3 = self.db.execute(
+                    "SELECT token,n,reward,last_seen FROM word_unigram "
+                    "ORDER BY n DESC LIMIT 220"
+                ).fetchall()
+                token = self._weighted_word_row(
+                    rows3,
+                    arousal,
+                    0,
+                    out,
+                ) if rows3 else None
+
+            if token is None:
+                break
+
+            out.append(token)
+            state = (b, token)
+
+            lexical = sum(
+                1
+                for item in out
+                if item not in {".", "!", "?", ",", ";", ":"}
+            )
+            if (
+                token in {".", "!", "?"}
+                and lexical >= 4
+                and self.rng.random() < 0.90
+            ):
+                break
+
+        text = self._format_word_tokens(out)
+        if len(text) < 3:
+            return None
+
+        if len(text) > self.max_chars:
+            text = text[: self.max_chars]
+            last_space = text.rfind(" ")
+            if last_space > self.max_chars * 0.55:
+                text = text[:last_space]
+            text = text.rstrip(" ,;:")
+
+        return text
+
     def generate(
         self,
         context: str = "",
         arousal: float = 0.5,
     ) -> tuple[str | None, list[tuple[str, str, str]]]:
         if not self.ready():
+            self._last_generator = "not-ready"
             return None, []
 
+        if (
+            self.hybrid_word_enabled
+            and self.rng.random() < self.word_model_probability
+        ):
+            word_text = self._generate_words(context, arousal)
+            if word_text:
+                self._last_generator = "words"
+                return (
+                    word_text,
+                    self._char_trigrams_for_text(word_text),
+                )
+
+        self._last_generator = "characters"
         start = self._pick_start(context)
         if start is None:
             return None, []
@@ -756,7 +1039,7 @@ class OnlineLanguage:
             24,
             min(
                 self.max_chars,
-                int(45 + float(arousal) * max(0, self.max_chars - 45)),
+                int(35 + float(arousal) * max(0, self.max_chars - 35)),
             ),
         )
 
