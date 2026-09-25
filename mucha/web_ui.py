@@ -195,7 +195,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 
   <div class="card span2">
     <h2>👥 Aktualne relacje</h2>
-    <table><thead><tr><th>Użytkownik</th><th>Affinity</th><th>👍 reakcje</th><th>👎 reakcje</th><th>Status</th></tr></thead><tbody id="users"></tbody></table>
+    <table><thead><tr><th>Użytkownik</th><th>Affinity</th><th>Negative streak</th><th>👍 reakcje</th><th>👎 reakcje</th><th>Status</th></tr></thead><tbody id="users"></tbody></table>
   </div>
 
   <div class="card span2">
@@ -229,8 +229,9 @@ function render(d){
   $("users").innerHTML=(d.user_affinities||[]).map(u=>{
     const a=num(u.affinity),status=a<=num(t.avoid)?"OMIJA":a>=num(t.liked)?"LUBI":a>=num(t.familiar)?"ZNAJOMY":"NEUTRAL";
     const cls=a<0?"minus":a>0?"plus":"";
-    return '<tr><td>'+esc(u.display_name||u.user_id)+'</td><td class="'+cls+'">'+signed(a)+'</td><td>'+num(u.positive_reactions)+'</td><td>'+num(u.negative_reactions)+'</td><td class="'+cls+'">'+status+'</td></tr>';
-  }).join("")||'<tr><td colspan="5">Brak relacji.</td></tr>';
+    const streak=num(u.negative_streak),mult=num(u.negative_multiplier||1);
+    return '<tr><td>'+esc(u.display_name||u.user_id)+'</td><td class="'+cls+'">'+signed(a)+'</td><td class="'+(streak?"minus":"")+'">'+Math.round(streak)+(streak?" ×"+mult.toFixed(2):"")+'</td><td>'+num(u.positive_reactions)+'</td><td>'+num(u.negative_reactions)+'</td><td class="'+cls+'">'+status+'</td></tr>';
+  }).join("")||'<tr><td colspan="6">Brak relacji.</td></tr>';
 
   const s=d.social_debug||{};
   $("last-social").innerHTML='<b>'+esc(s.event||"—")+'</b> • '+esc(s.user_name||"—")+' • '+esc(s.detail||"—")+' • Δ '+signed(s.amount||0)+' • affinity '+signed(s.affinity||0);
