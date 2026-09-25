@@ -123,7 +123,20 @@ word_arousal_flatten = 0.12
 char_frequency_exponent = 0.90
 char_arousal_flatten = 0.15
 word_reward_scale = 0.12
+connectome_word_control_enabled = true
+connectome_word_control_min_vocab = 1500
+connectome_word_control_strength = 0.35
+connectome_word_control_candidates = 24
 ```
+
+Connectome wpływa na wybór konkretnych słów dopiero po zbudowaniu słownika
+o rozmiarze `connectome_word_control_min_vocab`. Do tego momentu Mucha normalnie
+zbiera słownictwo i uczy unigramy/bigramy/trigramy, a stan mózgu wpływa na język
+tak jak wcześniej przez decyzję o mówieniu i poziom eksploracji. Po przekroczeniu
+progu każde poznane słowo ma stabilną reprezentację sensoryczną w connectomie,
+a aktualny stan odpowiadających mu populacji może lekko podbić lub osłabić jego
+szansę wśród sensownych kandydatów generatora. Connectome nie omija modelu
+językowego i nie może wybierać słów spoza wyuczonego słownika.
 
 Pozytywny/negatywny feedback wzmacnia lub osłabia zarówno wykorzystane przejścia znakowe, jak i znane przejścia słów. Bezpośredni reply człowieka do wypowiedzi Muchy daje również małe wzmocnienie tej konkretnej wypowiedzi językowej.
 
