@@ -205,6 +205,7 @@ class MuchaClient(discord.Client):
         self._stt_inference_lock = asyncio.Lock()
         self._stt_pending = 0
         self._last_tts_trace: dict[int, SentTrace] = {}
+        self._last_tts_audience: dict[int, set[int]] = {}
         self._stt_debug: dict = {
             "enabled": bool(cfg.voice.stt_enabled),
             "status": "IDLE",
@@ -2632,6 +2633,87 @@ class MuchaClient(discord.Client):
         if (
             not member.bot
             and changed_channel
+            and before.channel is not None
+            and my_channel is not None
+            and before.channel.id == my_channel.id
+            and getattr(after.channel, "id", None) != my_channel.id
+            and self._chaser_panic_remaining(member.guild.id, now) <= 0.0
+        ):
+            last_tts = self._last_tts_trace.get(member.guild.id)
+            tts_audience = self._last_tts_audience.get(
+                member.guild.id,
+                set(),
+            )
+            tts_recent = bool(
+                last_tts is not None
+                and last_tts.channel_id == before.channel.id
+                and member.id in tts_audience
+                and now - last_tts.created
+                <= float(self.cfg.behavior.tts_leave_seconds)
+            )
+
+            if tts_recent and last_tts is not None:
+                await self._grant_negative_social(
+                    member,
+                    "VOICE_LEFT_AFTER_TTS",
+                    "social:user-left-after-tts",
+                    self.cfg.behavior.tts_leave_affinity_step,
+                    member.guild,
+                    detail=(
+                        f"{before.channel.name} → {after_name} • "
+                        "wyjście krótko po TTS"
+                    ),
+                    source_action=last_tts.action,
+                    source_learning_trace=last_tts.learning_trace,
+                    brain_penalty=0.06,
+                )
+            else:
+                arrival = self._voice_arrival_learning.get(
+                    member.guild.id
+                )
+                arrival_members = self._voice_arrival_members.get(
+                    member.guild.id,
+                    set(),
+                )
+                arrival_channel = self._voice_arrival_channel.get(
+                    member.guild.id
+                )
+                if (
+                    arrival is not None
+                    and arrival_channel == before.channel.id
+                    and member.id in arrival_members
+                    and now - float(arrival[2])
+                    <= float(
+                        self.cfg.behavior.voice_leave_after_join_seconds
+                    )
+                ):
+                    moved = after.channel is not None
+                    await self._grant_negative_social(
+                        member,
+                        (
+                            "VOICE_MOVED_AWAY"
+                            if moved
+                            else "VOICE_LEFT_AFTER_JOIN"
+                        ),
+                        (
+                            "social:user-moved-away"
+                            if moved
+                            else "social:user-left-after-my-join"
+                        ),
+                        self.cfg.behavior.voice_leave_after_join_affinity_step,
+                        member.guild,
+                        detail=(
+                            f"{before.channel.name} → {after_name} • "
+                            "krótko po wejściu Muchy"
+                        ),
+                        source_action=arrival[0],
+                        source_learning_trace=arrival[1],
+                        brain_penalty=0.08,
+                    )
+
+        if (
+            not member.bot
+            and changed_channel
             and after.channel is not None
             and my_channel is not None
             and after.channel.id == my_channel.id
@@ -3945,6 +4027,11 @@ class MuchaClient(discord.Client):
                 guild_id=guild.id,
                 channel_id=vc.channel.id,
             )
+            self._last_tts_audience[guild.id] = {
+                member.id
+                for member in vc.channel.members
+                if not member.bot
+            }
             self._schedule_tts_social_stay(
                 guild,
                 vc.channel.id,
