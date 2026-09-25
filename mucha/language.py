@@ -416,7 +416,7 @@ class OnlineLanguage:
                 if not a:
                     continue
                 if not b:
-                    b = "."
+                    b = WORD_END
                 count = max(1, min(20, int(n)))
                 cur.execute(
                     "INSERT INTO word_starts(a,b,n,last_seen) "
@@ -497,7 +497,7 @@ class OnlineLanguage:
             )
 
         first = tokens[0]
-        second = tokens[1] if len(tokens) > 1 else "."
+        second = tokens[1] if len(tokens) > 1 else WORD_END
         cur.execute(
             "INSERT INTO word_starts(a,b,n,last_seen) VALUES(?,?,1,?) "
             "ON CONFLICT(a,b) DO UPDATE SET "
@@ -933,6 +933,8 @@ class OnlineLanguage:
             packed = self._weighted_choice(weighted)
             if packed:
                 a, b = packed.split("\u0000", 1)
+                if b == WORD_END:
+                    return self._format_word_tokens([a])
                 out.extend([a, b])
                 state = (a, b)
 
