@@ -489,12 +489,22 @@ class MuchaClient(discord.Client):
                 self._stt_model = None
                 self._stt_model_key = None
 
+        self._stt_debug.update({
+            "enabled": bool(self.cfg.voice.stt_enabled),
+            "model": self.cfg.voice.stt_model,
+            "device": self.cfg.voice.stt_device,
+            "compute_type": self.cfg.voice.stt_compute_type,
+            "language": self.cfg.voice.stt_language,
+            "updated_at": time.time(),
+        })
+
         if self.is_ready():
             if self.cfg.voice.stt_enabled:
                 if not self.stt_segment_loop.is_running():
                     self.stt_segment_loop.start()
                 for vc in self.voice_clients:
                     self._ensure_voice_listener(vc)
+                asyncio.create_task(self._warm_stt_model())
             elif self.stt_segment_loop.is_running():
                 self.stt_segment_loop.cancel()
 
@@ -1898,6 +1908,8 @@ class MuchaClient(discord.Client):
                 await self.web_ui.start()
             except OSError:
                 log.exception("Nie udało się uruchomić Web UI na %s:%s", self.cfg.web_ui.host, self.cfg.web_ui.port)
+        if self.cfg.voice.stt_enabled:
+            asyncio.create_task(self._warm_stt_model())
         await self._update_presence()
 
     async def close(self) -> None:
@@ -2724,6 +2736,41 @@ class MuchaClient(discord.Client):
                 pass
 
         return path.is_file() and path.stat().st_size > 44
+
+    async def _warm_stt_model(self) -> None:
+        if not self.cfg.voice.stt_enabled:
+            return
+        if WhisperModel is None:
+            self._stt_debug.update({
+                "status": "ERROR",
+                "error": "faster-whisper nie jest zainstalowany",
+                "updated_at": time.time(),
+            })
+            return
+        if self._stt_model is not None:
+            return
+        self._stt_debug.update({
+            "status": "LOADING",
+            "model": self.cfg.voice.stt_model,
+            "device": self.cfg.voice.stt_device,
+            "compute_type": self.cfg.voice.stt_compute_type,
+            "error": "",
+            "updated_at": time.time(),
+        })
+        try:
+            await asyncio.to_thread(self._load_stt_model_sync)
+            self._stt_debug.update({
+                "status": "READY",
+                "error": "",
+                "updated_at": time.time(),
+            })
+        except Exception as exc:
+            self._stt_debug.update({
+                "status": "ERROR",
+                "error": f"{type(exc).__name__}: {exc}",
+                "updated_at": time.time(),
+            })
+            log.exception("Nie udało się załadować modelu STT")
 
     def _ensure_voice_listener(self, vc: discord.VoiceClient) -> None:
         if not self.cfg.voice.stt_enabled:
