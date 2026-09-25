@@ -28,13 +28,14 @@ CONFIG_HTML = r"""<!doctype html>
 *{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#080d12,#0b1118);color:var(--txt);font-family:Inter,system-ui,"Segoe UI",sans-serif}
 main{max-width:1450px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}
 h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#c6d2df;text-decoration:none;border:1px solid var(--line);background:#0e161f;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:var(--a);border-color:var(--a);color:#06110e;font-weight:800}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;min-width:0}.card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:#aebdca}.fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}.field{background:var(--panel2);border:1px solid #1d2a39;border-radius:11px;padding:10px}.field label{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}.field input[type=number]{width:100%;border:1px solid #263749;background:#071019;color:var(--txt);border-radius:8px;padding:8px}.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;min-width:0}.card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:#aebdca}.fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}.field{background:var(--panel2);border:1px solid #1d2a39;border-radius:11px;padding:10px}.field label{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}.field input[type=number],.field input[type=text]{width:100%;border:1px solid #263749;background:#071019;color:var(--txt);border-radius:8px;padding:8px}.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px}
 .channels{display:flex;flex-direction:column;gap:6px;max-height:430px;overflow:auto}.channel{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:8px;background:var(--panel2);border:1px solid #1d2a39;border-radius:9px}.channel small{color:var(--muted)}button{border:0;border-radius:11px;padding:11px 16px;background:var(--a);color:#06110e;font-weight:800;cursor:pointer}.bar{position:sticky;bottom:12px;margin-top:14px;background:rgba(10,16,23,.94);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:center;backdrop-filter:blur(10px)}#status{font-size:12px;color:var(--muted)}.ok{color:var(--good)!important}.bad{color:var(--bad)!important}
 @media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 </style></head><body><main>
 <div class="top"><div><h1>⚙ Konfiguracja Muchy</h1><div class="sub">Zmiany są zapisywane do config.toml i stosowane na żywo.</div></div>
 <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
 <div class="grid">
+<div class="card"><h2>Język / szybkie uczenie</h2><div class="fields" id="language-fields"></div></div>
 <div class="card"><h2>Zachowanie i relacje</h2><div class="fields" id="behavior-fields"></div></div>
 <div class="card"><h2>Voice / TTS</h2><div class="fields" id="voice-fields"></div></div>
 <div class="card"><h2>Wykluczone kanały tekstowe</h2><div class="channels" id="text-channels"></div></div>
@@ -46,6 +47,25 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 const $=id=>document.getElementById(id);
 let state=null;
 const fields={
+ language:[
+  ["min_chars_before_speaking","Min. znaków przed mówieniem","number",50],
+  ["min_unique_chars_before_speaking","Min. unikalnych znaków","number",1],
+  ["max_generated_chars","Maks. długość odpowiedzi","number",5],
+  ["spontaneous_text","Spontaniczne pisanie","bool"],
+  ["reply_cooldown_seconds","Cooldown odpowiedzi [s]","number",1],
+  ["spontaneous_cooldown_seconds","Cooldown spontaniczny [s]","number",5],
+  ["learn_from_bots","Ucz się od botów","bool"],
+  ["hybrid_word_enabled","Hybryda słowa + znaki","bool"],
+  ["word_model_probability","Szansa użycia modelu słów","number",0.01],
+  ["word_max_tokens","Maks. słów w odpowiedzi","number",1],
+  ["word_recent_window_seconds","Okno świeżej pamięci [s]","number",60],
+  ["word_recent_boost","Bonus świeżych wzorców ×","number",0.05],
+  ["word_frequency_exponent","Siła częstych przejść słów","number",0.05],
+  ["word_arousal_flatten","Losowość słów od arousal","number",0.01],
+  ["char_frequency_exponent","Siła częstych przejść znaków","number",0.05],
+  ["char_arousal_flatten","Losowość znaków od arousal","number",0.01],
+  ["word_reward_scale","Siła rewardu modelu słów","number",0.01]
+ ],
  behavior:[
   ["speak_threshold","Próg mówienia","number",0.01],
   ["reaction_threshold","Próg reakcji","number",0.01],
@@ -126,13 +146,14 @@ function renderVoiceGuilds(){
 function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 async function load(){
  const r=await fetch("/api/config",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);state=await r.json();
+ $("language-fields").innerHTML=fields.language.map(f=>renderField("language",f)).join("");
  $("behavior-fields").innerHTML=fields.behavior.map(f=>renderField("behavior",f)).join("");
  $("voice-fields").innerHTML=fields.voice.map(f=>renderField("voice",f)).join("");
  renderChannels("text");renderChannels("voice");renderVoiceGuilds();$("status").textContent="Gotowe.";
 }
 function collect(){
- const out={behavior:{},voice:{}};
- for(const section of ["behavior","voice"])for(const [key,,type] of fields[section]){
+ const out={language:{},behavior:{},voice:{}};
+ for(const section of ["language","behavior","voice"])for(const [key,,type] of fields[section]){
   const el=$(section+"-"+key);out[section][key]=type==="bool"?el.checked:(type==="text"?el.value:Number(el.value));
  }
  out.blocked_text_channel_ids=[...document.querySelectorAll("[data-text]:checked")].map(x=>Number(x.dataset.text));
@@ -555,6 +576,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="metric"><span>Tryb języka</span><strong id="language-mode">—</strong></div>
       <div class="metric"><span>Wiadomości</span><strong id="language-messages">—</strong></div>
       <div class="metric"><span>Przejścia znaków</span><strong id="language-transitions">—</strong></div>
+      <div class="metric"><span>Słownik słów</span><strong id="language-word-vocab">—</strong></div>
+      <div class="metric"><span>Bigramy słów</span><strong id="language-word-bigrams">—</strong></div>
+      <div class="metric"><span>Trigramy słów</span><strong id="language-word-trigrams">—</strong></div>
+      <div class="metric"><span>Ostatni generator</span><strong id="language-generator">—</strong></div>
+      <div class="metric"><span>Recent boost</span><strong id="language-recent">—</strong></div>
       <div class="metric"><span>Bootstrap ze starej pamięci</span><strong id="language-bootstrap">—</strong></div>
       <div class="metric"><span>Gotowa pisać</span><strong id="ready">—</strong></div>
       <div class="metric"><span>Voice</span><strong id="voice">—</strong></div>
@@ -1066,6 +1092,11 @@ async function update(){
     $("language-mode").textContent=ld.mode||"characters";
     $("language-messages").textContent=nfmt(ld.messages||0);
     $("language-transitions").textContent=nfmt(ld.transitions||0);
+    $("language-word-vocab").textContent=nfmt(ld.word_vocab||0);
+    $("language-word-bigrams").textContent=nfmt(ld.word_bigrams||0);
+    $("language-word-trigrams").textContent=nfmt(ld.word_trigrams||0);
+    $("language-generator").textContent=ld.last_generator||"—";
+    $("language-recent").textContent="×"+Number(ld.word_recent_boost||1).toFixed(2)+" / p="+Number(ld.word_model_probability||0).toFixed(2);
     $("language-bootstrap").textContent=nfmt(ld.legacy_bootstrap_chars||0)+" znaków / "+nfmt(ld.legacy_bootstrap_items||0)+" elementów";
     $("ready").textContent=s.language_ready?"TAK":"nie";$("voice").textContent=s.voice||"poza voice";
     $("paused").textContent=s.paused?"PAUZA":"aktywny";$("event").textContent=s.last_event||"—";$("lastaction").textContent=s.last_action||"—";
