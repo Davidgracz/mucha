@@ -4,23 +4,30 @@ import math
 import random
 import re
 import sqlite3
+import time
 from collections import Counter
 from pathlib import Path
 
 MENTION_RE = re.compile(r"<@!?\d+>|<@&\d+>|<#\d+>")
 URL_RE = re.compile(r"https?://\S+", re.I)
+WORD_RE = re.compile(
+    r"@user|[^\W_]+(?:['’][^\W_]+)?|[.!?,;:]",
+    re.UNICODE,
+)
 
 START_A = "\u0002"
 START_B = "\u0003"
+WORD_START_A = "\u0002W"
+WORD_START_B = "\u0003W"
 
 
 class OnlineLanguage:
-    """Zero-pretraining character-level online language learner.
+    """Zero-pretraining hybrid online language learner.
 
-    The generator never selects whole learned words from a vocabulary.
-    It learns transitions between individual characters and builds output
-    character by character. Legacy word-level tables may remain in the same
-    SQLite file, but they are ignored by this model.
+    Character transitions keep spelling flexible while an online word
+    unigram/bigram/trigram model learns sentence structure much faster.
+    Both layers are learned only from Discord text, STT transcripts and
+    feedback stored in the local SQLite database.
     """
 
     def __init__(
@@ -30,6 +37,16 @@ class OnlineLanguage:
         min_unique_chars: int,
         max_chars: int,
         seed: int = 67,
+        hybrid_word_enabled: bool = True,
+        word_model_probability: float = 0.82,
+        word_max_tokens: int = 18,
+        word_recent_window_seconds: int = 3600,
+        word_recent_boost: float = 1.80,
+        word_frequency_exponent: float = 0.95,
+        word_arousal_flatten: float = 0.12,
+        char_frequency_exponent: float = 0.90,
+        char_arousal_flatten: float = 0.15,
+        word_reward_scale: float = 0.12,
     ):
         self.path = Path(db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -40,8 +57,41 @@ class OnlineLanguage:
         self.min_chars = max(1, int(min_chars))
         self.min_unique_chars = max(1, int(min_unique_chars))
         self.max_chars = max(24, int(max_chars))
+        self.hybrid_word_enabled = bool(hybrid_word_enabled)
+        self.word_model_probability = max(
+            0.0,
+            min(1.0, float(word_model_probability)),
+        )
+        self.word_max_tokens = max(3, int(word_max_tokens))
+        self.word_recent_window_seconds = max(
+            1,
+            int(word_recent_window_seconds),
+        )
+        self.word_recent_boost = max(1.0, float(word_recent_boost))
+        self.word_frequency_exponent = max(
+            0.1,
+            float(word_frequency_exponent),
+        )
+        self.word_arousal_flatten = max(
+            0.0,
+            float(word_arousal_flatten),
+        )
+        self.char_frequency_exponent = max(
+            0.1,
+            float(char_frequency_exponent),
+        )
+        self.char_arousal_flatten = max(
+            0.0,
+            float(char_arousal_flatten),
+        )
+        self.word_reward_scale = max(
+            0.0,
+            min(1.0, float(word_reward_scale)),
+        )
+        self._last_generator = "none"
         self._init_schema()
         self._bootstrap_from_legacy_words()
+        self._bootstrap_word_model_from_legacy()
 
     def _init_schema(self) -> None:
         self.db.executescript(
