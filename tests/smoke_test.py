@@ -25,6 +25,7 @@ def main():
         b.step(5)
         scores = b.action_scores()
         assert 0 <= scores["speak"] <= 1
+        assert 0 <= b.language_word_score("siema") <= 1
         b.reward(1)
         b.save()
 
@@ -35,6 +36,8 @@ def main():
             80,
             word_model_probability=1.0,
             word_recent_boost=2.0,
+            connectome_word_control_min_vocab=8,
+            connectome_word_control_strength=0.35,
         )
         for s in [
             "siema co tam",
@@ -47,7 +50,10 @@ def main():
         diag = lang.diagnostics()
         assert diag["word_vocab"] >= 6
         assert diag["word_bigrams"] >= 4
-        text, tri = lang.generate("siema")
+        text, tri = lang.generate(
+            "siema",
+            brain_word_score=b.language_word_score,
+        )
         assert text
         assert lang.diagnostics()["last_generator"] == "words"
 
@@ -58,11 +64,16 @@ def main():
             generated, _ = lang.generate(
                 "siema co tam",
                 arousal=0.80,
+                brain_word_score=b.language_word_score,
             )
             if generated:
                 variants.add(generated.lower())
         assert len(variants) >= 3
         assert "siema co tam" not in variants
+        brain_diag = lang.diagnostics()
+        assert brain_diag["connectome_word_control_ready"]
+        assert brain_diag["connectome_word_control_last"]["active"]
+        assert brain_diag["connectome_word_control_last"]["evaluated"] > 0
 
         lang.reinforce_text(text, 1)
         lang.close()
