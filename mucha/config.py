@@ -102,6 +102,7 @@ class VoiceConfig:
     leave_threshold: float = 0.82
     move_margin: float = 0.05
     blocked_voice_channel_ids: tuple[int, ...] = ()
+    blocked_voice_guild_ids: tuple[int, ...] = ()
     include_empty_channels: bool = True
     exclude_afk_channel: bool = True
 
