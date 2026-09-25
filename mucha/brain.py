@@ -50,6 +50,8 @@ class FlyBrain:
         self._modulatory_lookup = set(
             int(i) for i in self.c.modulatory.tolist()
         )
+        self._connectome_visual_stable_indices: list[int] = []
+        self._connectome_visual_stable_updated = 0.0
         self.last_learning: dict = {
             "amount": 0.0,
             "action": None,
@@ -420,17 +422,19 @@ class FlyBrain:
 
     def connectome_visual_snapshot(
         self,
-        count: int = 42,
-        edge_limit: int = 140,
+        count: int = 64,
+        edge_limit: int = 180,
+        follow_activity: bool = False,
     ) -> dict:
-        """Compact live graph for the dashboard.
+        """Compact graph for the neural dashboard.
 
-        This is a functional view of the currently active part of the
-        connectome, not an anatomical reconstruction. Matrix rows are targets
-        and columns are sources because propagation uses matrix.dot(state).
+        Stable mode keeps the same functional window for roughly 45 seconds
+        and only replaces neurons when a newcomer is clearly more active.
+        Follow mode deliberately tracks the current strongest populations.
         """
-        count = max(12, min(int(count), 72, self.c.n_neurons))
-        edge_limit = max(16, min(int(edge_limit), 240))
+        count = max(12, min(int(count), 80, self.c.n_neurons))
+        edge_limit = max(16, min(int(edge_limit), 260))
+        follow_activity = bool(follow_activity)
 
         state_cpu = self.compute.to_cpu(self.state).astype(
             np.float32,
@@ -444,12 +448,26 @@ class FlyBrain:
             np.float32,
             copy=False,
         )
+        abs_state = np.abs(state_cpu)
+
+        sensory_set = self._sensory_lookup
+        output_set = self._output_lookup
+        modulatory_set = self._modulatory_lookup
+
+        def role_of(idx: int) -> str:
+            if idx in sensory_set:
+                return "sensory"
+            if idx in output_set:
+                return "output"
+            if idx in modulatory_set:
+                return "modulatory"
+            return "internal"
 
         def strongest(pool: np.ndarray, limit: int) -> list[int]:
             if limit <= 0 or len(pool) == 0:
                 return []
             pool = np.asarray(pool, dtype=np.int32)
-            values = np.abs(state_cpu[pool])
+            values = abs_state[pool]
             k = min(limit, len(pool))
             if k >= len(pool):
                 order = np.argsort(values)[::-1]
@@ -458,44 +476,135 @@ class FlyBrain:
                 order = part[np.argsort(values[part])[::-1]]
             return [int(pool[i]) for i in order[:k]]
 
-        # Keep each functional pool visible even when the globally strongest
-        # cells happen to come from only one region.
-        sensory_n = max(3, count // 6)
-        output_n = max(4, count // 5)
-        modulatory_n = max(2, count // 10)
-        selected: list[int] = []
-        selected.extend(strongest(self.c.sensory, sensory_n))
-        selected.extend(strongest(self.c.output, output_n))
-        selected.extend(strongest(self.c.modulatory, modulatory_n))
+        def active_selection(limit: int) -> list[int]:
+            limit = max(12, min(int(limit), 80, self.c.n_neurons))
+            sensory_n = max(4, limit // 6)
+            output_n = max(5, limit // 5)
+            modulatory_n = max(3, limit // 10)
 
-        abs_state = np.abs(state_cpu)
-        remaining = max(0, count - len(set(selected)))
-        if remaining:
-            k = min(
-                self.c.n_neurons,
-                max(count * 4, remaining),
+            selected: list[int] = []
+            selected.extend(strongest(self.c.sensory, sensory_n))
+            selected.extend(strongest(self.c.output, output_n))
+            selected.extend(strongest(self.c.modulatory, modulatory_n))
+
+            remaining = max(0, limit - len(set(selected)))
+            if remaining:
+                k = min(
+                    self.c.n_neurons,
+                    max(limit * 4, remaining),
+                )
+                if k >= self.c.n_neurons:
+                    candidates = np.argsort(abs_state)[::-1]
+                else:
+                    part = np.argpartition(abs_state, -k)[-k:]
+                    candidates = part[
+                        np.argsort(abs_state[part])[::-1]
+                    ]
+                selected.extend(int(i) for i in candidates)
+
+            unique: list[int] = []
+            seen: set[int] = set()
+            for idx in selected:
+                if idx in seen:
+                    continue
+                seen.add(idx)
+                unique.append(idx)
+                if len(unique) >= limit:
+                    break
+            return unique
+
+        dynamic = active_selection(count)
+        now = time.monotonic()
+        replacements = 0
+        stable_window_seconds = 45.0
+
+        if follow_activity:
+            unique = dynamic
+            stable_age = 0.0
+            refresh_in = 0.0
+            mode = "follow_activity"
+        else:
+            cached = self._connectome_visual_stable_indices
+            cache_valid = (
+                len(cached) == count
+                and all(0 <= idx < self.c.n_neurons for idx in cached)
             )
-            if k >= self.c.n_neurons:
-                candidates = np.argsort(abs_state)[::-1]
-            else:
-                part = np.argpartition(abs_state, -k)[-k:]
-                candidates = part[np.argsort(abs_state[part])[::-1]]
-            selected.extend(int(i) for i in candidates)
+            if not cache_valid:
+                self._connectome_visual_stable_indices = list(dynamic)
+                self._connectome_visual_stable_updated = now
+                cached = self._connectome_visual_stable_indices
 
-        unique: list[int] = []
-        seen: set[int] = set()
-        for idx in selected:
-            if idx in seen:
-                continue
-            seen.add(idx)
-            unique.append(idx)
-            if len(unique) >= count:
-                break
+            age = max(
+                0.0,
+                now - float(self._connectome_visual_stable_updated),
+            )
+
+            # Normal replacements happen once per stable window. A single very
+            # strong newcomer may break in earlier, but only after a short
+            # settling period and only if it is dramatically stronger.
+            scheduled = age >= stable_window_seconds
+            emergency = age >= 10.0
+
+            if scheduled or emergency:
+                stable = list(cached)
+                stable_set = set(stable)
+                candidate_pool = active_selection(min(80, count + 16))
+                candidate_pool = [
+                    idx for idx in candidate_pool
+                    if idx not in stable_set
+                ]
+
+                max_replacements = 6 if scheduled else 1
+                ratio_required = 1.35 if scheduled else 2.50
+                margin_required = 0.018 if scheduled else 0.055
+
+                for candidate in candidate_pool:
+                    if replacements >= max_replacements:
+                        break
+                    candidate_role = role_of(candidate)
+                    same_role_positions = [
+                        pos for pos, idx in enumerate(stable)
+                        if role_of(idx) == candidate_role
+                    ]
+                    if not same_role_positions:
+                        continue
+
+                    weakest_pos = min(
+                        same_role_positions,
+                        key=lambda pos: float(abs_state[stable[pos]]),
+                    )
+                    weakest_idx = stable[weakest_pos]
+                    weak = float(abs_state[weakest_idx])
+                    strong = float(abs_state[candidate])
+
+                    if strong < max(
+                        weak * ratio_required,
+                        weak + margin_required,
+                    ):
+                        continue
+
+                    stable_set.discard(weakest_idx)
+                    stable[weakest_pos] = candidate
+                    stable_set.add(candidate)
+                    replacements += 1
+
+                if replacements or scheduled:
+                    self._connectome_visual_stable_indices = stable
+                    self._connectome_visual_stable_updated = now
+                    cached = stable
+
+            unique = list(self._connectome_visual_stable_indices)
+            stable_age = max(
+                0.0,
+                now - float(self._connectome_visual_stable_updated),
+            )
+            refresh_in = max(
+                0.0,
+                stable_window_seconds - stable_age,
+            )
+            mode = "stable"
 
         selected_arr = np.asarray(unique, dtype=np.int32)
-        sensory_set = self._sensory_lookup
-        output_set = self._output_lookup
-        modulatory_set = self._modulatory_lookup
 
         nodes = []
         for idx in unique:
@@ -573,11 +682,16 @@ class FlyBrain:
             "total_neurons": int(self.c.n_neurons),
             "total_connections": int(self.c.matrix.nnz),
             "mean_abs_activation": float(
-                np.mean(np.abs(state_cpu)) if len(state_cpu) else 0.0
+                np.mean(abs_state) if len(state_cpu) else 0.0
             ),
             "max_abs_activation": float(
-                np.max(np.abs(state_cpu)) if len(state_cpu) else 0.0
+                np.max(abs_state) if len(state_cpu) else 0.0
             ),
+            "mode": mode,
+            "stable_window_seconds": stable_window_seconds,
+            "stable_age_seconds": float(stable_age),
+            "refresh_in_seconds": float(refresh_in),
+            "replacements": int(replacements),
         }
 
     def learning_since_start_diagnostics(self) -> dict:
