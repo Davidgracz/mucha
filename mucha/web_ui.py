@@ -18,6 +18,7 @@ log = logging.getLogger("mucha.web")
 
 SnapshotProvider = Callable[[], Awaitable[dict]]
 ConnectomeProvider = Callable[[bool], Awaitable[dict]]
+NeuromapProvider = Callable[[str], Awaitable[dict]]
 ConfigProvider = Callable[[], dict]
 ConfigUpdater = Callable[[dict], dict]
 
@@ -34,7 +35,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 @media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 </style></head><body><main>
 <div class="top"><div><h1>⚙ Konfiguracja Muchy</h1><div class="sub">Zmiany są zapisywane do config.toml i stosowane na żywo.</div></div>
-<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
+<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
 <div class="grid">
 <div class="card"><h2>Język / szybkie uczenie</h2><div class="fields" id="language-fields"></div></div>
 <div class="card"><h2>Zachowanie i relacje</h2><div class="fields" id="behavior-fields"></div></div>
@@ -338,7 +339,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
 <body><main>
 <div class="top">
  <div class="brand"><div class="logo">🧬</div><div><h1>Neural Connectome</h1><div class="sub">Live funkcjonalny widok aktywnej części mózgu Muchy — nie jest to rekonstrukcja anatomiczna.</div></div></div>
- <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a class="active" href="/connectome">🧬 Connectome</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
+ <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a class="active" href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
@@ -527,6 +528,197 @@ async function update(){
 window.addEventListener("resize",resize);updateModeButton();resize();draw();setInterval(update,900);update();
 </script>
 </body></html>"""
+NEUROMAP_HTML = r"""<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mucha — Neuro-map</title>
+<style>
+:root{
+ --bg:#04070c;--panel:#0a1118;--panel2:#071019;--line:#1b2b3b;--txt:#eef7ff;--muted:#758ba0;
+ --cyan:#55ead0;--blue:#6ba6ff;--violet:#b68bff;--pink:#ff77b7;--good:#55df97;--warn:#ffd166;--bad:#ff7474;
+}
+*{box-sizing:border-box}
+body{margin:0;color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:
+ radial-gradient(circle at 20% 0%,rgba(85,234,208,.12),transparent 27%),
+ radial-gradient(circle at 82% 8%,rgba(107,166,255,.11),transparent 30%),
+ radial-gradient(circle at 50% 100%,rgba(182,139,255,.08),transparent 36%),
+ linear-gradient(180deg,#04070c,#071019 55%,#05090e)}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.20;background-image:
+ linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
+ linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);background-size:32px 32px}
+main{max-width:1700px;margin:auto;padding:22px}
+.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}
+.brand{display:flex;gap:13px;align-items:center}.logo{font-size:38px;filter:drop-shadow(0 0 22px rgba(85,234,208,.28))}
+h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}
+.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#b9cad9;text-decoration:none;border:1px solid var(--line);background:#0a131c;padding:8px 11px;border-radius:10px;font-size:12px}
+.nav a:hover{border-color:#36536e;color:white}.nav a.active{background:linear-gradient(90deg,var(--cyan),#7be7d6);color:#03110d;border-color:var(--cyan);font-weight:850}
+.hero{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}.kpi,.card{background:linear-gradient(180deg,rgba(11,18,27,.96),rgba(7,13,20,.96));border:1px solid var(--line);border-radius:16px;box-shadow:0 16px 50px rgba(0,0,0,.18)}
+.kpi{padding:13px 14px}.kpi small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.11em;margin-bottom:5px}.kpi strong{font-size:18px}.kpi em{display:block;color:#8da0b2;font-size:10px;font-style:normal;margin-top:4px}
+.toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:rgba(8,15,23,.9)}
+.toolgroup{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.toolgroup span{font-size:9px;color:#758ba0;text-transform:uppercase;letter-spacing:.1em;margin-right:3px}
+.btn{border:1px solid #263d52;background:#08121b;color:#9db0c2;border-radius:999px;padding:7px 10px;font-size:9px;font-weight:850;letter-spacing:.06em;cursor:pointer}
+.btn:hover{border-color:#527593;color:white}.btn.on{border-color:rgba(85,234,208,.55);background:rgba(85,234,208,.10);color:var(--cyan);box-shadow:0 0 18px rgba(85,234,208,.08)}
+.badge{padding:6px 9px;border-radius:999px;font-size:9px;font-weight:850;letter-spacing:.08em;border:1px solid #284055;background:#071019;color:#9eb2c3}.badge.real{color:var(--good);border-color:rgba(85,223,151,.4);background:rgba(85,223,151,.09)}.badge.hybrid{color:var(--warn);border-color:rgba(255,209,102,.35);background:rgba(255,209,102,.08)}.badge.synthetic{color:var(--bad);border-color:rgba(255,116,116,.35);background:rgba(255,116,116,.08)}
+.grid{display:grid;grid-template-columns:minmax(0,2.25fr) minmax(360px,.85fr);gap:12px}.card{padding:14px;min-width:0}.card-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.card h2{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#9db0c0}.live{display:inline-flex;align-items:center;gap:7px;color:var(--good);font-size:9px;font-weight:850;letter-spacing:.1em}.live i{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 14px var(--good);animation:pulse 1.2s infinite}@keyframes pulse{50%{opacity:.35;transform:scale(.75)}}
+.map-wrap{position:relative;height:760px;border-radius:15px;overflow:hidden;border:1px solid #162637;background:
+ radial-gradient(circle at 50% 48%,rgba(85,234,208,.035),transparent 42%),
+ linear-gradient(180deg,#050a10,#07101a)}
+#brain{width:100%;height:100%;display:block}.map-title{position:absolute;left:12px;top:10px;color:#6f879a;font-size:9px;text-transform:uppercase;letter-spacing:.14em;background:rgba(4,9,14,.68);border:1px solid #172839;padding:6px 8px;border-radius:999px;backdrop-filter:blur(7px)}
+.tooltip{position:absolute;z-index:5;display:none;pointer-events:none;min-width:220px;max-width:310px;padding:10px 11px;border-radius:11px;background:rgba(4,9,14,.96);border:1px solid #2b4760;box-shadow:0 16px 45px rgba(0,0,0,.45);font-size:10px;line-height:1.5}.tooltip b{font-size:11px}.tooltip .mut{color:#7890a4}.tooltip .acc{color:var(--cyan)}
+.side{display:flex;flex-direction:column;gap:12px}.now{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{padding:10px;border:1px solid #172636;background:#071019;border-radius:11px}.mini small{display:block;color:#71889c;font-size:9px;text-transform:uppercase;letter-spacing:.1em}.mini strong{display:block;margin-top:4px;font-size:12px;word-break:break-word}
+.actions{display:flex;flex-direction:column;gap:7px}.act{display:grid;grid-template-columns:86px 1fr 40px;gap:8px;align-items:center;font-size:10px}.track{height:7px;background:#050b11;border:1px solid #172637;border-radius:999px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));border-radius:999px;box-shadow:0 0 12px rgba(85,234,208,.2)}
+.regions{display:flex;flex-direction:column;gap:6px;max-height:330px;overflow:auto}.region{display:grid;grid-template-columns:1fr 72px 44px;gap:8px;align-items:center;padding:8px;border:1px solid #172637;background:#071019;border-radius:10px;cursor:pointer}.region:hover,.region.on{border-color:#34536c;background:#091722}.region b{font-size:10px}.region small{color:#70879b;font-size:9px}.rtrack{height:6px;background:#050b11;border:1px solid #162536;border-radius:999px;overflow:hidden}.rfill{height:100%;background:linear-gradient(90deg,var(--violet),var(--pink));border-radius:999px}
+.inspector{min-height:260px}.empty{color:#71879a;font-size:11px;line-height:1.55;padding:10px 0}.ins-title{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ins-title strong{font-size:14px;word-break:break-all}.role{padding:4px 7px;border-radius:999px;font-size:8px;font-weight:850;letter-spacing:.08em;border:1px solid #274056;color:#a8bac9}
+.meta{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.meta div{padding:8px;background:#071019;border:1px solid #172637;border-radius:9px}.meta small{display:block;color:#6f879b;font-size:8px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:3px}.meta b{font-size:10px;word-break:break-word}
+.effects{margin-top:9px;padding:9px;background:#061019;border:1px solid #172637;border-radius:10px}.effects small{display:block;color:#71899e;font-size:8px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px}.effect{display:grid;grid-template-columns:80px 1fr auto;gap:7px;align-items:center;font-size:9px;margin-top:5px}.effect .efill{height:6px;background:#08141f;border-radius:999px;overflow:hidden}.effect .efill i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan))}
+.note{color:#71879a;font-size:9px;line-height:1.5;margin-top:8px}.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;color:#748b9f;font-size:9px}.legend span{display:inline-flex;align-items:center;gap:5px}.legend i{width:8px;height:8px;border-radius:50%}.sens{background:var(--cyan)}.internal{background:var(--blue)}.mod{background:var(--violet)}.out{background:var(--pink)}
+@media(max-width:1150px){.grid{grid-template-columns:1fr}.map-wrap{height:620px}.hero{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:720px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.map-wrap{height:540px}.meta{grid-template-columns:1fr}}
+</style>
+</head>
+<body><main>
+<div class="top">
+ <div class="brand"><div class="logo">🧠</div><div><h1>Fly Brain Neuro-map</h1><div class="sub">Anatomiczna projekcja aktywności z adnotacjami FlyWire + osobno oznaczony wpływ na zachowanie Muchy.</div></div></div>
+ <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a class="active" href="/neuromap">🧠 Neuro-map</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
+</div>
+
+<section class="hero">
+ <div class="kpi"><small>Pozycje neuronów</small><strong id="coverage">—</strong><em id="coord-count">—</em></div>
+ <div class="kpi"><small>Aktywne |a| &gt; .1</small><strong id="active">—</strong><em>cały runtime</em></div>
+ <div class="kpi"><small>Mean |activation|</small><strong id="mean">—</strong><em id="max">max —</em></div>
+ <div class="kpi"><small>Najaktywniejszy region</small><strong id="top-region">—</strong><em id="top-region-detail">—</em></div>
+ <div class="kpi"><small>Dominujący readout</small><strong id="dominant">—</strong><em id="dominant-score">—</em></div>
+</section>
+
+<div class="toolbar">
+ <div class="toolgroup"><span>Projekcja</span><button class="btn proj on" data-proj="xy">XY</button><button class="btn proj" data-proj="xz">XZ</button><button class="btn proj" data-proj="yz">YZ</button></div>
+ <div class="toolgroup"><span>Warstwa</span><button class="btn role on" data-role="all">ALL</button><button class="btn role" data-role="sensory">SENSORY</button><button class="btn role" data-role="internal">INTERNAL</button><button class="btn role" data-role="modulatory">MODULATORY</button><button class="btn role" data-role="output">OUTPUT</button></div>
+ <div class="toolgroup"><span>Widok</span><button class="btn on" id="regions-btn">REGION HEAT</button><button class="btn on" id="trail-btn">ACTIVITY TRAIL</button><span class="badge" id="coord-badge">COORDINATES</span></div>
+</div>
+
+<section class="grid">
+ <div class="card">
+  <div class="card-head"><h2>Brain projection / live activity</h2><div class="live"><i></i><span id="live">LIVE</span></div></div>
+  <div class="map-wrap" id="map-wrap">
+   <canvas id="brain"></canvas>
+   <div class="map-title" id="map-title">XY PROJECTION</div>
+   <div class="tooltip" id="tip"></div>
+  </div>
+  <div class="legend"><span><i class="sens"></i> sensory</span><span><i class="internal"></i> internal</span><span><i class="mod"></i> modulatory</span><span><i class="out"></i> output</span><span>• jasność = aktualna aktywacja • duży halo = region aktywny</span></div>
+ </div>
+
+ <div class="side">
+  <div class="card"><div class="card-head"><h2>Co robi Mucha teraz</h2><span class="badge" id="source">runtime</span></div>
+   <div class="now"><div class="mini"><small>bodziec</small><strong id="event">—</strong></div><div class="mini"><small>akcja</small><strong id="last-action">—</strong></div></div>
+   <div class="actions" id="actions" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card"><div class="card-head"><h2>Najaktywniejsze rejony</h2><span class="badge" id="region-filter">ALL</span></div><div class="regions" id="regions"></div></div>
+
+  <div class="card inspector"><div class="card-head"><h2>Neuron inspector</h2><span class="badge" id="picked">kliknij neuron</span></div><div id="inspector" class="empty">Najedź na punkt, żeby zobaczyć skrót. Kliknij neuron, aby zablokować szczegóły: klasy biologiczne, neuroprzekaźnik, aktywację i jego bezpośrednie połączenia do sztucznych readoutów Muchy.</div></div>
+ </div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const canvas=$("brain"),ctx=canvas.getContext("2d"),wrap=$("map-wrap"),tip=$("tip");
+const colors={sensory:"#55ead0",internal:"#6ba6ff",modulatory:"#b68bff",output:"#ff77b7"};
+let projection="xy",roleFilter="all",showRegions=true,showTrail=true,data=null,hover=null,selected=null,selectedRegion="",lastFetch=0;
+const trail=new Map(),mouse={x:0,y:0,inside:false};
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),nfmt=n=>Number(n||0).toLocaleString("pl-PL");
+const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+function axes(p){return p==="xy"?["x","y"]:p==="xz"?["x","z"]:["y","z"]}
+function point(o,w,h,pad=30){const [a,b]=axes(projection);return {x:pad+clamp(Number(o[a]||0),0,1)*(w-pad*2),y:pad+(1-clamp(Number(o[b]||0),0,1))*(h-pad*2)}}
+function resize(){const r=wrap.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0)}
+function roleVisible(n){return roleFilter==="all"||n.role===roleFilter}
+function regionOf(n){return (n.cell_class||n.super_class||"").trim()}
+function drawReference(w,h){
+ if(!data)return;ctx.save();ctx.globalCompositeOperation="lighter";
+ for(const p0 of (data.reference||[])){const p=point(p0,w,h,24);ctx.fillStyle=p0.real?"rgba(100,145,178,.075)":"rgba(100,145,178,.025)";ctx.beginPath();ctx.arc(p.x,p.y,p0.real?1.05:.75,0,Math.PI*2);ctx.fill()}
+ ctx.restore();
+}
+function drawRegions(w,h){
+ if(!data||!showRegions)return;const regs=(data.regions||[]),max=Math.max(.0001,...regs.map(r=>Number(r.score||0)));
+ ctx.save();ctx.globalCompositeOperation="lighter";
+ for(const r of regs){if(selectedRegion&&r.name!==selectedRegion)continue;const p=point(r,w,h,36),q=clamp(Number(r.score||0)/max,0,1),rad=18+q*60;
+  const g=ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,rad);g.addColorStop(0,"rgba(182,139,255,"+(0.08+q*.19)+")");g.addColorStop(.45,"rgba(107,166,255,"+(0.04+q*.10)+")");g.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=g;ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);ctx.fill();
+  if(q>.32){ctx.globalCompositeOperation="source-over";ctx.fillStyle="rgba(170,190,208,"+(0.42+q*.35)+")";ctx.font="9px Inter,system-ui";ctx.fillText(r.name,p.x+7,p.y-7);ctx.globalCompositeOperation="lighter"}
+ }
+ ctx.restore();
+}
+function updateTrail(){
+ if(!data)return;const seen=new Set();
+ for(const n of (data.nodes||[])){if(!roleVisible(n))continue;if(selectedRegion&&regionOf(n)!==selectedRegion)continue;seen.add(n.id);const a=Math.abs(Number(n.activation||0)),old=trail.get(n.id)||0;trail.set(n.id,Math.max(a,old*.94))}
+ for(const [id,v] of trail){if(!seen.has(id)){const nv=v*.90;if(nv<.015)trail.delete(id);else trail.set(id,nv)}}
+}
+function drawNodes(w,h){
+ if(!data)return;hover=null;const nodes=(data.nodes||[]);let maxA=.0001;for(const n of nodes)maxA=Math.max(maxA,Math.abs(Number(n.activation||0)));
+ for(const n of nodes){if(!roleVisible(n))continue;if(selectedRegion&&regionOf(n)!==selectedRegion)continue;const p=point(n,w,h,26),a=Math.abs(Number(n.activation||0)),q=clamp(a/maxA,0,1),hist=showTrail?(trail.get(n.id)||a):a,c=colors[n.role]||colors.internal;
+  if(showTrail&&hist>a+.015){ctx.strokeStyle=c;ctx.globalAlpha=clamp(hist*.34,0,.28);ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.x,p.y,6+hist*24,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
+  ctx.shadowColor=c;ctx.shadowBlur=4+q*22;ctx.fillStyle=c;ctx.globalAlpha=.25+q*.75;ctx.beginPath();ctx.arc(p.x,p.y,2.1+q*5.4,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;
+  if(!n.real_position){ctx.strokeStyle="rgba(255,209,102,.45)";ctx.lineWidth=.6;ctx.beginPath();ctx.arc(p.x,p.y,4+q*5.6,0,Math.PI*2);ctx.stroke()}
+  if(mouse.inside){const dx=mouse.x-p.x,dy=mouse.y-p.y;if(dx*dx+dy*dy<120)hover=n}
+  if(selected&&selected.id===n.id){ctx.strokeStyle="#fff";ctx.lineWidth=1.2;ctx.globalAlpha=.9;ctx.beginPath();ctx.arc(p.x,p.y,11+q*8,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
+ }
+}
+function draw(){
+ requestAnimationFrame(draw);const r=wrap.getBoundingClientRect(),w=r.width,h=r.height;ctx.clearRect(0,0,w,h);
+ const grad=ctx.createRadialGradient(w*.5,h*.5,20,w*.5,h*.5,Math.max(w,h)*.55);grad.addColorStop(0,"rgba(34,67,91,.07)");grad.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
+ drawReference(w,h);drawRegions(w,h);drawNodes(w,h)
+}
+function renderActions(scores){
+ const order=["speak","explore","react","voice_join","voice_move","voice_leave","stay"];
+ $("actions").innerHTML=order.map(k=>{const v=clamp(Number(scores[k]||0),0,1);return '<div class="act"><span>'+k+'</span><div class="track"><div class="fill" style="width:'+(v*100).toFixed(1)+'%"></div></div><b>'+v.toFixed(2)+'</b></div>'}).join("");
+ const best=order.map(k=>[k,Number(scores[k]||0)]).sort((a,b)=>b[1]-a[1])[0]||["—",0];$("dominant").textContent=best[0];$("dominant-score").textContent="score "+best[1].toFixed(3)
+}
+function renderRegions(){
+ const regs=data.regions||[],max=Math.max(.0001,...regs.map(r=>Number(r.score||0)));
+ $("regions").innerHTML=regs.slice(0,16).map(r=>{const q=clamp(Number(r.score||0)/max,0,1);return '<div class="region '+(selectedRegion===r.name?"on":"")+'" data-region="'+esc(r.name)+'"><div><b>'+esc(r.name)+'</b><br><small>'+nfmt(r.active_count)+' / '+nfmt(r.total)+' active</small></div><div class="rtrack"><div class="rfill" style="width:'+(q*100).toFixed(1)+'%"></div></div><small>'+Number(r.mean_abs||0).toFixed(3)+'</small></div>'}).join("")||'<div class="empty">Brak adnotowanych regionów. Dodaj classification.csv.gz przez augment_connectome_map.py.</div>';
+ document.querySelectorAll("[data-region]").forEach(el=>el.onclick=()=>{const name=el.dataset.region;selectedRegion=selectedRegion===name?"":name;$("region-filter").textContent=selectedRegion||"ALL";renderRegions()})
+}
+function effectRows(n){
+ const xs=n.system_actions||[];if(!xs.length)return '<div class="note">Brak bezpośredniego połączenia tego neuronu do sztucznych populacji action-readout w pokazanym kierunku.</div>';
+ const max=Math.max(...xs.map(x=>Number(x.strength||0)),.0001);return xs.map(x=>'<div class="effect"><span>'+esc(x.name)+'</span><div class="efill"><i style="width:'+(Number(x.strength||0)/max*100).toFixed(1)+'%"></i></div><b>'+Number(x.strength||0).toFixed(4)+'</b></div>').join("")
+}
+function inspect(n){
+ selected=n||selected;if(!selected)return;const n0=selected;$("picked").textContent=n0.real_position?"REAL POSITION":"FALLBACK POSITION";
+ $("inspector").className="";$("inspector").innerHTML='<div class="ins-title"><div><strong>'+esc(n0.id)+'</strong><div class="note">'+esc(n0.primary_type||n0.sub_class||n0.cell_class||n0.super_class||"brak typu")+'</div></div><span class="role">'+esc(n0.role)+'</span></div>'+
+ '<div class="meta"><div><small>activation</small><b>'+(Number(n0.activation)>=0?"+":"")+Number(n0.activation||0).toFixed(5)+'</b></div><div><small>eligibility</small><b>'+Number(n0.eligibility||0).toFixed(5)+'</b></div>'+
+ '<div><small>class</small><b>'+esc(n0.cell_class||"—")+'</b></div><div><small>sub_class</small><b>'+esc(n0.sub_class||"—")+'</b></div>'+
+ '<div><small>super_class</small><b>'+esc(n0.super_class||"—")+'</b></div><div><small>side / flow</small><b>'+esc((n0.side||"—")+" / "+(n0.flow||"—"))+'</b></div>'+
+ '<div><small>neurotransmitter</small><b>'+esc(n0.nt_type||"—")+'</b></div><div><small>nerve</small><b>'+esc(n0.nerve||"—")+'</b></div></div>'+
+ '<div class="effects"><small>Wpływ na systemowe readouty Muchy</small>'+effectRows(n0)+'</div>'+
+ '<div class="note">Klasy/typ/strona/neuroprzekaźnik pochodzą z danych FlyWire, jeśli są dostępne. Pasek „readout” opisuje wyłącznie sztuczny interfejs Discordowego mózgu Muchy — nie biologiczną funkcję neuronu.</div>'
+}
+canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.inside=true;if(hover){tip.style.display="block";tip.style.left=Math.min(r.width-245,mouse.x+13)+"px";tip.style.top=Math.min(r.height-145,mouse.y+13)+"px";tip.innerHTML='<b>'+esc(hover.id)+'</b><br><span class="mut">'+esc(hover.primary_type||hover.cell_class||hover.super_class||hover.role)+'</span><br><span class="acc">activation '+Number(hover.activation||0).toFixed(5)+'</span><br>'+esc(hover.side||"")+' '+esc(hover.nt_type||"")}else tip.style.display="none"});
+canvas.addEventListener("mouseleave",()=>{mouse.inside=false;tip.style.display="none"});
+canvas.addEventListener("click",()=>{if(hover){selected=hover;inspect(selected)}});
+
+document.querySelectorAll(".proj").forEach(b=>b.onclick=()=>{projection=b.dataset.proj;document.querySelectorAll(".proj").forEach(x=>x.classList.toggle("on",x===b));$("map-title").textContent=projection.toUpperCase()+" PROJECTION";update()});
+document.querySelectorAll(".role").forEach(b=>b.onclick=()=>{roleFilter=b.dataset.role;document.querySelectorAll(".role").forEach(x=>x.classList.toggle("on",x===b));selectedRegion="";$("region-filter").textContent=roleFilter.toUpperCase();updateTrail()});
+$("regions-btn").onclick=()=>{showRegions=!showRegions;$("regions-btn").classList.toggle("on",showRegions)};
+$("trail-btn").onclick=()=>{showTrail=!showTrail;$("trail-btn").classList.toggle("on",showTrail);if(!showTrail)trail.clear()};
+
+function render(payload){
+ const m=payload.brain_map||{};data=m;updateTrail();const scores=payload.scores||{};
+ const coverage=Number(m.coordinate_coverage||0);$("coverage").textContent=(coverage*100).toFixed(1)+"%";$("coord-count").textContent=nfmt(m.coordinate_neurons)+" / "+nfmt(m.total_neurons)+" neurons";
+ $("active").textContent=nfmt(m.active_abs_gt_0_1);$("mean").textContent=Number(m.mean_abs_activation||0).toFixed(5);$("max").textContent="max "+Number(m.max_abs_activation||0).toFixed(5);
+ const top=(m.regions||[])[0];$("top-region").textContent=top?top.name:"—";$("top-region-detail").textContent=top?(nfmt(top.active_count)+" active • mean "+Number(top.mean_abs||0).toFixed(3)):"brak adnotacji";
+ const badge=$("coord-badge"),mode=m.coordinate_mode||"synthetic";badge.textContent=mode==="real"?"REAL FAFB COORDS":mode==="hybrid"?"HYBRID COORDS":"FALLBACK LAYOUT";badge.className="badge "+mode;
+ $("event").textContent=payload.last_event||"—";$("last-action").textContent=payload.last_action||"—";$("source").textContent=(payload.source||"runtime").includes("FlyWire")?"FAFB v783":"runtime";renderActions(scores);renderRegions();
+ if(selected){const fresh=(m.nodes||[]).find(n=>n.id===selected.id);if(fresh){selected=fresh;inspect(fresh)}}
+ $("live").textContent="LIVE";lastFetch=Date.now()
+}
+async function update(){
+ try{const r=await fetch("/api/neuromap?projection="+projection,{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}
+ catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}
+}
+window.addEventListener("resize",resize);resize();draw();setInterval(update,1100);update();
+</script>
+</body></html>"""
+
 LOGIN_HTML = r"""<!doctype html>
 <html lang="pl">
 <head>
@@ -603,7 +795,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
 <body><main>
 <div class="top">
   <div class="brand"><div class="logo">🪰</div><div><h1>Mucha Control Center</h1><div class="sub">VPS • Discord • Connectome • Chaser • Audio</div></div></div>
-  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
+  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
@@ -1399,6 +1591,7 @@ class WebDashboard:
         config_provider: ConfigProvider | None = None,
         config_updater: ConfigUpdater | None = None,
         connectome_provider: ConnectomeProvider | None = None,
+        neuromap_provider: NeuromapProvider | None = None,
     ):
         self.snapshot_provider = snapshot_provider
         self.host = host
@@ -1415,6 +1608,7 @@ class WebDashboard:
         self.config_provider = config_provider
         self.config_updater = config_updater
         self.connectome_provider = connectome_provider
+        self.neuromap_provider = neuromap_provider
         self.runner: web.AppRunner | None = None
         self.site: web.TCPSite | None = None
         self._bind_host = self.host
@@ -1486,6 +1680,7 @@ class WebDashboard:
         app.router.add_get("/details", self._details)
         app.router.add_get("/affinity", self._affinity_page)
         app.router.add_get("/connectome", self._connectome_page)
+        app.router.add_get("/neuromap", self._neuromap_page)
         app.router.add_get("/config", self._config_page)
         app.router.add_get("/brain", self._brain)
         app.router.add_get("/login", self._login_get)
@@ -1493,6 +1688,7 @@ class WebDashboard:
         app.router.add_get("/logout", self._logout)
         app.router.add_get("/api/state", self._state)
         app.router.add_get("/api/connectome", self._connectome_state)
+        app.router.add_get("/api/neuromap", self._neuromap_state)
         app.router.add_get("/api/overview", self._overview)
         app.router.add_get("/api/config", self._config_get)
         app.router.add_post("/api/config", self._config_post)
@@ -1536,6 +1732,9 @@ class WebDashboard:
 
     async def _connectome_page(self, request: web.Request) -> web.Response:
         return web.Response(text=CONNECTOME_HTML, content_type="text/html")
+
+    async def _neuromap_page(self, request: web.Request) -> web.Response:
+        return web.Response(text=NEUROMAP_HTML, content_type="text/html")
 
     async def _config_get(self, request: web.Request) -> web.Response:
         if self.config_provider is None:
@@ -1635,6 +1834,25 @@ class WebDashboard:
         raw = str(request.query.get("follow", "")).strip().lower()
         follow_activity = raw in {"1", "true", "yes", "on"}
         snap = await self.connectome_provider(follow_activity)
+        return web.json_response(
+            snap,
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
+
+    async def _neuromap_state(
+        self,
+        request: web.Request,
+    ) -> web.Response:
+        if self.neuromap_provider is None:
+            raise web.HTTPServiceUnavailable(
+                text="neuromap provider unavailable"
+            )
+        projection = str(
+            request.query.get("projection", "xy")
+        ).strip().lower()
+        if projection not in {"xy", "xz", "yz"}:
+            projection = "xy"
+        snap = await self.neuromap_provider(projection)
         return web.json_response(
             snap,
             dumps=lambda x: json.dumps(x, ensure_ascii=False),
