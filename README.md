@@ -645,3 +645,59 @@ social:liked-user
 Naturalne plusy mają cooldown, więc spamowanie jednego zachowania nie pozwala szybko nabić affinity. Długie wspólne siedzenie na voice jest dodatkowo ograniczone do maksymalnie jednego przyrostu co 10 minut, a pozostanie po TTS do jednego przyrostu co 5 minut.
 
 Po kilku różnych pozytywnych kontaktach connectome dostaje `social:repeated-positive-contact`. Po przekroczeniu `familiar_affinity_threshold` dostaje również `social:familiar-user`, a przy wysokim affinity `social:liked-user`.
+
+
+## Słuchanie użytkowników na voice
+
+Mucha może lokalnie rozpoznawać mowę użytkowników z kanału Discord voice.
+
+Pipeline:
+
+```text
+Discord PCM 48 kHz stereo
+→ bufor per użytkownik
+→ wykrycie ciszy / końca wypowiedzi
+→ resampling do 16 kHz mono
+→ faster-whisper
+→ tekst
+→ language.learn(...)
+→ brain.inject_text(...)
+→ bodźce voice/social connectome
+```
+
+Odbiór audio używa `discord-ext-voice-recv` i `VoiceRecvClient`. Transkrypcja używa lokalnego `faster-whisper`. Domyślnie:
+
+```toml
+stt_enabled = true
+stt_model = "base"
+stt_language = "pl"
+stt_device = "cpu"
+stt_compute_type = "int8"
+stt_cpu_threads = 2
+stt_download_root = "state/whisper"
+stt_silence_seconds = 0.9
+stt_min_segment_seconds = 0.7
+stt_max_segment_seconds = 12.0
+stt_min_chars = 2
+stt_beam_size = 1
+```
+
+Model jest ładowany w tle po starcie. Przy pierwszym uruchomieniu może zostać pobrany do `state/whisper`.
+
+Surowe audio użytkowników nie jest zapisywane jako pliki. PCM jest trzymane tymczasowo w RAM na czas krótkiego segmentu i usuwane po przekazaniu go do transkrypcji. Rozpoznany tekst trafia do tego samego character-level uczenia, z którego Mucha korzysta dla wiadomości tekstowych.
+
+Connectome dostaje m.in.:
+
+```text
+voice:speech-heard
+voice:speech:user:<ID>
+voice:spoken-rejection
+voice:word-reused
+voice:phrase-reused
+social:user-mentioned-me
+social:user-continued-conversation
+```
+
+Jeśli użytkownik powie do Muchy wulgarną frazę odrzucającą albo zrobi to do 20 sekund po jej TTS, może to dać ujemny reward do śladu neuronalnego ostatniego TTS oraz obniżyć affinity. Powtarzanie słów/fraz z TTS i normalne kontynuowanie rozmowy mogą dać dodatni feedback.
+
+W `/details` jest kafel `Voice Recognition / STT` z ostatnią transkrypcją, użytkownikiem, językiem, pewnością i kolejką. Ustawienia STT są dostępne również w `/config`.
