@@ -19,6 +19,7 @@ START_A = "\u0002"
 START_B = "\u0003"
 WORD_START_A = "\u0002W"
 WORD_START_B = "\u0003W"
+WORD_END = "\u0004W"
 
 
 class OnlineLanguage:
@@ -472,7 +473,8 @@ class OnlineLanguage:
                 (token, now),
             )
 
-        for a, b in zip(tokens, tokens[1:]):
+        transition_tokens = tokens + [WORD_END]
+        for a, b in zip(transition_tokens, transition_tokens[1:]):
             cur.execute(
                 "INSERT INTO word_bigram(a,b,n,reward,last_seen) "
                 "VALUES(?,?,1,0,?) "
@@ -481,7 +483,11 @@ class OnlineLanguage:
                 (a, b, now),
             )
 
-        for a, b, cc in zip(tokens, tokens[1:], tokens[2:]):
+        for a, b, cc in zip(
+            transition_tokens,
+            transition_tokens[1:],
+            transition_tokens[2:],
+        ):
             cur.execute(
                 "INSERT INTO word_trigram(a,b,c,n,reward,last_seen) "
                 "VALUES(?,?,?,1,0,?) "
@@ -819,6 +825,8 @@ class OnlineLanguage:
         text = ""
         punctuation = {".", "!", "?", ",", ";", ":"}
         for token in tokens:
+            if token == WORD_END:
+                break
             if token in punctuation:
                 text = text.rstrip() + token
             else:
@@ -868,6 +876,11 @@ class OnlineLanguage:
                 "WHERE a=? AND b=? ORDER BY n DESC LIMIT 100",
                 (a, b),
             ).fetchall()
+            rows = [
+                row
+                for row in rows
+                if str(row[0]) != WORD_END
+            ]
             token = self._weighted_word_row(
                 rows,
                 arousal,
@@ -885,6 +898,11 @@ class OnlineLanguage:
                 "WHERE a=? ORDER BY n DESC LIMIT 120",
                 (a,),
             ).fetchall()
+            rows = [
+                row
+                for row in rows
+                if str(row[0]) != WORD_END
+            ]
             token = self._weighted_word_row(
                 rows,
                 arousal,
@@ -975,6 +993,8 @@ class OnlineLanguage:
                 ) if rows3 else None
 
             if token is None:
+                break
+            if token == WORD_END:
                 break
 
             out.append(token)
@@ -1117,7 +1137,10 @@ class OnlineLanguage:
                 (scale * min(mult, 4), token),
             )
 
-        bigram_counts = Counter(zip(tokens, tokens[1:]))
+        transition_tokens = tokens + [WORD_END]
+        bigram_counts = Counter(
+            zip(transition_tokens, transition_tokens[1:])
+        )
         for (a, b), mult in bigram_counts.items():
             cur.execute(
                 "UPDATE word_bigram "
@@ -1126,7 +1149,13 @@ class OnlineLanguage:
                 (scale * min(mult, 4), a, b),
             )
 
-        trigram_counts = Counter(zip(tokens, tokens[1:], tokens[2:]))
+        trigram_counts = Counter(
+            zip(
+                transition_tokens,
+                transition_tokens[1:],
+                transition_tokens[2:],
+            )
+        )
         for (a, b, cc), mult in trigram_counts.items():
             cur.execute(
                 "UPDATE word_trigram "
