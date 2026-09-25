@@ -721,3 +721,30 @@ Kafel mierzy:
 - neuron FlyWire `root_id`, który dostał największą skumulowaną zmianę od rewardów.
 
 Metryki reward-learning są liczone bezpośrednio w `FlyBrain.reward()`. Są oddzielone od zwykłego `plasticity_decay`, dzięki czemu zanik wcześniej zapisanych biasów nie jest błędnie prezentowany jako nowa nauka.
+
+
+## Affinity dashboard i naturalne minusy
+
+Dashboard ma osobną zakładkę `/affinity`. Pokazuje na żywo:
+
+- wszystkie dodatnie i ujemne zdarzenia wpływające na affinity,
+- aktualne wartości `Δ affinity`,
+- pozytywne i negatywne emoji,
+- frazy odrzucające wraz z severity,
+- progi `ZNAJOMY`, `LUBI` i `OMIJA`,
+- aktualne relacje z użytkownikami,
+- bieżący `negative streak` i jego mnożnik,
+- ostatni sygnał społeczny.
+
+Naturalne ujemne zachowania obejmują:
+
+- wyjście lub przeniesienie się użytkownika krótko po wejściu Muchy na kanał; kara dotyczy tylko osób, które były na kanale przed jej wejściem,
+- wyjście lub przeniesienie się krótko po TTS Muchy,
+- powtarzające się uciekanie od Muchy po kolejnych jej wejściach,
+- aktywne ignorowanie bezpośredniej odpowiedzi Muchy: użytkownik nie kontynuuje rozmowy w tym kanale, ale w tym czasie pisze gdzie indziej na serwerze.
+
+Sam brak odpowiedzi lub AFK nie obniża affinity.
+
+Kolejne negatywne sygnały w oknie `negative_streak_window_seconds` zwiększają mnożnik o `negative_streak_multiplier_step`, maksymalnie do `negative_streak_max_multiplier`. Pozytywne interakcje stopniowo wygaszają ten streak.
+
+Podczas aktywnej ucieczki przed Chaserem naturalne kary za opuszczanie kanału po wejściu Muchy są pomijane, a social avoidance nie ogranicza kanału ucieczki.
