@@ -469,6 +469,36 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div id="learning-impact"></div>
     </div>
 
+    <div class="card span3">
+      <h2>Learning Since Startup</h2>
+      <div class="learning-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="kpi"><small>czas uczenia</small><strong id="session-age">—</strong></div>
+        <div class="kpi"><small>nowe znaki</small><strong id="session-chars">—</strong></div>
+        <div class="kpi"><small>nowe wiadomości / wypowiedzi</small><strong id="session-messages">—</strong></div>
+        <div class="kpi"><small>nowe przejścia znaków</small><strong id="session-transitions">—</strong></div>
+        <div class="kpi"><small>transkrypcje voice</small><strong id="session-stt">—</strong></div>
+        <div class="kpi"><small>reward events</small><strong id="session-rewards">—</strong></div>
+        <div class="kpi"><small>łączny +reward</small><strong class="ok" id="session-positive">—</strong></div>
+        <div class="kpi"><small>łączny -reward</small><strong class="no" id="session-negative">—</strong></div>
+      </div>
+      <div class="events" style="margin-top:10px">
+        <div class="event">
+          <small>Trwała zmiana connectome od startu</small>
+          <div class="metric"><span>Unikalne neurony ze zmienionym biasem</span><strong id="session-neurons">—</strong></div>
+          <div class="metric"><span>Aktualizacje bias w rewardach</span><strong id="session-bias-updates">—</strong></div>
+          <div class="metric"><span>Średnie |Δ bias| względem startu</span><strong id="session-bias-mean">—</strong></div>
+          <div class="metric"><span>Max |Δ bias| względem startu</span><strong id="session-bias-max">—</strong></div>
+        </div>
+        <div class="event">
+          <small>Najbardziej zmieniony neuron od startu</small>
+          <div class="metric"><span>FlyWire root_id</span><strong id="session-top-root">—</strong></div>
+          <div class="metric"><span>Δ bias</span><strong id="session-top-delta">—</strong></div>
+          <div class="metric"><span>Aktualny bias</span><strong id="session-top-bias">—</strong></div>
+          <div class="reason" id="session-summary">Czekam na pierwszą trwałą zmianę.</div>
+        </div>
+      </div>
+    </div>
+
     <div class="card span2">
       <h2>Social Learning / Relacje</h2>
       <div class="learning-grid">
@@ -694,6 +724,47 @@ function renderVoiceDebug(items){
     '<table><thead><tr><th>Kanał</th><th>Ludzie</th><th>View</th><th>Connect</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table>';
   }).join('<div style="height:14px"></div>');
 }
+function sessionDuration(seconds){
+  seconds=Math.max(0,Number(seconds||0));
+  const d=Math.floor(seconds/86400);seconds%=86400;
+  const h=Math.floor(seconds/3600);seconds%=3600;
+  const m=Math.floor(seconds/60);const s=Math.floor(seconds%60);
+  return (d?d+"d ":"")+(h?h+"h ":"")+(m?m+"m ":"")+s+"s";
+}
+function renderLearningSinceStart(x){
+  x=x||{};
+  $("session-age").textContent=sessionDuration(x.uptime_seconds||0);
+  $("session-chars").textContent="+"+nfmt(x.language_chars||0);
+  $("session-messages").textContent="+"+nfmt(x.language_messages||0);
+  $("session-transitions").textContent="+"+nfmt(x.language_transitions||0);
+  $("session-stt").textContent=nfmt(x.voice_transcripts||0);
+  $("session-rewards").textContent=nfmt(x.reward_events||0)+
+    " ("+nfmt(x.positive_reward_events||0)+"+ / "+
+    nfmt(x.negative_reward_events||0)+"-)";
+  $("session-positive").textContent="+"+Number(x.positive_reward_total||0).toFixed(3);
+  $("session-negative").textContent=Number(x.negative_reward_total||0).toFixed(3);
+  $("session-neurons").textContent=nfmt(x.unique_neurons_changed||0);
+  $("session-bias-updates").textContent=nfmt(x.bias_update_operations||0);
+  $("session-bias-mean").textContent=Number(x.bias_mean_abs_delta||0).toExponential(3);
+  $("session-bias-max").textContent=Number(x.bias_max_abs_delta||0).toExponential(3);
+
+  const top=x.top_changed_neuron||null;
+  $("session-top-root").textContent=top?String(top.root_id):"—";
+  const delta=top?Number(top.delta||0):0;
+  $("session-top-delta").textContent=top?(delta>=0?"+":"")+delta.toExponential(3):"—";
+  $("session-top-delta").className=top?(delta>0?"ok":delta<0?"no":""):"";
+  $("session-top-bias").textContent=top?
+    (Number(top.current_bias||0)>=0?"+":"")+Number(top.current_bias||0).toExponential(3):"—";
+
+  const changed=Number(x.unique_neurons_changed||0);
+  const rewards=Number(x.reward_events||0);
+  $("session-summary").innerHTML=changed
+    ? '<b class="ok">UCZENIE WIDOCZNE</b> • '+nfmt(changed)+
+      ' neuronów ma inny bias niż przy starcie procesu.'
+    : rewards
+      ? '<b>Rewardy wystąpiły</b>, ale trwała różnica bias jest obecnie poniżej progu pomiaru.'
+      : 'Czekam na pierwszy reward i trwałą zmianę bias.';
+}
 function renderLearning(l){
   l=l||{};
   const amount=Number(l.amount||0);
@@ -879,6 +950,7 @@ async function update(){
     renderActions(s.scores||{});
     renderReaction(s.reaction_debug||{});
     renderLearning(s.learning_debug||{});
+    renderLearningSinceStart(s.learning_since_start||{});
     renderSocial(s);
     renderActionHistory(s.action_history||[]);
     renderGuildLearningContext(s.guild_learning_context||[]);
