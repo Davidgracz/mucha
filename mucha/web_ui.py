@@ -84,12 +84,24 @@ const fields={
   ["tts_enabled","TTS włączony","bool"],
   ["tts_interval_seconds","TTS interval [s]","number",1],
   ["tts_volume","Głośność TTS","number",0.05],
+  ["stt_enabled","Słuchanie użytkowników (STT)","bool"],
+  ["stt_model","Model Whisper","text"],
+  ["stt_language","Język STT","text"],
+  ["stt_device","Urządzenie STT","text"],
+  ["stt_compute_type","Compute type STT","text"],
+  ["stt_cpu_threads","Wątki CPU STT","number",1],
+  ["stt_silence_seconds","Cisza kończąca wypowiedź [s]","number",0.1],
+  ["stt_min_segment_seconds","Min. wypowiedź [s]","number",0.1],
+  ["stt_max_segment_seconds","Max. segment [s]","number",0.5],
+  ["stt_min_chars","Min. znaków transkrypcji","number",1],
+  ["stt_beam_size","Beam size STT","number",1],
   ["random_audio_enabled","Rare audio","bool"]
  ]
 };
 function renderField(section,[key,label,type,step]){
  const value=state[section][key];
  if(type==="bool")return '<div class="field toggle"><label for="'+section+'-'+key+'">'+label+'</label><input id="'+section+'-'+key+'" type="checkbox" '+(value?'checked':'')+'></div>';
+ if(type==="text")return '<div class="field"><label for="'+section+'-'+key+'">'+label+'</label><input id="'+section+'-'+key+'" type="text" value="'+esc(value)+'"></div>';
  return '<div class="field"><label for="'+section+'-'+key+'">'+label+'</label><input id="'+section+'-'+key+'" type="number" step="'+(step||1)+'" value="'+value+'"></div>';
 }
 function renderChannels(kind){
@@ -106,7 +118,7 @@ async function load(){
 function collect(){
  const out={behavior:{},voice:{}};
  for(const section of ["behavior","voice"])for(const [key,,type] of fields[section]){
-  const el=$(section+"-"+key);out[section][key]=type==="bool"?el.checked:Number(el.value);
+  const el=$(section+"-"+key);out[section][key]=type==="bool"?el.checked:(type==="text"?el.value:Number(el.value));
  }
  out.blocked_text_channel_ids=[...document.querySelectorAll("[data-text]:checked")].map(x=>Number(x.dataset.text));
  out.blocked_voice_channel_ids=[...document.querySelectorAll("[data-voice]:checked")].map(x=>Number(x.dataset.voice));
@@ -259,6 +271,8 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
   <div class="row"><span>Cel</span><strong id="audio-target">—</strong></div>
   <div class="row"><span>Plik</span><strong id="audio-file">—</strong></div>
   <div class="row"><span>Tekst</span><strong id="audio-text">—</strong></div>
+  <div class="row"><span>STT</span><strong id="stt-status">—</strong></div>
+  <div class="row"><span>Usłyszała</span><strong id="stt-heard">—</strong></div>
  </div>
 
  <div class="card">
@@ -300,7 +314,7 @@ function nextText(ts){if(!ts)return "—";const sec=Number(ts)-Date.now()/1000;i
 function renderActions(scores){const order=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];const dom=Object.entries(scores||{}).sort((a,b)=>b[1]-a[1])[0]?.[0];
  $("actions").innerHTML=order.map(k=>{const v=Number((scores||{})[k]||0);return '<div class="act"><b class="'+(k===dom?'accent':'')+'">'+(k===dom?'▶ ':'')+k+'</b><div class="track"><div class="fill" style="width:'+Math.max(0,Math.min(100,v*100))+'%"></div></div><span>'+v.toFixed(3)+'</span></div>'}).join("")}
 function render(d){
- last=d;const s=d.snapshot||{},diag=s.diag||{},m=d.services?.mucha||{},ch=d.services?.chaser||{},sys=d.system||{},cs=d.chaser_status||{},cg=firstGuild(cs),a=s.audio_debug||{};
+ last=d;const s=d.snapshot||{},diag=s.diag||{},m=d.services?.mucha||{},ch=d.services?.chaser||{},sys=d.system||{},cs=d.chaser_status||{},cg=firstGuild(cs),a=s.audio_debug||{},stt=s.stt_debug||{};
  $("hero-mucha").innerHTML=serviceLabel(m);$("hero-chaser").innerHTML=serviceLabel(ch);
  $("hero-voice").textContent=s.voice||"poza voice";$("hero-next").textContent=nextText(cg.next_round_at);
  $("mucha-ram").textContent=fmtBytes(m.memory_bytes);$("mucha-up").textContent=dur(m.uptime_seconds);$("mucha-pid").textContent=m.pid||"—";$("mucha-state").innerHTML=serviceLabel(m);
@@ -314,6 +328,8 @@ function render(d){
  $("vps-free").textContent=fmtBytes(sys.mem_available);$("ram-bar").style.width=Math.max(0,Math.min(100,Number(sys.mem_percent||0)))+"%";$("updated").textContent=new Date().toLocaleTimeString("pl-PL");
  $("audio-status").textContent=a.status||"—";$("audio-stage").textContent=a.stage||"—";$("audio-target").textContent=(a.guild||"—")+" / "+(a.channel||"—");
  $("audio-file").textContent=a.file||"—";$("audio-text").textContent=a.text||"—";
+ $("stt-status").textContent=(stt.status||"—")+" • "+(stt.model||"—");
+ $("stt-heard").textContent=stt.text?((stt.user||"ktoś")+": "+stt.text):"—";
  $("neurons").textContent=nfmt(diag.neurons);$("connections").textContent=nfmt(diag.connections);$("active-neurons").textContent=nfmt(diag.active_abs_gt_0_1);
  $("mean-a").textContent=Number(diag.mean_abs||0).toFixed(5);$("reward-trace").textContent=Number(diag.reward_trace||0).toFixed(4);$("ticks").textContent=nfmt(diag.ticks);
  renderActions(s.scores||{});
@@ -545,6 +561,21 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card span3">
+      <h2>Voice Recognition / STT</h2>
+      <div class="learning-grid" style="grid-template-columns:repeat(4,1fr)">
+        <div class="kpi"><small>Status</small><strong id="stt-debug-status">—</strong></div>
+        <div class="kpi"><small>Model</small><strong id="stt-debug-model">—</strong></div>
+        <div class="kpi"><small>Użytkownik</small><strong id="stt-debug-user">—</strong></div>
+        <div class="kpi"><small>Długość</small><strong id="stt-debug-duration">—</strong></div>
+      </div>
+      <div class="metric"><span>Serwer / kanał</span><strong id="stt-debug-target">—</strong></div>
+      <div class="metric"><span>Język / pewność</span><strong id="stt-debug-language">—</strong></div>
+      <div class="metric"><span>Kolejka</span><strong id="stt-debug-pending">—</strong></div>
+      <div class="metric"><span>Ostatnia transkrypcja</span><strong id="stt-debug-text">—</strong></div>
+      <div class="reason" id="stt-debug-error">Brak błędów STT.</div>
+    </div>
+
+    <div class="card span3">
       <h2>Voice Debug</h2>
       <div id="voice-debug"><div class="reason">Czekam na pierwszy cykl voice…</div></div>
     </div>
@@ -596,6 +627,21 @@ function renderAudioDebug(a){
   $("audio-error").innerHTML=err
     ? '<b class="no">BŁĄD:</b> '+esc(err)
     : 'Brak błędów audio.';
+}
+
+function renderSttDebug(s){
+  s=s||{};
+  $("stt-debug-status").textContent=s.status||"—";
+  $("stt-debug-model").textContent=(s.model||"—")+" / "+(s.device||"—")+" / "+(s.compute_type||"—");
+  $("stt-debug-user").textContent=s.user||"—";
+  $("stt-debug-duration").textContent=Number(s.duration||0).toFixed(2)+" s";
+  $("stt-debug-target").textContent=(s.guild||"—")+" / "+(s.channel||"—");
+  const p=s.language_probability;
+  $("stt-debug-language").textContent=(s.language||"—")+" / "+(p==null?"—":(Number(p)*100).toFixed(1)+"%");
+  $("stt-debug-pending").textContent=String(s.pending||0);
+  $("stt-debug-text").textContent=s.text||"—";
+  const err=s.error||"";
+  $("stt-debug-error").innerHTML=err?'<b class="no">BŁĄD:</b> '+esc(err):'Brak błędów STT.';
 }
 
 function renderVoiceDebug(items){
@@ -838,6 +884,7 @@ async function update(){
     renderGuildLearningContext(s.guild_learning_context||[]);
     drawRewardChart(s.reward_history||[],d.reward_trace);
     renderAudioDebug(s.audio_debug||{});
+    renderSttDebug(s.stt_debug||{});
     renderVoiceDebug(s.voice_debug||[]);
     $("top").innerHTML=(s.top_neurons||[]).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+x[0]+'</td><td>'+(x[1]>=0?"+":"")+Number(x[1]).toFixed(5)+'</td><td>'+Math.abs(x[1]).toFixed(5)+'</td></tr>').join("");
     history.push({mean:Number(d.mean_abs),max:Number(d.max_abs)});while(history.length>maxHistory)history.shift();draw();
