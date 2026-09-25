@@ -3491,7 +3491,7 @@ class MuchaClient(discord.Client):
         pcm = discord.FFmpegPCMAudio(
             str(path),
             executable=self.cfg.voice.ffmpeg_executable,
-            options="-vn -ar 48000 -ac 2",
+            options="-vn",
         )
         return discord.PCMVolumeTransformer(
             pcm,
@@ -5617,10 +5617,16 @@ class MuchaClient(discord.Client):
                 vc is None
                 or not vc.is_connected()
                 or vc.channel is None
-                or vc.is_playing()
             ):
                 await message.add_reaction("⚠️")
                 return
+
+            # Audiotest is an explicit admin action: interrupt any current
+            # playback instead of refusing with a warning while TTS/rare audio
+            # happens to be active.
+            if vc.is_playing():
+                self._stop_voice_playback(vc)
+                await asyncio.sleep(0.08)
 
             wav_path = Path("state") / "tts" / f"{message.guild.id}.wav"
             test_text = "Test głosu Muchy."
