@@ -1452,12 +1452,17 @@ class MuchaClient(discord.Client):
         )
         if targeted_rejection and verbal_rejection is not None:
             label, severity = verbal_rejection
+            streak_count, streak_multiplier = self._advance_negative_streak(
+                message.author.id,
+                now,
+            )
             affinity_delta = -min(
                 0.30,
                 max(
                     0.01,
                     float(self.cfg.behavior.user_affinity_negative_step)
-                    * (0.45 + 1.05 * severity),
+                    * (0.45 + 1.05 * severity)
+                    * streak_multiplier,
                 ),
             )
             new_affinity = self.language.adjust_user_affinity(
@@ -1482,7 +1487,10 @@ class MuchaClient(discord.Client):
                 )
                 source_trace = recent_target[0] if recent_target else None
 
-            brain_penalty = -min(0.35, 0.06 + 0.24 * severity)
+            brain_penalty = -min(
+                0.35,
+                (0.06 + 0.24 * severity) * streak_multiplier,
+            )
             async with self._brain_lock:
                 self.brain.inject(
                     "social:user-told-me-stop",
@@ -1504,6 +1512,17 @@ class MuchaClient(discord.Client):
                     0.45 + 0.55 * severity,
                     96,
                 )
+                if streak_count >= 2:
+                    self.brain.inject(
+                        "social:repeated-rejection",
+                        min(1.0, 0.52 + 0.08 * streak_count),
+                        144,
+                    )
+                    self.brain.inject(
+                        f"social:repeated-rejection:user:{message.author.id}",
+                        min(1.0, 0.45 + 0.07 * streak_count),
+                        96,
+                    )
                 if source_trace is not None:
                     self.brain.reward(
                         brain_penalty,
@@ -1524,13 +1543,17 @@ class MuchaClient(discord.Client):
                 "verbal_rejection",
                 (
                     f"{message.author.display_name} • {label} • "
-                    f"severity {severity:.2f} • affinity {new_affinity:+.2f}"
+                    f"severity {severity:.2f} • streak {streak_count} "
+                    f"×{streak_multiplier:.2f} • affinity {new_affinity:+.2f}"
                 ),
                 message.guild,
             )
             self._remember_social_event(
                 "VERBAL_REJECTION",
-                f"{label} • affinity {new_affinity:+.2f}",
+                (
+                    f"{label} • streak {streak_count} "
+                    f"×{streak_multiplier:.2f} • affinity {new_affinity:+.2f}"
+                ),
                 affinity_delta,
                 message.author,
             )
@@ -2736,16 +2759,25 @@ class MuchaClient(discord.Client):
                 if member is not None
                 else str(payload.user_id)
             )
+            reaction_streak_count = 0
+            reaction_streak_multiplier = 1.0
             if amount > 0:
+                self._soften_negative_streak(payload.user_id)
                 affinity_delta = (
                     float(self.cfg.behavior.user_affinity_positive_step)
                     * POSITIVE_REACTION_WEIGHT.get(emoji, 0.6)
                 )
                 affinity_kind = "positive"
             else:
-                affinity_delta = -(
+                (
+                    reaction_streak_count,
+                    reaction_streak_multiplier,
+                ) = self._advance_negative_streak(payload.user_id)
+                affinity_delta = -min(
+                    0.30,
                     float(self.cfg.behavior.user_affinity_negative_step)
                     * NEGATIVE_REACTION_WEIGHT.get(emoji, 0.6)
+                    * reaction_streak_multiplier,
                 )
                 affinity_kind = "negative"
             new_affinity = self.language.adjust_user_affinity(
@@ -2760,6 +2792,23 @@ class MuchaClient(discord.Client):
             )
             self.language.reinforce(trace.trigrams, amount)
             async with self._brain_lock:
+                if amount < 0 and reaction_streak_count >= 2:
+                    self.brain.inject(
+                        "social:repeated-rejection",
+                        min(
+                            1.0,
+                            0.52 + 0.08 * reaction_streak_count,
+                        ),
+                        144,
+                    )
+                    self.brain.inject(
+                        f"social:repeated-rejection:user:{payload.user_id}",
+                        min(
+                            1.0,
+                            0.45 + 0.07 * reaction_streak_count,
+                        ),
+                        96,
+                    )
                 self.brain.reward(
                     amount,
                     action=trace.action,
