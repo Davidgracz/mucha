@@ -3184,6 +3184,43 @@ class MuchaClient(discord.Client):
                 self._stt_transcripts_since_start
             ),
         })
+        user_affinities = self.language.user_affinities(50)
+        now_mono = time.monotonic()
+        streak_window = max(
+            1.0,
+            float(self.cfg.behavior.negative_streak_window_seconds),
+        )
+        for row in user_affinities:
+            streak = self._social_negative_streak.get(
+                int(row["user_id"])
+            )
+            count = 0
+            multiplier = 1.0
+            if (
+                streak is not None
+                and now_mono - float(streak.get("last", 0.0))
+                <= streak_window
+            ):
+                count = int(streak.get("count", 0))
+                multiplier = min(
+                    max(
+                        1.0,
+                        float(
+                            self.cfg.behavior.negative_streak_max_multiplier
+                        ),
+                    ),
+                    1.0
+                    + max(
+                        0.0,
+                        float(
+                            self.cfg.behavior.negative_streak_multiplier_step
+                        ),
+                    )
+                    * max(0, count - 1),
+                )
+            row["negative_streak"] = count
+            row["negative_multiplier"] = multiplier
+
         voice_parts = []
         for guild in self.guilds:
             vc = guild.voice_client
@@ -3219,7 +3256,7 @@ class MuchaClient(discord.Client):
             "learning_since_start": learning_since_start,
             "affinity_rules": self._affinity_rules_snapshot(),
             "social_debug": dict(self._social_debug),
-            "user_affinities": self.language.user_affinities(50),
+            "user_affinities": user_affinities,
             "word_feedback": self.language.top_word_feedback(30),
             "social_settings": {
                 "user_avoid_threshold": self.cfg.behavior.user_avoid_threshold,
