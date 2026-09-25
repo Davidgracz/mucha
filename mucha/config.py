@@ -132,6 +132,14 @@ class BehaviorConfig:
     voice_stay_seconds: int = 30
     tts_stay_affinity_step: float = 0.004
     tts_stay_seconds: int = 20
+    voice_leave_after_join_affinity_step: float = 0.015
+    voice_leave_after_join_seconds: int = 20
+    tts_leave_affinity_step: float = 0.008
+    tts_leave_seconds: int = 10
+    negative_contact_cooldown_seconds: int = 20
+    negative_streak_window_seconds: int = 600
+    negative_streak_multiplier_step: float = 0.15
+    negative_streak_max_multiplier: float = 1.50
     positive_contact_cooldown_seconds: int = 45
     familiar_affinity_threshold: float = 0.10
     user_avoid_threshold: float = -0.35
