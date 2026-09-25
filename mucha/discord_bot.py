@@ -274,6 +274,7 @@ class MuchaClient(discord.Client):
         )
         self.web_ui = WebDashboard(
             snapshot_provider=self._console_snapshot,
+            connectome_provider=self._connectome_dashboard_snapshot,
             host=cfg.web_ui.host,
             port=cfg.web_ui.port,
             auto_open=cfg.web_ui.auto_open,
@@ -3365,6 +3366,17 @@ class MuchaClient(discord.Client):
         except discord.HTTPException:
             log.exception("Nie udało się zaktualizować statusu Discord")
 
+    async def _connectome_dashboard_snapshot(
+        self,
+        follow_activity: bool = False,
+    ) -> dict:
+        async with self._brain_lock:
+            return self.brain.connectome_visual_snapshot(
+                count=42 if follow_activity else 64,
+                edge_limit=150 if follow_activity else 190,
+                follow_activity=follow_activity,
+            )
+
     async def _console_snapshot(self) -> dict:
         async with self._brain_lock:
             scores = self.brain.action_scores()
@@ -3374,10 +3386,6 @@ class MuchaClient(discord.Client):
             )
             learning_since_start = (
                 self.brain.learning_since_start_diagnostics()
-            )
-            connectome_visual = self.brain.connectome_visual_snapshot(
-                count=42,
-                edge_limit=140,
             )
 
         language_total, language_unique = self.language.stats()
@@ -3484,7 +3492,6 @@ class MuchaClient(discord.Client):
             "diag": diag,
             "scores": scores,
             "top_neurons": top_neurons,
-            "connectome_visual": connectome_visual,
             "language_tokens": language_total,
             "language_unique": language_unique,
             "language_ready": self.language.ready(),
