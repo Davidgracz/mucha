@@ -140,6 +140,8 @@ class MuchaClient(discord.Client):
             cfg.language.max_generated_chars,
             seed=cfg.brain.seed,
         )
+        self._language_start_diag = self.language.diagnostics()
+        self._stt_transcripts_since_start = 0
         self.random = random.Random(cfg.brain.seed + 1)
         self.last_reply: dict[int, float] = {}
         self.last_spontaneous: dict[int, float] = {}
@@ -2495,10 +2497,41 @@ class MuchaClient(discord.Client):
         async with self._brain_lock:
             scores = self.brain.action_scores()
             diag = self.brain.diagnostics()
-            top_neurons = self.brain.top_active_neurons(self.cfg.console_ui.top_neurons)
+            top_neurons = self.brain.top_active_neurons(
+                self.cfg.console_ui.top_neurons
+            )
+            learning_since_start = (
+                self.brain.learning_since_start_diagnostics()
+            )
 
         language_total, language_unique = self.language.stats()
         language_diag = self.language.diagnostics()
+        language_start = self._language_start_diag
+        learning_since_start.update({
+            "language_chars": max(
+                0,
+                int(language_diag.get("chars", 0))
+                - int(language_start.get("chars", 0)),
+            ),
+            "language_messages": max(
+                0,
+                int(language_diag.get("messages", 0))
+                - int(language_start.get("messages", 0)),
+            ),
+            "language_transitions": max(
+                0,
+                int(language_diag.get("transitions", 0))
+                - int(language_start.get("transitions", 0)),
+            ),
+            "language_unique_chars": max(
+                0,
+                int(language_diag.get("unique_chars", 0))
+                - int(language_start.get("unique_chars", 0)),
+            ),
+            "voice_transcripts": int(
+                self._stt_transcripts_since_start
+            ),
+        })
         voice_parts = []
         for guild in self.guilds:
             vc = guild.voice_client
@@ -2531,6 +2564,7 @@ class MuchaClient(discord.Client):
             "stt_debug": dict(self._stt_debug),
             "reaction_debug": reaction_debug,
             "learning_debug": self.brain.learning_diagnostics(),
+            "learning_since_start": learning_since_start,
             "social_debug": dict(self._social_debug),
             "user_affinities": self.language.user_affinities(50),
             "word_feedback": self.language.top_word_feedback(30),
@@ -3008,6 +3042,7 @@ class MuchaClient(discord.Client):
                 "language_probability": probability,
                 "updated_at": time.time(),
             })
+            self._stt_transcripts_since_start += 1
             await self._handle_voice_transcript(
                 guild,
                 member,
