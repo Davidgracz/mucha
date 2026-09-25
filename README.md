@@ -75,6 +75,8 @@ raw_flywire/
     classification.csv.gz
     neurons.csv.gz
     connections_princeton.csv.gz
+    coordinates.csv.gz                # opcjonalne, realna Neuro-map
+    consolidated_cell_types.csv.gz    # opcjonalne, nazwy typów neuronów
 ```
 
 Następnie:
@@ -85,6 +87,18 @@ python tools\prepare_connectome.py --input raw_flywire --output data\connectome
 ```
 
 Po zakończeniu `data/connectome/manifest.json` powinien pokazać około **139 255 neuronów** i około **3 732 460** połączeń dla filtrowanego exportu v783 (dokładna liczba może zależeć od aktualnego pliku eksportowego Codex).
+
+### Neuro-map: współrzędne i biologiczne adnotacje
+
+Runtime connectome może zostać wzbogacony bez przebudowy macierzy połączeń. Jeżeli w folderze z danymi Codex masz `classification.csv.gz`, `neurons.csv.gz`, opcjonalnie `coordinates.csv.gz` i `consolidated_cell_types.csv.gz`, uruchom:
+
+```bash
+python tools/augment_connectome_map.py \
+  --raw raw_flywire \
+  --connectome data/connectome
+```
+
+Skrypt tworzy `data/connectome/neuron_meta.npz`. Neuro-map wykorzystuje wtedy klasy biologiczne, stronę mózgu, predicted neurotransmitter i — gdy dostępny jest `coordinates.csv.gz` — rzeczywiste oznaczone współrzędne FlyWire. Brakujące pozycje mają jawnie oznaczony fallback i nie są prezentowane jako anatomia.
 
 Potem po prostu:
 
@@ -252,6 +266,8 @@ http://127.0.0.1:8765
 
 Panel pokazuje na żywo:
 
+- osobną zakładkę `/connectome` z funkcjonalnym grafem przepływu aktywności,
+- osobną zakładkę `/neuromap` z projekcją XY/XZ/YZ mózgu, heatmapą aktywnych regionów i inspektorem neuronów,
 - aktywne neurony, średnią i maksymalną aktywację,
 - readouty `speak/react/voice_join/voice_move/voice_leave/explore/stay`,
 - reward trace i tick runtime,
