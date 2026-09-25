@@ -577,6 +577,24 @@ class OnlineLanguage:
         transitions = int(
             self.db.execute("SELECT COUNT(*) FROM char_trigram").fetchone()[0]
         )
+        word_tokens_row = self.db.execute(
+            "SELECT v FROM char_stats WHERE k='word_tokens'"
+        ).fetchone()
+        word_vocab = int(
+            self.db.execute(
+                "SELECT COUNT(*) FROM word_unigram"
+            ).fetchone()[0]
+        )
+        word_bigrams = int(
+            self.db.execute(
+                "SELECT COUNT(*) FROM word_bigram"
+            ).fetchone()[0]
+        )
+        word_trigrams = int(
+            self.db.execute(
+                "SELECT COUNT(*) FROM word_trigram"
+            ).fetchone()[0]
+        )
         legacy_chars_row = self.db.execute(
             "SELECT v FROM char_stats WHERE k='legacy_bootstrap_chars'"
         ).fetchone()
@@ -584,11 +602,26 @@ class OnlineLanguage:
             "SELECT v FROM char_stats WHERE k='legacy_bootstrap_items'"
         ).fetchone()
         return {
-            "mode": "characters",
+            "mode": (
+                "hybrid-word+characters"
+                if self.hybrid_word_enabled
+                else "characters"
+            ),
             "chars": total,
             "unique_chars": unique,
             "messages": messages,
             "transitions": transitions,
+            "word_tokens": (
+                int(word_tokens_row[0])
+                if word_tokens_row
+                else 0
+            ),
+            "word_vocab": word_vocab,
+            "word_bigrams": word_bigrams,
+            "word_trigrams": word_trigrams,
+            "last_generator": self._last_generator,
+            "word_model_probability": self.word_model_probability,
+            "word_recent_boost": self.word_recent_boost,
             "legacy_bootstrap_chars": int(legacy_chars_row[0]) if legacy_chars_row else 0,
             "legacy_bootstrap_items": int(legacy_items_row[0]) if legacy_items_row else 0,
             "ready": self.ready(),
