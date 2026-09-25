@@ -201,10 +201,29 @@ class Config:
     web_ui: WebUIConfig
 
 
+def _deep_merge(base: dict, override: dict) -> dict:
+    merged = dict(base)
+    for key, value in override.items():
+        if (
+            isinstance(value, dict)
+            and isinstance(merged.get(key), dict)
+        ):
+            merged[key] = _deep_merge(merged[key], value)
+        else:
+            merged[key] = value
+    return merged
+
+
 def load_config(path: str | Path = "config.toml") -> Config:
     path = Path(path)
     with path.open("rb") as f:
         raw = tomllib.load(f)
+
+    local_path = path.with_name("config.local.toml")
+    if local_path.exists():
+        with local_path.open("rb") as f:
+            local_raw = tomllib.load(f)
+        raw = _deep_merge(raw, local_raw)
 
     b = raw["brain"]
     l = dict(raw["language"])
@@ -234,6 +253,10 @@ def load_config(path: str | Path = "config.toml") -> Config:
     if "blocked_voice_channel_ids" in v:
         v["blocked_voice_channel_ids"] = tuple(
             int(x) for x in v["blocked_voice_channel_ids"]
+        )
+    if "blocked_voice_guild_ids" in v:
+        v["blocked_voice_guild_ids"] = tuple(
+            int(x) for x in v["blocked_voice_guild_ids"]
         )
     beh = raw["behavior"]
     d = dict(raw["discord"])
