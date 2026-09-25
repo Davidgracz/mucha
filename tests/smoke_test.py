@@ -27,6 +27,9 @@ def main():
         scores = b.action_scores()
         assert 0 <= scores["speak"] <= 1
         assert 0 <= b.language_word_score("siema") <= 1
+        b.mark_language_output("siema mucha dobry tekst")
+        output_trace = b.capture_learning_trace(256)
+        assert len(output_trace[0]) > 0
         assert "x" in c.neuron_meta
         assert "cell_class" in c.neuron_meta
         assert "primary_neuropil" in c.neuron_meta
