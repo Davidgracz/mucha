@@ -346,15 +346,25 @@ class MuchaClient(discord.Client):
             "blocked_voice_channel_ids": list(
                 self.cfg.voice.blocked_voice_channel_ids
             ),
+            "blocked_voice_guild_ids": list(
+                self.cfg.voice.blocked_voice_guild_ids
+            ),
             "channels": {
                 "text": [],
                 "voice": [],
             },
+            "guilds": [],
         }
 
         blocked_text = set(self.cfg.discord.blocked_text_channel_ids)
         blocked_voice = set(self.cfg.voice.blocked_voice_channel_ids)
+        blocked_voice_guilds = set(self.cfg.voice.blocked_voice_guild_ids)
         for guild in self.guilds:
+            data["guilds"].append({
+                "id": guild.id,
+                "name": guild.name,
+                "voice_blocked": guild.id in blocked_voice_guilds,
+            })
             for channel in guild.text_channels:
                 data["channels"]["text"].append({
                     "id": channel.id,
@@ -491,6 +501,22 @@ class MuchaClient(discord.Client):
             ] = list(ids)
             self.cfg.voice.blocked_voice_channel_ids = ids
             changed.append("voice.blocked_voice_channel_ids")
+
+        if "blocked_voice_guild_ids" in payload:
+            ids = tuple(
+                sorted({
+                    int(value)
+                    for value in payload.get(
+                        "blocked_voice_guild_ids",
+                        [],
+                    )
+                })
+            )
+            raw.setdefault("voice", {})[
+                "blocked_voice_guild_ids"
+            ] = list(ids)
+            self.cfg.voice.blocked_voice_guild_ids = ids
+            changed.append("voice.blocked_voice_guild_ids")
 
         temp_path = config_path.with_suffix(".toml.tmp")
         temp_path.write_text(
@@ -1920,6 +1946,12 @@ class MuchaClient(discord.Client):
             return False
         return int(channel_id) in self.cfg.voice.blocked_voice_channel_ids
 
+    def _is_voice_guild_blocked(self, guild: object) -> bool:
+        guild_id = getattr(guild, "id", None)
+        if guild_id is None:
+            return False
+        return int(guild_id) in self.cfg.voice.blocked_voice_guild_ids
+
     def _deadly_voice_remaining(
         self,
         guild_id: int,
@@ -2074,7 +2106,7 @@ class MuchaClient(discord.Client):
         await asyncio.sleep(self.random.uniform(delay_min, delay_max))
 
         guild = self.get_guild(guild_id)
-        if guild is None:
+        if guild is None or self._is_voice_guild_blocked(guild):
             return
         vc = guild.voice_client
         me = guild.me
@@ -2832,7 +2864,27 @@ class MuchaClient(discord.Client):
             )
 
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-        if self.paused or (self.user and member.id == self.user.id):
+        if self.paused:
+            return
+        if self.user and member.id == self.user.id:
+            if (
+                after.channel is not None
+                and self._is_voice_guild_blocked(member.guild)
+            ):
+                vc = member.guild.voice_client
+                if vc is not None and vc.is_connected():
+                    try:
+                        await vc.disconnect(force=False)
+                    except (discord.Forbidden, discord.HTTPException):
+                        log.exception(
+                            "Nie udało się opuścić zablokowanego serwera voice %s",
+                            member.guild.id,
+                        )
+                self._record_action(
+                    "voice_guild_block",
+                    f"zakaz voice na serwerze {member.guild.name}",
+                    member.guild,
+                )
             return
         before_name = getattr(before.channel, "name", "poza voice")
         after_name = getattr(after.channel, "name", "poza voice")
@@ -4489,6 +4541,37 @@ class MuchaClient(discord.Client):
         now = time.monotonic()
         vc = guild.voice_client
         current = vc.channel if vc and vc.is_connected() else None
+
+        if self._is_voice_guild_blocked(guild):
+            if vc is not None and vc.is_connected():
+                try:
+                    await vc.disconnect(force=False)
+                    self._record_action(
+                        "voice_guild_block",
+                        (
+                            f"opuszczono {getattr(current, 'name', 'voice')} • "
+                            "serwer ma zakaz voice"
+                        ),
+                        guild,
+                    )
+                except (discord.Forbidden, discord.HTTPException):
+                    log.exception(
+                        "Nie udało się opuścić zablokowanego serwera voice %s",
+                        guild.id,
+                    )
+            self._voice_debug[guild.id] = {
+                "guild": guild.name,
+                "guild_id": guild.id,
+                "enabled": False,
+                "current": None,
+                "decision": "⛔ ZAKAZ VOICE NA SERWERZE",
+                "reason": (
+                    f"guild {guild.id} jest na blocked_voice_guild_ids"
+                ),
+                "channels": [],
+                "checked_at": time.time(),
+            }
+            return
         chaser_remaining = self._chaser_panic_remaining(guild.id, now)
         chaser_id = self._chaser_confirmed.get(guild.id)
         chaser_active = chaser_remaining > 0.0
