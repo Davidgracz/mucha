@@ -277,6 +277,25 @@ class MuchaClient(discord.Client):
         )
 
     def _dashboard_config_snapshot(self) -> dict:
+        language_fields = [
+            "min_chars_before_speaking",
+            "min_unique_chars_before_speaking",
+            "max_generated_chars",
+            "spontaneous_text",
+            "reply_cooldown_seconds",
+            "spontaneous_cooldown_seconds",
+            "learn_from_bots",
+            "hybrid_word_enabled",
+            "word_model_probability",
+            "word_max_tokens",
+            "word_recent_window_seconds",
+            "word_recent_boost",
+            "word_frequency_exponent",
+            "word_arousal_flatten",
+            "char_frequency_exponent",
+            "char_arousal_flatten",
+            "word_reward_scale",
+        ]
         behavior_fields = [
             "speak_threshold",
             "reaction_threshold",
@@ -340,6 +359,10 @@ class MuchaClient(discord.Client):
             "random_audio_enabled",
         ]
         data = {
+            "language": {
+                key: getattr(self.cfg.language, key)
+                for key in language_fields
+            },
             "behavior": {
                 key: getattr(self.cfg.behavior, key)
                 for key in behavior_fields
@@ -393,6 +416,23 @@ class MuchaClient(discord.Client):
 
     def _dashboard_update_config(self, payload: dict) -> dict:
         allowed: dict[tuple[str, str], tuple[type, float | None, float | None]] = {
+            ("language", "min_chars_before_speaking"): (int, 100, 1000000),
+            ("language", "min_unique_chars_before_speaking"): (int, 5, 500),
+            ("language", "max_generated_chars"): (int, 24, 700),
+            ("language", "spontaneous_text"): (bool, None, None),
+            ("language", "reply_cooldown_seconds"): (int, 0, 3600),
+            ("language", "spontaneous_cooldown_seconds"): (int, 1, 86400),
+            ("language", "learn_from_bots"): (bool, None, None),
+            ("language", "hybrid_word_enabled"): (bool, None, None),
+            ("language", "word_model_probability"): (float, 0.0, 1.0),
+            ("language", "word_max_tokens"): (int, 3, 60),
+            ("language", "word_recent_window_seconds"): (int, 60, 604800),
+            ("language", "word_recent_boost"): (float, 1.0, 5.0),
+            ("language", "word_frequency_exponent"): (float, 0.1, 2.0),
+            ("language", "word_arousal_flatten"): (float, 0.0, 1.0),
+            ("language", "char_frequency_exponent"): (float, 0.1, 2.0),
+            ("language", "char_arousal_flatten"): (float, 0.0, 1.0),
+            ("language", "word_reward_scale"): (float, 0.0, 1.0),
             ("behavior", "speak_threshold"): (float, 0.0, 1.0),
             ("behavior", "reaction_threshold"): (float, 0.0, 1.0),
             ("behavior", "reaction_cooldown_seconds"): (int, 0, 3600),
@@ -534,6 +574,58 @@ class MuchaClient(discord.Client):
             encoding="utf-8",
         )
         temp_path.replace(config_path)
+
+        self.language.min_chars = max(
+            1,
+            int(self.cfg.language.min_chars_before_speaking),
+        )
+        self.language.min_unique_chars = max(
+            1,
+            int(self.cfg.language.min_unique_chars_before_speaking),
+        )
+        self.language.max_chars = max(
+            24,
+            int(self.cfg.language.max_generated_chars),
+        )
+        self.language.hybrid_word_enabled = bool(
+            self.cfg.language.hybrid_word_enabled
+        )
+        self.language.word_model_probability = max(
+            0.0,
+            min(1.0, float(self.cfg.language.word_model_probability)),
+        )
+        self.language.word_max_tokens = max(
+            3,
+            int(self.cfg.language.word_max_tokens),
+        )
+        self.language.word_recent_window_seconds = max(
+            1,
+            int(self.cfg.language.word_recent_window_seconds),
+        )
+        self.language.word_recent_boost = max(
+            1.0,
+            float(self.cfg.language.word_recent_boost),
+        )
+        self.language.word_frequency_exponent = max(
+            0.1,
+            float(self.cfg.language.word_frequency_exponent),
+        )
+        self.language.word_arousal_flatten = max(
+            0.0,
+            float(self.cfg.language.word_arousal_flatten),
+        )
+        self.language.char_frequency_exponent = max(
+            0.1,
+            float(self.cfg.language.char_frequency_exponent),
+        )
+        self.language.char_arousal_flatten = max(
+            0.0,
+            float(self.cfg.language.char_arousal_flatten),
+        )
+        self.language.word_reward_scale = max(
+            0.0,
+            min(1.0, float(self.cfg.language.word_reward_scale)),
+        )
 
         self.voice_loop.change_interval(
             seconds=max(1, int(self.cfg.voice.poll_seconds))
