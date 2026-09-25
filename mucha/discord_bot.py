@@ -2275,6 +2275,13 @@ class MuchaClient(discord.Client):
         predator_id: int,
         learning_trace: tuple,
     ) -> None:
+        """Keep evading the chaser for the whole panic window.
+
+        A single task owns the chase. After every successful move it waits for
+        the predator to catch up again and immediately chooses another channel.
+        If there is nowhere else to run, Mucha disconnects from voice and stays
+        out until the panic window expires.
+        """
         delay_min = max(
             0.0,
             float(self.cfg.voice.chaser_escape_delay_min_seconds),
@@ -2285,122 +2292,238 @@ class MuchaClient(discord.Client):
         )
         await asyncio.sleep(self.random.uniform(delay_min, delay_max))
 
-        guild = self.get_guild(guild_id)
-        if guild is None or self._is_voice_guild_blocked(guild):
-            return
-        vc = guild.voice_client
-        me = guild.me
-        if vc is None or not vc.is_connected() or vc.channel is None or me is None:
-            return
+        first_escape = True
+        while self._chaser_panic_remaining(guild_id) > 0.0:
+            guild = self.get_guild(guild_id)
+            if guild is None or self._is_voice_guild_blocked(guild):
+                return
 
-        current = vc.channel
-        now = time.monotonic()
-        clean: list[tuple[discord.VoiceChannel, list[discord.Member]]] = []
-        fallback: list[tuple[discord.VoiceChannel, list[discord.Member]]] = []
-
-        for ch in guild.voice_channels:
-            if ch.id == current.id:
-                continue
-            if self._is_voice_channel_blocked(ch):
-                continue
+            vc = guild.voice_client
+            me = guild.me
             if (
-                self.cfg.voice.exclude_afk_channel
-                and guild.afk_channel
-                and ch.id == guild.afk_channel.id
+                vc is None
+                or not vc.is_connected()
+                or vc.channel is None
+                or me is None
             ):
-                continue
-            perms = ch.permissions_for(me)
-            if not perms.view_channel or not perms.connect:
-                continue
-            if any(m.id == predator_id for m in ch.members):
-                continue
+                return
 
-            humans = [m for m in ch.members if not m.bot]
-            if not humans and not self.cfg.voice.include_empty_channels:
-                continue
-            item = (ch, humans)
-            fallback.append(item)
-            if self._deadly_voice_remaining(guild.id, ch.id, now) <= 0.0:
-                clean.append(item)
-
-        candidates = clean or fallback
-        if not candidates:
-            self._record_action(
-                "chaser_trapped",
-                f"brak kanału ucieczki z {current.name}",
-                guild,
+            current = vc.channel
+            predator = guild.get_member(predator_id)
+            predator_channel = (
+                getattr(getattr(predator, "voice", None), "channel", None)
+                if predator is not None
+                else None
             )
-            return
 
-        async with self._brain_lock:
-            affinities = {
-                ch.id: self.brain.channel_affinity(guild.id, ch.id)
-                for ch, _ in candidates
-            }
+            # Do not hop endlessly on our own. Wait until the chaser is
+            # actually on the same channel again.
+            if (
+                predator_channel is None
+                or predator_channel.id != current.id
+            ):
+                await asyncio.sleep(0.10)
+                continue
 
-        target, _ = self._choose_voice_target(
-            guild,
-            candidates,
-            affinities,
-            now,
-            current_id=current.id,
-        )
-        if target is None:
-            return
-
-        try:
-            await vc.move_to(target)
-            self.voice_arrived[guild.id] = now
-            self._mark_voice_visit(guild.id, target.id, now)
-
-            reward = max(
-                0.0,
-                min(1.0, float(self.cfg.voice.chaser_escape_reward)),
+            now = time.monotonic()
+            self._mark_deadly_voice_channel(
+                guild.id,
+                current.id,
+                now,
+                seconds=float(self.cfg.voice.chaser_channel_avoid_seconds),
             )
-            async with self._brain_lock:
-                if reward > 0.0:
-                    self.brain.reward(
-                        reward,
-                        action="voice_move",
-                        trace=learning_trace,
+
+            clean: list[
+                tuple[discord.VoiceChannel, list[discord.Member]]
+            ] = []
+            fallback: list[
+                tuple[discord.VoiceChannel, list[discord.Member]]
+            ] = []
+
+            for ch in guild.voice_channels:
+                if ch.id == current.id:
+                    continue
+                if self._is_voice_channel_blocked(ch):
+                    continue
+                if (
+                    self.cfg.voice.exclude_afk_channel
+                    and guild.afk_channel
+                    and ch.id == guild.afk_channel.id
+                ):
+                    continue
+                perms = ch.permissions_for(me)
+                if not perms.view_channel or not perms.connect:
+                    continue
+                if any(m.id == predator_id for m in ch.members):
+                    continue
+
+                humans = [m for m in ch.members if not m.bot]
+                if not humans and not self.cfg.voice.include_empty_channels:
+                    continue
+                item = (ch, humans)
+                fallback.append(item)
+                if (
+                    self._deadly_voice_remaining(
+                        guild.id,
+                        ch.id,
+                        now,
                     )
-                    self.brain.step(1)
+                    <= 0.0
+                ):
+                    clean.append(item)
 
-            self._last_brain_event = (
-                f"CHASER • ucieczka {current.name} → {target.name}"
-            )
-            self._last_brain_action = (
-                f"PANIC ESCAPE → {target.name}"
-            )
-            self._set_reinforceable(
+            candidates = clean or fallback
+            if not candidates:
+                old_name = current.name
+                try:
+                    self._stop_voice_playback(vc)
+                    await vc.disconnect(force=False)
+                    self.voice_arrived[guild.id] = now
+                    self._voice_arrival_members.pop(guild.id, None)
+                    self._voice_arrival_channel.pop(guild.id, None)
+                    self._voice_arrival_learning.pop(guild.id, None)
+                    self._last_overstay_punish.pop(guild.id, None)
+                    self._set_audio_disconnected(
+                        guild,
+                        reason="chaser_no_escape_channel",
+                    )
+                    self._last_brain_event = (
+                        f"CHASER • brak drogi • opuszcza {old_name}"
+                    )
+                    self._last_brain_action = (
+                        "PANIC ESCAPE → DISCONNECT"
+                    )
+                    self._record_action(
+                        "chaser_disconnect_escape",
+                        f"← {old_name} • brak kolejnego kanału",
+                        guild,
+                    )
+                except (
+                    discord.Forbidden,
+                    discord.HTTPException,
+                    asyncio.TimeoutError,
+                ) as exc:
+                    self._record_action(
+                        "chaser_escape_error",
+                        f"disconnect {type(exc).__name__}: {exc}",
+                        guild,
+                    )
+                return
+
+            async with self._brain_lock:
+                affinities = {
+                    ch.id: self.brain.channel_affinity(guild.id, ch.id)
+                    for ch, _ in candidates
+                }
+
+            target, _ = self._choose_voice_target(
                 guild,
-                "voice_move",
-                learning_trace,
-                f"chaser escape {current.name} → {target.name}",
+                candidates,
+                affinities,
+                now,
+                current_id=current.id,
             )
-            self._record_action(
-                "chaser_escape",
-                f"{current.name} → {target.name}",
-                guild,
-            )
-            self._ensure_chaser_scream_loop(guild)
-            if reward > 0.0:
-                self._record_reward(
-                    reward,
+            if target is None:
+                # A filtered target list can still fail selection. Treat it as
+                # a trap instead of freezing on the chaser's channel.
+                old_name = current.name
+                try:
+                    self._stop_voice_playback(vc)
+                    await vc.disconnect(force=False)
+                    self.voice_arrived[guild.id] = now
+                    self._set_audio_disconnected(
+                        guild,
+                        reason="chaser_target_selection_failed",
+                    )
+                    self._last_brain_event = (
+                        f"CHASER • brak celu • opuszcza {old_name}"
+                    )
+                    self._last_brain_action = (
+                        "PANIC ESCAPE → DISCONNECT"
+                    )
+                    self._record_action(
+                        "chaser_disconnect_escape",
+                        f"← {old_name} • selector bez celu",
+                        guild,
+                    )
+                except (
+                    discord.Forbidden,
+                    discord.HTTPException,
+                    asyncio.TimeoutError,
+                ) as exc:
+                    self._record_action(
+                        "chaser_escape_error",
+                        f"disconnect {type(exc).__name__}: {exc}",
+                        guild,
+                    )
+                return
+
+            try:
+                await vc.move_to(target)
+                self.voice_arrived[guild.id] = now
+                self._mark_voice_visit(guild.id, target.id, now)
+
+                reward = max(
+                    0.0,
+                    min(
+                        1.0,
+                        float(self.cfg.voice.chaser_escape_reward),
+                    ),
+                )
+                async with self._brain_lock:
+                    trace = (
+                        learning_trace
+                        if first_escape
+                        else self.brain.capture_learning_trace()
+                    )
+                    if reward > 0.0:
+                        self.brain.reward(
+                            reward,
+                            action="voice_move",
+                            trace=trace,
+                        )
+                        self.brain.step(1)
+
+                first_escape = False
+                self._last_brain_event = (
+                    f"CHASER • ucieczka {current.name} → {target.name}"
+                )
+                self._last_brain_action = (
+                    f"PANIC ESCAPE → {target.name}"
+                )
+                self._set_reinforceable(
+                    guild,
                     "voice_move",
-                    "Mucha Chaser escape",
+                    trace,
+                    f"chaser escape {current.name} → {target.name}",
+                )
+                self._record_action(
+                    "chaser_escape",
+                    f"{current.name} → {target.name}",
                     guild,
                 )
-        except (
-            discord.Forbidden,
-            discord.HTTPException,
-            asyncio.TimeoutError,
-        ) as exc:
-            self._record_action(
-                "chaser_escape_error",
-                f"{type(exc).__name__}: {exc}",
-                guild,
-            )
+                self._ensure_chaser_scream_loop(guild)
+                if reward > 0.0:
+                    self._record_reward(
+                        reward,
+                        "voice_move",
+                        "Mucha Chaser escape",
+                        guild,
+                    )
+
+                # Give Discord a moment to publish both bots' voice states.
+                await asyncio.sleep(0.12)
+            except (
+                discord.Forbidden,
+                discord.HTTPException,
+                asyncio.TimeoutError,
+            ) as exc:
+                self._record_action(
+                    "chaser_escape_error",
+                    f"{type(exc).__name__}: {exc}",
+                    guild,
+                )
+                await asyncio.sleep(0.20)
 
     def _ensure_chaser_scream_loop(
         self,
@@ -2442,8 +2565,11 @@ class MuchaClient(discord.Client):
                 or not vc.is_connected()
                 or vc.channel is None
             ):
-                await asyncio.sleep(0.1)
-                continue
+                self._set_audio_disconnected(
+                    guild,
+                    reason="chaser_escape_disconnected",
+                )
+                return
 
             if not self.cfg.voice.chaser_scream_enabled:
                 return
@@ -3052,6 +3178,18 @@ class MuchaClient(discord.Client):
         if self.paused:
             return
         if self.user and member.id == self.user.id:
+            if after.channel is None:
+                vc = member.guild.voice_client
+                if vc is not None:
+                    try:
+                        self._stop_voice_playback(vc)
+                    except Exception:
+                        pass
+                self._set_audio_disconnected(
+                    member.guild,
+                    reason="discord_voice_state_left",
+                )
+                self._stt_buffers.clear()
             if (
                 after.channel is not None
                 and self._is_voice_guild_blocked(member.guild)
@@ -3632,14 +3770,22 @@ class MuchaClient(discord.Client):
         label: str,
     ) -> None:
         await asyncio.sleep(0.35)
+        connected = bool(vc.is_connected())
+        playing = bool(vc.is_playing()) if connected else False
+        if not connected:
+            self._set_audio_disconnected(
+                getattr(vc, "guild", None),
+                reason=f"{label}_voice_disconnected",
+            )
+            return
         self._audio_debug.update({
-            "playing": bool(vc.is_playing()),
-            "connected": bool(vc.is_connected()),
+            "playing": playing,
+            "connected": connected,
             "stage": "playing_check",
-            "status": "PLAYING" if vc.is_playing() else "STOPPED",
+            "status": "PLAYING" if playing else "STOPPED",
             "error": (
                 ""
-                if vc.is_playing()
+                if playing
                 else f"{label}: Discord nie raportuje aktywnego playbacku po 350 ms"
             ),
             "updated_at": time.time(),
@@ -3855,8 +4001,28 @@ class MuchaClient(discord.Client):
             })
             log.exception("Nie udało się uruchomić nasłuchu voice")
 
+    def _set_audio_disconnected(
+        self,
+        guild: discord.Guild | None = None,
+        *,
+        reason: str = "voice_disconnected",
+    ) -> None:
+        self._audio_debug.update({
+            "status": "IDLE",
+            "stage": "disconnected",
+            "playing": False,
+            "connected": False,
+            "error": "",
+            "guild": getattr(guild, "name", self._audio_debug.get("guild")),
+            "channel": None,
+            "text": "",
+            "disconnect_reason": reason,
+            "updated_at": time.time(),
+        })
+
     def _stop_voice_playback(self, vc: discord.VoiceClient) -> None:
-        if not vc.is_playing():
+        is_paused = getattr(vc, "is_paused", lambda: False)
+        if not vc.is_playing() and not is_paused():
             return
         stop_playing = getattr(vc, "stop_playing", None)
         if callable(stop_playing):
@@ -5088,6 +5254,16 @@ class MuchaClient(discord.Client):
         for row in debug["channels"]:
             if row["id"] in affinities:
                 row["affinity"] = affinities[row["id"]]
+
+        if chaser_active and (vc is None or not vc.is_connected()):
+            debug["decision"] = "CHASE • UKRYWA SIĘ POZA VOICE"
+            debug["reason"] = (
+                f"panika jeszcze {chaser_remaining:.1f}s; "
+                "Mucha nie wraca na voice podczas pościgu"
+            )
+            debug["current"] = None
+            self._voice_debug[guild.id] = debug
+            return
 
         if vc is None or not vc.is_connected():
             join = scores["voice_join"]
