@@ -483,11 +483,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       </div>
       <div class="events" style="margin-top:10px">
         <div class="event">
-          <small>Trwała zmiana connectome od startu</small>
-          <div class="metric"><span>Unikalne neurony ze zmienionym biasem</span><strong id="session-neurons">—</strong></div>
+          <small>Skumulowane uczenie connectome przez reward()</small>
+          <div class="metric"><span>Unikalne neurony zmienione przez reward</span><strong id="session-neurons">—</strong></div>
           <div class="metric"><span>Aktualizacje bias w rewardach</span><strong id="session-bias-updates">—</strong></div>
-          <div class="metric"><span>Średnie |Δ bias| względem startu</span><strong id="session-bias-mean">—</strong></div>
-          <div class="metric"><span>Max |Δ bias| względem startu</span><strong id="session-bias-max">—</strong></div>
+          <div class="metric"><span>Średnie skumulowane |Δ bias|</span><strong id="session-bias-mean">—</strong></div>
+          <div class="metric"><span>Max skumulowane |Δ bias|</span><strong id="session-bias-max">—</strong></div>
         </div>
         <div class="event">
           <small>Najbardziej zmieniony neuron od startu</small>
@@ -758,12 +758,17 @@ function renderLearningSinceStart(x){
 
   const changed=Number(x.unique_neurons_changed||0);
   const rewards=Number(x.reward_events||0);
-  $("session-summary").innerHTML=changed
-    ? '<b class="ok">UCZENIE WIDOCZNE</b> • '+nfmt(changed)+
-      ' neuronów ma inny bias niż przy starcie procesu.'
-    : rewards
-      ? '<b>Rewardy wystąpiły</b>, ale trwała różnica bias jest obecnie poniżej progu pomiaru.'
-      : 'Czekam na pierwszy reward i trwałą zmianę bias.';
+  const messages=Number(x.language_messages||0);
+  if(changed||messages){
+    const parts=[];
+    if(messages)parts.push("+"+nfmt(messages)+" nowych próbek językowych");
+    if(changed)parts.push(nfmt(changed)+" neuronów zmienionych przez reward()");
+    $("session-summary").innerHTML='<b class="ok">UCZENIE WIDOCZNE</b> • '+parts.join(" • ");
+  }else if(rewards){
+    $("session-summary").innerHTML='<b>Rewardy wystąpiły</b>, ale skumulowana zmiana bias jest poniżej progu pomiaru.';
+  }else{
+    $("session-summary").textContent='Czekam na nowe próbki językowe albo pierwszy reward.';
+  }
 }
 function renderLearning(l){
   l=l||{};
