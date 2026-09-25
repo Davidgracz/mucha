@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import math
+import time
 from typing import Iterable
 
 import numpy as np
@@ -55,6 +56,17 @@ class FlyBrain:
             "top_changed": [],
         }
         self._load_state()
+        self._learning_session_started_at = time.time()
+        self._startup_plastic_bias = (
+            self.compute.to_cpu(self.plastic_bias)
+            .astype(np.float32, copy=True)
+        )
+        self._session_reward_events = 0
+        self._session_positive_reward_events = 0
+        self._session_negative_reward_events = 0
+        self._session_positive_reward_total = 0.0
+        self._session_negative_reward_total = 0.0
+        self._session_bias_update_operations = 0
 
     @property
     def backend_name(self) -> str:
@@ -276,6 +288,22 @@ class FlyBrain:
             "impact": impact,
             "top_changed": top_changed,
         }
+
+        self._session_reward_events += 1
+        if amount > 0:
+            self._session_positive_reward_events += 1
+            self._session_positive_reward_total += amount
+        elif amount < 0:
+            self._session_negative_reward_events += 1
+            self._session_negative_reward_total += amount
+
+        if len(changed_idx_cpu):
+            changed_mask = np.abs(changed_delta_cpu) > 1e-9
+            if np.any(changed_mask):
+                self._session_bias_update_operations += int(
+                    len(np.unique(changed_idx_cpu[changed_mask]))
+                )
+
         return self.last_learning
 
     def readout(self, key: str, width: int = 96) -> float:
@@ -308,6 +336,65 @@ class FlyBrain:
             (int(self.c.root_ids[int(i)]), float(v))
             for i, v in zip(idx_cpu, values_cpu)
         ]
+
+    def learning_since_start_diagnostics(self) -> dict:
+        current_bias = (
+            self.compute.to_cpu(self.plastic_bias)
+            .astype(np.float32, copy=False)
+        )
+        delta = current_bias - self._startup_plastic_bias
+        abs_delta = np.abs(delta)
+        changed_mask = abs_delta > 1e-9
+        changed_unique = int(np.count_nonzero(changed_mask))
+
+        if delta.size and changed_unique:
+            top_idx = int(np.argmax(abs_delta))
+            top_neuron = {
+                "root_id": int(self.c.root_ids[top_idx]),
+                "delta": float(delta[top_idx]),
+                "current_bias": float(current_bias[top_idx]),
+            }
+            max_abs_delta = float(abs_delta[top_idx])
+        else:
+            top_neuron = None
+            max_abs_delta = 0.0
+
+        return {
+            "started_at": float(self._learning_session_started_at),
+            "uptime_seconds": max(
+                0.0,
+                time.time() - self._learning_session_started_at,
+            ),
+            "reward_events": int(self._session_reward_events),
+            "positive_reward_events": int(
+                self._session_positive_reward_events
+            ),
+            "negative_reward_events": int(
+                self._session_negative_reward_events
+            ),
+            "positive_reward_total": float(
+                self._session_positive_reward_total
+            ),
+            "negative_reward_total": float(
+                self._session_negative_reward_total
+            ),
+            "bias_update_operations": int(
+                self._session_bias_update_operations
+            ),
+            "unique_neurons_changed": changed_unique,
+            "bias_mean_abs_delta": (
+                float(np.mean(abs_delta))
+                if abs_delta.size
+                else 0.0
+            ),
+            "bias_sum_abs_delta": (
+                float(np.sum(abs_delta))
+                if abs_delta.size
+                else 0.0
+            ),
+            "bias_max_abs_delta": max_abs_delta,
+            "top_changed_neuron": top_neuron,
+        }
 
     def learning_diagnostics(self) -> dict:
         return self.last_learning
