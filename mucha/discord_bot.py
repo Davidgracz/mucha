@@ -2842,6 +2842,7 @@ class MuchaClient(discord.Client):
             return
         try:
             async with self._brain_lock:
+                self.brain.mark_language_output(text)
                 learning_trace = self.brain.capture_learning_trace()
             sent = await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
             guild = getattr(channel, "guild", None)
