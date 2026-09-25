@@ -59,7 +59,9 @@ def aligned_series(
     return result
 
 
-def parse_position(value: object) -> tuple[float, float, float] | None:
+def parse_position(
+    value: object,
+) -> tuple[float, float, float] | None:
     if value is None or pd.isna(value):
         return None
     parts = POSITION_RE.findall(str(value))
@@ -71,11 +73,270 @@ def parse_position(value: object) -> tuple[float, float, float] | None:
         return None
 
 
+def build_neuropil_summary(
+    path: Path,
+    id_to_idx: dict[str, int],
+    n: int,
+    chunksize: int,
+) -> tuple[dict[str, np.ndarray], dict]:
+    """Summarise each neuron by the neuropils carrying its incident synapses.
+
+    The filtered Codex connection table contains one row per
+    pre/post/neuropil combination. We add syn_count to both the presynaptic and
+    postsynaptic neuron so the resulting primary neuropil is a compact spatial
+    summary of where that neuron's strongest annotated connectivity occurs.
+    """
+    label_to_col: dict[str, int] = {}
+    labels: list[str] = []
+    capacity = 32
+    mass = np.zeros((n, capacity), dtype=np.float32)
+    rows_seen = 0
+    rows_used = 0
+
+    print("Buduję mapę neuropili z tabeli połączeń...")
+    reader = pd.read_csv(
+        path,
+        chunksize=max(50_000, int(chunksize)),
+        dtype={
+            "pre_root_id": "string",
+            "post_root_id": "string",
+            "pre_pt_root_id": "string",
+            "post_pt_root_id": "string",
+        },
+    )
+
+    for chunk in reader:
+        rows_seen += len(chunk)
+        pre_col = next(
+            (
+                c for c in (
+                    "pre_root_id",
+                    "pre_pt_root_id",
+                    "pre",
+                )
+                if c in chunk.columns
+            ),
+            None,
+        )
+        post_col = next(
+            (
+                c for c in (
+                    "post_root_id",
+                    "post_pt_root_id",
+                    "post",
+                )
+                if c in chunk.columns
+            ),
+            None,
+        )
+        neuropil_col = next(
+            (
+                c for c in (
+                    "neuropil",
+                    "region",
+                    "roi",
+                )
+                if c in chunk.columns
+            ),
+            None,
+        )
+        syn_col = next(
+            (
+                c for c in (
+                    "syn_count",
+                    "weight",
+                    "synapses",
+                )
+                if c in chunk.columns
+            ),
+            None,
+        )
+        if not all((pre_col, post_col, neuropil_col, syn_col)):
+            raise SystemExit(
+                "Tabela połączeń nie ma wymaganych kolumn "
+                "pre/post/neuropil/syn_count: "
+                + ", ".join(chunk.columns)
+            )
+
+        neuropils = (
+            chunk[neuropil_col]
+            .fillna("")
+            .astype(str)
+            .str.strip()
+        )
+        syn = pd.to_numeric(
+            chunk[syn_col],
+            errors="coerce",
+        ).fillna(0.0)
+
+        good = neuropils.ne("") & syn.gt(0.0)
+        if not good.any():
+            continue
+
+        for label in neuropils[good].unique():
+            if label not in label_to_col:
+                label_to_col[label] = len(labels)
+                labels.append(label)
+
+        while len(labels) > capacity:
+            new_capacity = capacity * 2
+            expanded = np.zeros(
+                (n, new_capacity),
+                dtype=np.float32,
+            )
+            expanded[:, :capacity] = mass
+            mass = expanded
+            capacity = new_capacity
+
+        pre_idx = (
+            chunk.loc[good, pre_col]
+            .astype(str)
+            .map(id_to_idx)
+        )
+        post_idx = (
+            chunk.loc[good, post_col]
+            .astype(str)
+            .map(id_to_idx)
+        )
+        np_labels = (
+            neuropils[good]
+            .map(label_to_col)
+            .to_numpy(np.int32)
+        )
+        np_syn = syn[good].to_numpy(np.float32)
+
+        pre_good = pre_idx.notna().to_numpy()
+        if pre_good.any():
+            np.add.at(
+                mass,
+                (
+                    pre_idx[pre_good].astype(np.int32).to_numpy(),
+                    np_labels[pre_good],
+                ),
+                np_syn[pre_good],
+            )
+            rows_used += int(np.count_nonzero(pre_good))
+
+        post_good = post_idx.notna().to_numpy()
+        if post_good.any():
+            np.add.at(
+                mass,
+                (
+                    post_idx[post_good].astype(np.int32).to_numpy(),
+                    np_labels[post_good],
+                ),
+                np_syn[post_good],
+            )
+            rows_used += int(np.count_nonzero(post_good))
+
+        print(
+            f"  {rows_seen:,} rows • neuropils {len(labels)}",
+            end="\r",
+        )
+    print()
+
+    label_count = len(labels)
+    empty_names = {
+        "primary_neuropil": np.full(n, "", dtype="<U32"),
+        "neuropil_1": np.full(n, "", dtype="<U32"),
+        "neuropil_2": np.full(n, "", dtype="<U32"),
+        "neuropil_3": np.full(n, "", dtype="<U32"),
+        "neuropil_1_mass": np.zeros(n, dtype=np.float32),
+        "neuropil_2_mass": np.zeros(n, dtype=np.float32),
+        "neuropil_3_mass": np.zeros(n, dtype=np.float32),
+        "neuropil_synapse_mass": np.zeros(n, dtype=np.float32),
+    }
+    if label_count == 0:
+        return empty_names, {
+            "neuropil_source": str(path),
+            "neuropil_labels": 0,
+            "neuropil_rows_seen": rows_seen,
+            "neuropil_rows_used": rows_used,
+            "neuropil_neurons": 0,
+        }
+
+    used = mass[:, :label_count]
+    top_k = min(3, label_count)
+    if top_k == label_count:
+        top_idx = np.argsort(
+            used,
+            axis=1,
+        )[:, ::-1][:, :top_k]
+    else:
+        part = np.argpartition(
+            used,
+            kth=label_count - top_k,
+            axis=1,
+        )[:, -top_k:]
+        part_values = np.take_along_axis(
+            used,
+            part,
+            axis=1,
+        )
+        order = np.argsort(
+            part_values,
+            axis=1,
+        )[:, ::-1]
+        top_idx = np.take_along_axis(
+            part,
+            order,
+            axis=1,
+        )
+
+    top_values = np.take_along_axis(
+        used,
+        top_idx,
+        axis=1,
+    )
+    label_array = np.asarray(labels, dtype="<U32")
+
+    result = dict(empty_names)
+    for rank in range(top_k):
+        values = top_values[:, rank].astype(
+            np.float32,
+            copy=False,
+        )
+        names = np.full(n, "", dtype="<U32")
+        present = values > 0.0
+        names[present] = label_array[
+            top_idx[present, rank]
+        ]
+        result[f"neuropil_{rank + 1}"] = names
+        result[f"neuropil_{rank + 1}_mass"] = values
+
+    result["primary_neuropil"] = result["neuropil_1"].copy()
+    result["neuropil_synapse_mass"] = np.sum(
+        used,
+        axis=1,
+        dtype=np.float32,
+    )
+
+    neurons_with_region = int(
+        np.count_nonzero(
+            result["primary_neuropil"] != ""
+        )
+    )
+    return result, {
+        "neuropil_source": (
+            "FlyWire Codex FAFB v783 filtered connections "
+            "(incident synapse-count summary)"
+        ),
+        "neuropil_file": path.name,
+        "neuropil_labels": int(label_count),
+        "neuropil_rows_seen": int(rows_seen),
+        "neuropil_rows_used": int(rows_used),
+        "neuropil_neurons": neurons_with_region,
+        "neuropil_coverage": float(
+            neurons_with_region / max(1, n)
+        ),
+    }
+
+
 def main() -> None:
     ap = argparse.ArgumentParser(
         description=(
-            "Dodaje do istniejącego cache Muchy współrzędne i adnotacje "
-            "neuronów do widoku Neuro-map."
+            "Dodaje do istniejącego cache Muchy współrzędne, adnotacje "
+            "i neuropile do widoku Neuro-map."
         )
     )
     ap.add_argument(
@@ -88,6 +349,12 @@ def main() -> None:
         default="data/connectome",
         help="Istniejący folder runtime connectome.",
     )
+    ap.add_argument(
+        "--chunksize",
+        type=int,
+        default=450_000,
+        help="Chunk tabeli połączeń przy liczeniu neuropili.",
+    )
     args = ap.parse_args()
 
     raw = Path(args.raw)
@@ -96,10 +363,14 @@ def main() -> None:
     manifest_path = connectome / "manifest.json"
     if not roots_path.exists() or not manifest_path.exists():
         raise SystemExit(
-            "Brak root_ids.npy/manifest.json. Najpierw przygotuj connectome."
+            "Brak root_ids.npy/manifest.json. "
+            "Najpierw przygotuj connectome."
         )
 
-    root_ids = np.load(roots_path, allow_pickle=False)
+    root_ids = np.load(
+        roots_path,
+        allow_pickle=False,
+    )
     n = len(root_ids)
     id_to_idx = {
         str(int(root_id)): idx
@@ -127,23 +398,44 @@ def main() -> None:
             "cell_types.csv",
         ],
     )
+    connections_path = find_file(
+        raw,
+        [
+            "connections_princeton.csv.gz",
+            "connections.csv.gz",
+            "connections_princeton.csv",
+            "connections.csv",
+            "connections_princeton_no_threshold.csv.gz",
+            "connections_no_threshold.csv.gz",
+        ],
+    )
 
     print(f"Runtime neurons: {n:,}")
     print(f"classification: {cls_path or 'brak'}")
     print(f"coordinates:    {coords_path or 'brak'}")
     print(f"neurons:        {neurons_path or 'brak'}")
     print(f"cell types:     {types_path or 'brak'}")
+    print(f"connections:    {connections_path or 'brak'}")
 
     cls = (
-        pd.read_csv(cls_path, dtype={"root_id": "string"})
+        pd.read_csv(
+            cls_path,
+            dtype={"root_id": "string"},
+        )
         if cls_path else None
     )
     neurons = (
-        pd.read_csv(neurons_path, dtype={"root_id": "string"})
+        pd.read_csv(
+            neurons_path,
+            dtype={"root_id": "string"},
+        )
         if neurons_path else None
     )
     types = (
-        pd.read_csv(types_path, dtype={"root_id": "string"})
+        pd.read_csv(
+            types_path,
+            dtype={"root_id": "string"},
+        )
         if types_path else None
     )
 
@@ -157,14 +449,23 @@ def main() -> None:
         coords = pd.read_csv(
             coords_path,
             dtype={"root_id": "string"},
-            usecols=lambda col: col in {"root_id", "position"},
+            usecols=lambda col: col in {
+                "root_id",
+                "position",
+            },
         )
-        if "root_id" not in coords.columns or "position" not in coords.columns:
+        if (
+            "root_id" not in coords.columns
+            or "position" not in coords.columns
+        ):
             raise SystemExit(
                 "coordinates.csv musi zawierać root_id i position"
             )
 
-        buckets: dict[int, list[tuple[float, float, float]]] = {}
+        buckets: dict[
+            int,
+            list[tuple[float, float, float]],
+        ] = {}
         for root_id, position in zip(
             coords["root_id"].astype(str),
             coords["position"],
@@ -179,10 +480,14 @@ def main() -> None:
             coordinate_rows += 1
 
         for idx, points in buckets.items():
-            arr = np.asarray(points, dtype=np.float64)
-            # Median is robust when a neuron has several marked coordinates.
+            arr = np.asarray(
+                points,
+                dtype=np.float64,
+            )
             med = np.median(arr, axis=0)
-            x[idx], y[idx], z[idx] = med.astype(np.float32)
+            x[idx], y[idx], z[idx] = med.astype(
+                np.float32
+            )
         coordinate_neurons = len(buckets)
 
     primary_col = None
@@ -213,37 +518,61 @@ def main() -> None:
             None,
         )
 
-    arrays = {
+    arrays: dict[str, np.ndarray] = {
         "x": x,
         "y": y,
         "z": z,
         "super_class": string_array(
-            aligned_series(cls, id_to_idx, "super_class"),
+            aligned_series(
+                cls,
+                id_to_idx,
+                "super_class",
+            ),
             n,
             32,
         ),
         "cell_class": string_array(
-            aligned_series(cls, id_to_idx, "class"),
+            aligned_series(
+                cls,
+                id_to_idx,
+                "class",
+            ),
             n,
             40,
         ),
         "sub_class": string_array(
-            aligned_series(cls, id_to_idx, "sub_class"),
+            aligned_series(
+                cls,
+                id_to_idx,
+                "sub_class",
+            ),
             n,
             48,
         ),
         "side": string_array(
-            aligned_series(cls, id_to_idx, "side"),
+            aligned_series(
+                cls,
+                id_to_idx,
+                "side",
+            ),
             n,
             16,
         ),
         "flow": string_array(
-            aligned_series(cls, id_to_idx, "flow"),
+            aligned_series(
+                cls,
+                id_to_idx,
+                "flow",
+            ),
             n,
             20,
         ),
         "nerve": string_array(
-            aligned_series(cls, id_to_idx, "nerve"),
+            aligned_series(
+                cls,
+                id_to_idx,
+                "nerve",
+            ),
             n,
             40,
         ),
@@ -267,13 +596,76 @@ def main() -> None:
         ),
     }
 
+    neuropil_manifest: dict = {
+        "neuropil_source": "unavailable",
+        "neuropil_labels": 0,
+        "neuropil_neurons": 0,
+        "neuropil_coverage": 0.0,
+    }
+    if connections_path is not None:
+        neuropil_arrays, neuropil_manifest = build_neuropil_summary(
+            connections_path,
+            id_to_idx,
+            n,
+            args.chunksize,
+        )
+        arrays.update(neuropil_arrays)
+    else:
+        arrays.update({
+            "primary_neuropil": np.full(
+                n,
+                "",
+                dtype="<U32",
+            ),
+            "neuropil_1": np.full(
+                n,
+                "",
+                dtype="<U32",
+            ),
+            "neuropil_2": np.full(
+                n,
+                "",
+                dtype="<U32",
+            ),
+            "neuropil_3": np.full(
+                n,
+                "",
+                dtype="<U32",
+            ),
+            "neuropil_1_mass": np.zeros(
+                n,
+                dtype=np.float32,
+            ),
+            "neuropil_2_mass": np.zeros(
+                n,
+                dtype=np.float32,
+            ),
+            "neuropil_3_mass": np.zeros(
+                n,
+                dtype=np.float32,
+            ),
+            "neuropil_synapse_mass": np.zeros(
+                n,
+                dtype=np.float32,
+            ),
+        })
+
     out_path = connectome / "neuron_meta.npz"
-    np.savez_compressed(out_path, **arrays)
+    np.savez_compressed(
+        out_path,
+        **arrays,
+    )
 
     manifest = json.loads(
-        manifest_path.read_text(encoding="utf-8")
+        manifest_path.read_text(
+            encoding="utf-8",
+        )
     )
-    finite = np.isfinite(x) & np.isfinite(y) & np.isfinite(z)
+    finite = (
+        np.isfinite(x)
+        & np.isfinite(y)
+        & np.isfinite(z)
+    )
     manifest.update({
         "neuron_meta": True,
         "coordinate_source": (
@@ -281,15 +673,27 @@ def main() -> None:
             if coordinate_neurons
             else "unavailable"
         ),
-        "coordinate_rows_used": int(coordinate_rows),
-        "coordinate_neurons": int(np.count_nonzero(finite)),
-        "coordinate_coverage": float(
-            np.count_nonzero(finite) / max(1, n)
+        "coordinate_rows_used": int(
+            coordinate_rows
         ),
-        "neuron_meta_fields": sorted(arrays.keys()),
+        "coordinate_neurons": int(
+            np.count_nonzero(finite)
+        ),
+        "coordinate_coverage": float(
+            np.count_nonzero(finite)
+            / max(1, n)
+        ),
+        "neuron_meta_fields": sorted(
+            arrays.keys()
+        ),
+        **neuropil_manifest,
     })
     manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2),
+        json.dumps(
+            manifest,
+            ensure_ascii=False,
+            indent=2,
+        ),
         encoding="utf-8",
     )
 
@@ -298,6 +702,12 @@ def main() -> None:
         "Współrzędne: "
         f"{np.count_nonzero(finite):,}/{n:,} "
         f"({manifest['coordinate_coverage'] * 100:.1f}%)"
+    )
+    print(
+        "Neuropile: "
+        f"{manifest.get('neuropil_neurons', 0):,}/{n:,} "
+        f"({manifest.get('neuropil_coverage', 0.0) * 100:.1f}%) • "
+        f"{manifest.get('neuropil_labels', 0)} regionów"
     )
     print("Neuro-map metadata OK")
 
