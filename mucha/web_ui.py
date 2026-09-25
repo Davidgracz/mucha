@@ -33,7 +33,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 @media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 </style></head><body><main>
 <div class="top"><div><h1>⚙ Konfiguracja Muchy</h1><div class="sub">Zmiany są zapisywane do config.toml i stosowane na żywo.</div></div>
-<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
+<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
 <div class="grid">
 <div class="card"><h2>Zachowanie i relacje</h2><div class="fields" id="behavior-fields"></div></div>
 <div class="card"><h2>Voice / TTS</h2><div class="fields" id="voice-fields"></div></div>
@@ -145,6 +145,105 @@ $("save").onclick=async()=>{
 load().catch(e=>{$("status").textContent="Błąd ładowania: "+e.message;$("status").className="bad"});
 </script></body></html>"""
 
+AFFINITY_HTML = r"""<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mucha — Affinity</title>
+<style>
+:root{--bg:#080d12;--panel:#101720;--panel2:#0b1219;--line:#233143;--txt:#eef5fc;--muted:#8291a2;--a:#58dac4;--good:#55d98c;--bad:#ff7272;--warn:#f2c14e}
+*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#080d12,#0b1118);color:var(--txt);font-family:Inter,system-ui,"Segoe UI",sans-serif}
+main{max-width:1500px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}
+h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#c6d2df;text-decoration:none;border:1px solid var(--line);background:#0e161f;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:var(--a);border-color:var(--a);color:#06110e;font-weight:800}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;min-width:0}.span2{grid-column:span 2}.card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:#aebdca}
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}.k{background:var(--panel2);border:1px solid #1d2a39;border-radius:11px;padding:10px}.k small{display:block;color:var(--muted);font-size:11px;margin-bottom:5px}.k strong{font-size:15px}
+table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:8px;border-bottom:1px solid rgba(35,49,67,.6)}th{color:var(--muted);font-weight:600}.plus{color:var(--good);font-weight:800}.minus{color:var(--bad);font-weight:800}.warn{color:var(--warn)}
+.reason{padding:10px 12px;background:var(--panel2);border:1px solid #1d2a39;border-radius:11px;color:#b9c6d3;font-size:12px;line-height:1.5}
+.phrases{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.phrase{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;background:var(--panel2);border:1px solid #1d2a39;border-radius:9px;padding:8px;font-size:12px}
+@media(max-width:900px){.grid{grid-template-columns:1fr}.span2{grid-column:auto}.kpis{grid-template-columns:1fr 1fr}.phrases{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
+</style></head><body><main>
+<div class="top"><div><h1>🤝 Affinity / Zasady relacji</h1><div class="sub">Live podgląd tego, co zwiększa i obniża stosunek Muchy do użytkowników.</div></div>
+<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a class="active" href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
+
+<div class="grid">
+  <div class="card span2">
+    <h2>Progi i zasady</h2>
+    <div class="kpis">
+      <div class="k"><small>ZNAJOMY od</small><strong id="thr-familiar">—</strong></div>
+      <div class="k"><small>LUBI od</small><strong id="thr-liked">—</strong></div>
+      <div class="k"><small>OMIJA od</small><strong id="thr-avoid">—</strong></div>
+      <div class="k"><small>Negative streak</small><strong id="streak">—</strong></div>
+    </div>
+    <div class="reason" id="effects" style="margin-top:10px">Ładowanie…</div>
+  </div>
+
+  <div class="card">
+    <h2>➕ Co zwiększa affinity</h2>
+    <table><thead><tr><th>Zdarzenie</th><th>Warunek</th><th>Δ</th></tr></thead><tbody id="positive"></tbody></table>
+  </div>
+
+  <div class="card">
+    <h2>➖ Co obniża affinity</h2>
+    <table><thead><tr><th>Zdarzenie</th><th>Warunek</th><th>Δ</th></tr></thead><tbody id="negative"></tbody></table>
+  </div>
+
+  <div class="card span2">
+    <h2>🤬 Frazy odrzucające / severity</h2>
+    <div class="reason" style="margin-bottom:10px">Fraza działa tylko, gdy jest skierowana do Muchy: reply, mention/„Mucha”, albo na VC krótko po jej TTS. Silniejsze frazy dają większy minus.</div>
+    <div class="phrases" id="phrases"></div>
+  </div>
+
+  <div class="card span2">
+    <h2>👥 Aktualne relacje</h2>
+    <table><thead><tr><th>Użytkownik</th><th>Affinity</th><th>👍 reakcje</th><th>👎 reakcje</th><th>Status</th></tr></thead><tbody id="users"></tbody></table>
+  </div>
+
+  <div class="card span2">
+    <h2>Ostatni sygnał społeczny</h2>
+    <div class="reason" id="last-social">—</div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+const num=v=>Number(v||0);
+function signed(v){v=num(v);return (v>=0?"+":"")+v.toFixed(3)}
+function renderRows(items,kind){
+  return (items||[]).map(x=>'<tr><td>'+esc(x.event)+'</td><td>'+esc(x.condition||"—")+'</td><td class="'+(kind==="plus"?"plus":"minus")+'">'+signed(x.delta)+'</td></tr>').join("")||'<tr><td colspan="3">Brak danych.</td></tr>';
+}
+function render(d){
+  const r=d.affinity_rules||{},t=r.thresholds||{},st=r.negative_streak||{};
+  $("thr-familiar").textContent=signed(t.familiar);
+  $("thr-liked").textContent=signed(t.liked);
+  $("thr-avoid").textContent=signed(t.avoid);
+  $("streak").textContent="+"+num(st.step).toFixed(2)+" / max ×"+num(st.max_multiplier).toFixed(2)+" / "+Math.round(num(st.window_seconds))+"s";
+  $("effects").innerHTML='<b>Po progu OMIJA:</b> '+(r.avoid_effects||[]).map(esc).join(" • ")+'<br><b>Chaser:</b> '+esc(r.chaser_exception||"—")+
+    '<br><b>Cooldown:</b> plusy '+Math.round(num(r.positive_cooldown_seconds))+'s • minusy '+Math.round(num(r.negative_cooldown_seconds))+'s';
+  $("positive").innerHTML=renderRows(r.positive,"plus");
+  $("negative").innerHTML=renderRows(r.negative,"minus");
+  $("phrases").innerHTML=(r.verbal_rejections||[]).map(x=>
+    '<div class="phrase"><span>'+esc(x.phrase)+'</span><span class="warn">sev '+num(x.severity).toFixed(2)+'</span><span class="minus">'+signed(x.delta)+'</span></div>'
+  ).join("")||'<div class="reason">Brak fraz.</div>';
+
+  $("users").innerHTML=(d.user_affinities||[]).map(u=>{
+    const a=num(u.affinity),status=a<=num(t.avoid)?"OMIJA":a>=num(t.liked)?"LUBI":a>=num(t.familiar)?"ZNAJOMY":"NEUTRAL";
+    const cls=a<0?"minus":a>0?"plus":"";
+    return '<tr><td>'+esc(u.display_name||u.user_id)+'</td><td class="'+cls+'">'+signed(a)+'</td><td>'+num(u.positive_reactions)+'</td><td>'+num(u.negative_reactions)+'</td><td class="'+cls+'">'+status+'</td></tr>';
+  }).join("")||'<tr><td colspan="5">Brak relacji.</td></tr>';
+
+  const s=d.social_debug||{};
+  $("last-social").innerHTML='<b>'+esc(s.event||"—")+'</b> • '+esc(s.user_name||"—")+' • '+esc(s.detail||"—")+' • Δ '+signed(s.amount||0)+' • affinity '+signed(s.affinity||0);
+}
+async function update(){
+  try{
+    const x=await fetch("/api/state",{cache:"no-store"});
+    if(x.status===401){location="/login";return}
+    if(!x.ok)throw new Error("HTTP "+x.status);
+    render(await x.json());
+  }catch(e){$("last-social").textContent="Błąd: "+e.message}
+}
+setInterval(update,2000);update();
+</script></main></body></html>"""
+
 LOGIN_HTML = r"""<!doctype html>
 <html lang="pl">
 <head>
@@ -221,7 +320,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
 <body><main>
 <div class="top">
   <div class="brand"><div class="logo">🪰</div><div><h1>Mucha Control Center</h1><div class="sub">VPS • Discord • Connectome • Chaser • Audio</div></div></div>
-  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
+  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
@@ -413,6 +512,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
       <a href="/" style="color:#c5d3e1;text-decoration:none;border:1px solid var(--line);background:#0f161f;border-radius:10px;padding:7px 10px;font-size:12px">🏠 Przegląd</a>
       <a href="/details" style="color:#07110e;text-decoration:none;border:1px solid var(--accent);background:var(--accent);border-radius:10px;padding:7px 10px;font-size:12px;font-weight:700">📋 Szczegóły</a>
+      <a href="/affinity" style="color:#c5d3e1;text-decoration:none;border:1px solid var(--line);background:#0f161f;border-radius:10px;padding:7px 10px;font-size:12px">🤝 Affinity</a>
       <a href="/config" style="color:#c5d3e1;text-decoration:none;border:1px solid var(--line);background:#0f161f;border-radius:10px;padding:7px 10px;font-size:12px">⚙ Konfiguracja</a>
       <div class="badges">
       <div class="badge"><span class="dot"></span><span id="live">LIVE</span></div>
@@ -1083,6 +1183,7 @@ class WebDashboard:
         app = web.Application(middlewares=[self._auth_middleware])
         app.router.add_get("/", self._index)
         app.router.add_get("/details", self._details)
+        app.router.add_get("/affinity", self._affinity_page)
         app.router.add_get("/config", self._config_page)
         app.router.add_get("/brain", self._brain)
         app.router.add_get("/login", self._login_get)
@@ -1123,6 +1224,9 @@ class WebDashboard:
             f"setInterval(update,{self.refresh_ms});",
         )
         return web.Response(text=html, content_type="text/html")
+
+    async def _affinity_page(self, request: web.Request) -> web.Response:
+        return web.Response(text=AFFINITY_HTML, content_type="text/html")
 
     async def _config_page(self, request: web.Request) -> web.Response:
         return web.Response(text=CONFIG_HTML, content_type="text/html")
