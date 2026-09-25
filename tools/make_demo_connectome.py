@@ -59,6 +59,12 @@ def main():
         p=[0.55, 0.20, 0.20, 0.05],
     )
     primary_type = np.full(n, "demo-neuron", dtype="<U32")
+    demo_neuropils = np.where(
+        x < -0.25,
+        "DEMO_L",
+        np.where(x > 0.25, "DEMO_R", "DEMO_CENTER"),
+    ).astype("<U32")
+    demo_mass = rng.uniform(20.0, 200.0, size=n).astype(np.float32)
     np.savez_compressed(
         out / "neuron_meta.npz",
         x=x,
@@ -72,6 +78,14 @@ def main():
         nerve=np.full(n, "", dtype="<U24"),
         primary_type=primary_type,
         nt_type=nt_type,
+        primary_neuropil=demo_neuropils,
+        neuropil_1=demo_neuropils,
+        neuropil_2=np.full(n, "", dtype="<U32"),
+        neuropil_3=np.full(n, "", dtype="<U32"),
+        neuropil_1_mass=demo_mass,
+        neuropil_2_mass=np.zeros(n, dtype=np.float32),
+        neuropil_3_mass=np.zeros(n, dtype=np.float32),
+        neuropil_synapse_mass=demo_mass,
     )
     (out / "manifest.json").write_text(json.dumps({
         "source": "synthetic demo graph - NOT FlyWire",
@@ -80,6 +94,10 @@ def main():
         "demo": True,
         "neuron_meta": True,
         "coordinate_source": "synthetic demo coordinates",
+        "neuropil_source": "synthetic demo regions",
+        "neuropil_labels": 3,
+        "neuropil_neurons": n,
+        "neuropil_coverage": 1.0,
     }, indent=2), encoding="utf-8")
     print(f"Demo connectome zapisany: {n} neuronów, {m.nnz} połączeń -> {out}")
 
