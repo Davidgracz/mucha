@@ -50,6 +50,20 @@ def main():
         text, tri = lang.generate("siema")
         assert text
         assert lang.diagnostics()["last_generator"] == "words"
+
+        # The word generator should recombine learned transitions instead of
+        # walking one memorized sentence path every time.
+        variants = set()
+        for _ in range(24):
+            generated, _ = lang.generate(
+                "siema co tam",
+                arousal=0.80,
+            )
+            if generated:
+                variants.add(generated.lower())
+        assert len(variants) >= 3
+        assert "siema co tam" not in variants
+
         lang.reinforce_text(text, 1)
         lang.close()
         print("SMOKE TEST OK", text)
