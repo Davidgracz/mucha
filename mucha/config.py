@@ -33,10 +33,10 @@ class LanguageConfig:
     spontaneous_cooldown_seconds: int = 180
     learn_from_bots: bool = False
     hybrid_word_enabled: bool = True
-    word_model_probability: float = 0.82
-    word_max_tokens: int = 18
+    word_model_probability: float = 0.90
+    word_max_tokens: int = 14
     word_recent_window_seconds: int = 3600
-    word_recent_boost: float = 1.80
+    word_recent_boost: float = 2.00
     word_frequency_exponent: float = 0.95
     word_arousal_flatten: float = 0.12
     char_frequency_exponent: float = 0.90
@@ -211,17 +211,23 @@ def load_config(path: str | Path = "config.toml") -> Config:
     # Backward compatibility with pre-character language configs.
     if "min_chars_before_speaking" not in l:
         legacy = int(l.pop("min_tokens_before_speaking", 450))
-        l["min_chars_before_speaking"] = max(600, legacy * 3)
+        l["min_chars_before_speaking"] = max(
+            600,
+            min(1200, legacy * 2),
+        )
     else:
         l.pop("min_tokens_before_speaking", None)
     if "min_unique_chars_before_speaking" not in l:
         l.pop("min_unique_tokens_before_speaking", None)
-        l["min_unique_chars_before_speaking"] = 18
+        l["min_unique_chars_before_speaking"] = 16
     else:
         l.pop("min_unique_tokens_before_speaking", None)
     if "max_generated_chars" not in l:
         legacy_max = int(l.pop("max_generated_tokens", 28))
-        l["max_generated_chars"] = max(80, legacy_max * 7)
+        l["max_generated_chars"] = max(
+            80,
+            min(140, legacy_max * 4),
+        )
     else:
         l.pop("max_generated_tokens", None)
     v = dict(raw["voice"])
