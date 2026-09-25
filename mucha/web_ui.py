@@ -17,6 +17,7 @@ from aiohttp import web
 log = logging.getLogger("mucha.web")
 
 SnapshotProvider = Callable[[], Awaitable[dict]]
+ConnectomeProvider = Callable[[bool], Awaitable[dict]]
 ConfigProvider = Callable[[], dict]
 ConfigUpdater = Callable[[dict], dict]
 
@@ -305,8 +306,12 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 .kpi{padding:13px 14px;position:relative;overflow:hidden}.kpi:after{content:"";position:absolute;inset:auto -20px -28px auto;width:86px;height:86px;border-radius:50%;background:radial-gradient(circle,rgba(85,234,208,.10),transparent 70%)}
 .kpi small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}.kpi strong{font-size:18px}.kpi em{display:block;color:#9eb1c3;font-size:10px;font-style:normal;margin-top:4px}
 .grid{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(330px,.9fr);gap:12px}.card{padding:14px;min-width:0}.card h2{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#9eb1c3}
-.card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.live{display:inline-flex;gap:7px;align-items:center;color:var(--good);font-size:10px;font-weight:800;letter-spacing:.1em}.live i{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 15px var(--good);animation:pulse 1.2s infinite}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.head-tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
+.live{display:inline-flex;gap:7px;align-items:center;color:var(--good);font-size:10px;font-weight:800;letter-spacing:.1em}.live i{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 15px var(--good);animation:pulse 1.2s infinite}
 @keyframes pulse{50%{opacity:.35;transform:scale(.75)}}
+.mode{font-size:9px;color:#7890a5;border:1px solid #1d3041;background:#071019;border-radius:999px;padding:6px 8px;letter-spacing:.08em}
+.follow{border:1px solid #294258;background:#08121b;color:#9cb0c2;border-radius:999px;padding:6px 9px;font-size:9px;font-weight:850;letter-spacing:.07em;cursor:pointer;transition:.2s}
+.follow:hover{border-color:#4d718e;color:white}.follow.on{border-color:rgba(255,209,102,.5);background:rgba(255,209,102,.1);color:var(--warn);box-shadow:0 0 18px rgba(255,209,102,.08)}
 .graph-wrap{position:relative;height:650px;overflow:hidden;border-radius:14px;border:1px solid #172535;background:
  radial-gradient(circle at 50% 50%,rgba(109,168,255,.04),transparent 44%),
  linear-gradient(180deg,#050a10,#07101a)}
@@ -356,13 +361,20 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
 
 <section class="grid">
  <div class="card">
-  <div class="card-head"><h2>Live neural activity graph</h2><div class="live"><i></i><span id="live">LIVE</span></div></div>
+  <div class="card-head">
+   <h2>Live neural activity graph</h2>
+   <div class="head-tools">
+    <span class="mode" id="mode-label">STABLE WINDOW</span>
+    <button class="follow" id="follow-btn" type="button">FOLLOW ACTIVITY: OFF</button>
+    <div class="live"><i></i><span id="live">LIVE</span></div>
+   </div>
+  </div>
   <div class="graph-wrap" id="graph-wrap">
    <canvas id="net"></canvas>
    <div class="graph-label gl-left">sensory</div><div class="graph-label gl-mid">internal / modulatory</div><div class="graph-label gl-right">output</div>
    <div class="tooltip" id="tip"></div>
   </div>
-  <div class="legend"><span class="lg"><i class="sens"></i> sensory</span><span class="lg"><i class="internal"></i> internal</span><span class="lg"><i class="mod"></i> modulatory</span><span class="lg"><i class="out"></i> output</span><span>• rozmiar = |aktywacja| • jasność krawędzi = wpływ</span></div>
+  <div class="legend"><span class="lg"><i class="sens"></i> sensory</span><span class="lg"><i class="internal"></i> internal</span><span class="lg"><i class="mod"></i> modulatory</span><span class="lg"><i class="out"></i> output</span><span>• rozmiar = |aktywacja| • domyślnie węzły są trzymane ~45 s • zmiany mają fade-in / fade-out</span></div>
  </div>
 
  <div class="side">
@@ -380,6 +392,8 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
     <div class="mini"><small>ostatnia akcja</small><strong id="last-action">—</strong></div>
     <div class="mini"><small>wybrane neurony</small><strong id="selected">—</strong></div>
     <div class="mini"><small>krawędzie live</small><strong id="edges">—</strong></div>
+    <div class="mini"><small>okno stabilne</small><strong id="stable-age">—</strong></div>
+    <div class="mini"><small>ostatnia podmiana</small><strong id="replacements">—</strong></div>
    </div>
   </div>
   <div class="card"><div class="card-head"><h2>Najaktywniejsze neurony</h2></div>
@@ -392,7 +406,9 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
 <script>
 const $=id=>document.getElementById(id);
 const canvas=$("net"),ctx=canvas.getContext("2d"),wrap=$("graph-wrap"),tip=$("tip");
-let snap=null,layout={},hover=null,lastUpdate=0;
+let stateSnap=null,visualSnap=null,layout={},hover=null,lastUpdate=0;
+let followActivity=localStorage.getItem("mucha-connectome-follow")==="1";
+const graphNodes=new Map(),graphEdges=new Map();
 const colors={sensory:"#55ead0",internal:"#6da8ff",modulatory:"#b58cff",output:"#ff78b7"};
 const nfmt=n=>Number(n||0).toLocaleString("pl-PL");
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
@@ -412,7 +428,21 @@ function updateLayout(nodes){
   if(!layout[n.id])layout[n.id]={x:t.x+(hash(n.id+"a")-.5)*20,y:t.y+(hash(n.id+"b")-.5)*20,tx:t.x,ty:t.y};
   layout[n.id].tx=t.x;layout[n.id].ty=t.y;
  }
- const live=new Set(nodes.map(n=>n.id));for(const id of Object.keys(layout))if(!live.has(id))delete layout[id];
+}
+function ingestGraph(v){
+ const nowNodes=new Set((v.nodes||[]).map(n=>n.id));
+ for(const entry of graphNodes.values())if(!nowNodes.has(entry.node.id))entry.targetAlpha=0;
+ for(const n of (v.nodes||[])){
+  const old=graphNodes.get(n.id);
+  if(old){old.node=n;old.targetAlpha=1}else graphNodes.set(n.id,{node:n,alpha:0,targetAlpha:1});
+ }
+ const nowEdges=new Set();
+ for(const e of (v.edges||[])){
+  const key=e.source+">"+e.target;nowEdges.add(key);
+  const old=graphEdges.get(key);
+  if(old){old.edge=e;old.targetAlpha=1}else graphEdges.set(key,{edge:e,alpha:0,targetAlpha:1});
+ }
+ for(const [key,entry] of graphEdges)if(!nowEdges.has(key))entry.targetAlpha=0;
 }
 function drawGrid(w,h){
  ctx.save();ctx.strokeStyle="rgba(73,108,137,.07)";ctx.lineWidth=1;
@@ -423,32 +453,35 @@ function drawGrid(w,h){
 function draw(){
  requestAnimationFrame(draw);
  const r=wrap.getBoundingClientRect(),w=r.width,h=r.height;ctx.clearRect(0,0,w,h);drawGrid(w,h);
- if(!snap)return;
- const v=snap.connectome_visual||{},nodes=v.nodes||[],edges=v.edges||[];
- updateLayout(nodes);
- for(const p of Object.values(layout)){p.x+=(p.tx-p.x)*.055;p.y+=(p.ty-p.y)*.055}
- const byId=Object.fromEntries(nodes.map(n=>[n.id,n]));
- let maxImp=.0001;for(const e of edges)maxImp=Math.max(maxImp,Number(e.importance||0));
+ const nodeEntries=[...graphNodes.values()];
+ for(const e of nodeEntries){e.alpha+=(e.targetAlpha-e.alpha)*.075}
+ for(const [id,e] of graphNodes)if(e.targetAlpha===0&&e.alpha<.018){graphNodes.delete(id);delete layout[id]}
+ for(const e of graphEdges.values()){e.alpha+=(e.targetAlpha-e.alpha)*.09}
+ for(const [id,e] of graphEdges)if(e.targetAlpha===0&&e.alpha<.018)graphEdges.delete(id);
+ const nodes=[...graphNodes.values()].map(x=>x.node);updateLayout(nodes);
+ for(const p of Object.values(layout)){p.x+=(p.tx-p.x)*.045;p.y+=(p.ty-p.y)*.045}
+ const byId=Object.fromEntries([...graphNodes.entries()].map(([id,e])=>[id,e]));
+ let maxImp=.0001;for(const x of graphEdges.values())maxImp=Math.max(maxImp,Number(x.edge.importance||0));
  const t=performance.now()/1000;
- for(const e of edges){
-  const a=layout[e.source],b=layout[e.target];if(!a||!b)continue;
-  const q=clamp(Number(e.importance||0)/maxImp,0,1);
-  ctx.strokeStyle="rgba(90,151,197,"+(0.05+q*.34)+")";ctx.lineWidth=.45+q*1.35;
+ for(const item of graphEdges.values()){
+  const e=item.edge,a=layout[e.source],b=layout[e.target];if(!a||!b)continue;
+  const srcEntry=byId[e.source],dstEntry=byId[e.target];if(!srcEntry||!dstEntry)continue;
+  const alpha=item.alpha*Math.min(srcEntry.alpha,dstEntry.alpha),q=clamp(Number(e.importance||0)/maxImp,0,1);
+  ctx.strokeStyle="rgba(90,151,197,"+(alpha*(0.05+q*.34))+")";ctx.lineWidth=.45+q*1.35;
   ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
-  const source=byId[e.source],act=Math.abs(Number(source&&source.activation||0));
-  if(act>.12&&q>.18){
+  const source=srcEntry.node,act=Math.abs(Number(source.activation||0));
+  if(act>.12&&q>.18&&alpha>.08){
    const phase=(t*(.16+.48*q)+hash(e.source+e.target))%1;
    const x=a.x+(b.x-a.x)*phase,y=a.y+(b.y-a.y)*phase;
-   ctx.fillStyle=colors[source.role]||colors.internal;ctx.globalAlpha=.35+.55*q;ctx.beginPath();ctx.arc(x,y,1.3+q*1.8,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+   ctx.fillStyle=colors[source.role]||colors.internal;ctx.globalAlpha=alpha*(.35+.55*q);ctx.beginPath();ctx.arc(x,y,1.3+q*1.8,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
   }
  }
  hover=null;
- for(const n of nodes){
-  const p=layout[n.id];if(!p)continue;const act=Math.abs(Number(n.activation||0)),rad=3.2+Math.min(9,act*11);
-  const c=colors[n.role]||colors.internal;
-  ctx.shadowColor=c;ctx.shadowBlur=5+act*16;ctx.fillStyle=c;ctx.globalAlpha=.38+Math.min(.62,act*.75);
+ for(const item of graphNodes.values()){
+  const n=item.node,p=layout[n.id];if(!p)continue;const act=Math.abs(Number(n.activation||0)),rad=3.2+Math.min(9,act*11),c=colors[n.role]||colors.internal;
+  ctx.shadowColor=c;ctx.shadowBlur=(5+act*16)*item.alpha;ctx.fillStyle=c;ctx.globalAlpha=item.alpha*(.38+Math.min(.62,act*.75));
   ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;
-  if(mouse.inside){const dx=mouse.x-p.x,dy=mouse.y-p.y;if(dx*dx+dy*dy<(rad+8)*(rad+8))hover=n}
+  if(mouse.inside&&item.alpha>.45){const dx=mouse.x-p.x,dy=mouse.y-p.y;if(dx*dx+dy*dy<(rad+8)*(rad+8))hover=n}
  }
  if(hover){const p=layout[hover.id];ctx.strokeStyle="#ffffff";ctx.lineWidth=1;ctx.globalAlpha=.8;ctx.beginPath();ctx.arc(p.x,p.y,12+Math.abs(Number(hover.activation||0))*8,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
 }
@@ -459,26 +492,41 @@ function renderActions(scores){
  const order=["speak","explore","react","voice_join","voice_move","voice_leave","stay"];
  $("actions").innerHTML=order.map(k=>{const v=clamp(Number(scores[k]||0),0,1);return '<div class="act"><label>'+k+'</label><div class="track"><div class="fill" style="width:'+(v*100).toFixed(1)+'%"></div></div><b>'+v.toFixed(2)+'</b></div>'}).join("");
 }
-function render(s){
- snap=s;const d=s.diag||{},v=s.connectome_visual||{},ld=s.language_diag||{},cw=ld.connectome_word_control_last||{};
+function updateModeButton(){
+ const b=$("follow-btn");b.textContent="FOLLOW ACTIVITY: "+(followActivity?"ON":"OFF");b.className="follow "+(followActivity?"on":"");
+ $("mode-label").textContent=followActivity?"DYNAMIC TOP ACTIVITY":"STABLE WINDOW";
+}
+$("follow-btn").onclick=()=>{followActivity=!followActivity;localStorage.setItem("mucha-connectome-follow",followActivity?"1":"0");updateModeButton();update()};
+function render(s,v){
+ stateSnap=s;visualSnap=v;ingestGraph(v);
+ const d=s.diag||{},ld=s.language_diag||{},cw=ld.connectome_word_control_last||{};
  $("k-neurons").textContent=nfmt(d.neurons);$("k-connections").textContent=nfmt(d.connections);$("k-active").textContent=nfmt(d.active_abs_gt_0_1);$("k-mean").textContent=Number(d.mean_abs||0).toFixed(5);$("k-reward").textContent=Number(d.reward_trace||0).toFixed(3);$("k-backend").textContent=(d.backend||"—")+" • "+(d.device||"");$("k-tick").textContent="tick "+nfmt(d.ticks);
  $("selected").textContent=nfmt(v.selected_neurons);$("edges").textContent=nfmt(v.selected_edges);$("event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";renderActions(s.scores||{});
+ $("stable-age").textContent=followActivity?"FOLLOW":Math.round(Number(v.stable_age_seconds||0))+" s / "+Math.round(Number(v.stable_window_seconds||45))+" s";
+ $("replacements").textContent=nfmt(v.replacements||0);
  const vocab=Number(ld.word_vocab||0),min=Number(ld.connectome_word_control_min_vocab||1),ready=!!ld.connectome_word_control_ready,pct=clamp(vocab/min*100,0,100);
  $("word-vocab").textContent=nfmt(vocab)+" / "+nfmt(min);$("word-progress").style.width=pct.toFixed(1)+"%";$("word-badge").textContent=ready?"AKTYWNY":"UCZY SŁOWNIK";$("word-badge").className="badge "+(ready?"on":"wait");
  $("word-eval").textContent=nfmt(cw.evaluated||0);$("word-detail").textContent="Siła wpływu: "+Number(ld.connectome_word_control_strength||0).toFixed(2)+" • średni ostatni score: "+Number(cw.mean_score||.5).toFixed(3)+" • generator: "+(ld.last_generator||"—");
  const nodes=(v.nodes||[]).slice().sort((a,b)=>Math.abs(Number(b.activation))-Math.abs(Number(a.activation))).slice(0,12);
  $("node-table").innerHTML=nodes.map(n=>'<tr><td>'+n.id+'</td><td>'+n.role+'</td><td class="'+(Number(n.activation)>=0?"plus":"minus")+'">'+(Number(n.activation)>=0?"+":"")+Number(n.activation).toFixed(4)+'</td><td>'+Number(n.bias||0).toFixed(5)+'</td></tr>').join("")||'<tr><td colspan="4">Brak danych.</td></tr>';
- $("signal").textContent="INPUT  "+(s.last_event||"—")+"\nCONNECTOME  mean |a| "+Number(d.mean_abs||0).toFixed(5)+" / max "+Number(d.max_abs||0).toFixed(5)+"\nREADOUT  speak "+Number((s.scores||{}).speak||0).toFixed(3)+" / explore "+Number((s.scores||{}).explore||0).toFixed(3)+"\nOUTPUT  "+(s.last_action||"—");
+ $("signal").textContent="MODE  "+(followActivity?"FOLLOW ACTIVITY":"STABLE WINDOW")+"\nINPUT  "+(s.last_event||"—")+"\nCONNECTOME  mean |a| "+Number(d.mean_abs||0).toFixed(5)+" / max "+Number(d.max_abs||0).toFixed(5)+"\nREADOUT  speak "+Number((s.scores||{}).speak||0).toFixed(3)+" / explore "+Number((s.scores||{}).explore||0).toFixed(3)+"\nOUTPUT  "+(s.last_action||"—");
  lastUpdate=Date.now();$("live").textContent="LIVE";
 }
 async function update(){
- try{const r=await fetch("/api/state",{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}
- catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}
+ try{
+  const [stateResp,visualResp]=await Promise.all([
+   fetch("/api/state",{cache:"no-store"}),
+   fetch("/api/connectome?follow="+(followActivity?"1":"0"),{cache:"no-store"})
+  ]);
+  if(stateResp.status===401||visualResp.status===401){location="/login";return}
+  if(!stateResp.ok)throw new Error("state HTTP "+stateResp.status);
+  if(!visualResp.ok)throw new Error("connectome HTTP "+visualResp.status);
+  render(await stateResp.json(),await visualResp.json())
+ }catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}
 }
-window.addEventListener("resize",resize);resize();draw();setInterval(update,800);update();
+window.addEventListener("resize",resize);updateModeButton();resize();draw();setInterval(update,900);update();
 </script>
 </body></html>"""
-
 LOGIN_HTML = r"""<!doctype html>
 <html lang="pl">
 <head>
@@ -1350,6 +1398,7 @@ class WebDashboard:
         chaser_status_file: str = "/opt/mucha-chaser/state/chaser_status.json",
         config_provider: ConfigProvider | None = None,
         config_updater: ConfigUpdater | None = None,
+        connectome_provider: ConnectomeProvider | None = None,
     ):
         self.snapshot_provider = snapshot_provider
         self.host = host
@@ -1365,6 +1414,7 @@ class WebDashboard:
         self.chaser_status_file = Path(chaser_status_file)
         self.config_provider = config_provider
         self.config_updater = config_updater
+        self.connectome_provider = connectome_provider
         self.runner: web.AppRunner | None = None
         self.site: web.TCPSite | None = None
         self._bind_host = self.host
@@ -1442,6 +1492,7 @@ class WebDashboard:
         app.router.add_post("/login", self._login_post)
         app.router.add_get("/logout", self._logout)
         app.router.add_get("/api/state", self._state)
+        app.router.add_get("/api/connectome", self._connectome_state)
         app.router.add_get("/api/overview", self._overview)
         app.router.add_get("/api/config", self._config_get)
         app.router.add_post("/api/config", self._config_post)
@@ -1568,6 +1619,22 @@ class WebDashboard:
 
     async def _state(self, request: web.Request) -> web.Response:
         snap = await self.snapshot_provider()
+        return web.json_response(
+            snap,
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
+
+    async def _connectome_state(
+        self,
+        request: web.Request,
+    ) -> web.Response:
+        if self.connectome_provider is None:
+            raise web.HTTPServiceUnavailable(
+                text="connectome provider unavailable"
+            )
+        raw = str(request.query.get("follow", "")).strip().lower()
+        follow_activity = raw in {"1", "true", "yes", "on"}
+        snap = await self.connectome_provider(follow_activity)
         return web.json_response(
             snap,
             dumps=lambda x: json.dumps(x, ensure_ascii=False),
