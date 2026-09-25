@@ -12,7 +12,7 @@ from mucha.config import BrainConfig
 from mucha.connectome import Connectome
 from mucha.brain import FlyBrain
 from mucha.language import OnlineLanguage
-from mucha.web_ui import ASSOCIATIONS_HTML, CONNECTOME_HTML, NEUROMAP_HTML
+from mucha.web_ui import ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, PUBLIC_OVERVIEW_HTML
 
 
 def main():
@@ -50,6 +50,10 @@ def main():
         assert "/api/neuromap" in NEUROMAP_HTML
         assert "Runtime correlation" in NEUROMAP_HTML
         assert "FOLLOW ACTIVITY" in CONNECTOME_HTML
+        assert "Zapisz i zrestartuj Muchę" in CONFIG_HTML
+        assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
+        assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
+        assert "/api/public/state" in PUBLIC_OVERVIEW_HTML
         assert "Mapa skojarzeń Muchy" in ASSOCIATIONS_HTML
         assert "/api/associations" in ASSOCIATIONS_HTML
 

@@ -7,6 +7,7 @@ import json
 import logging
 import os
 import shutil
+import subprocess
 import time
 import webbrowser
 from pathlib import Path
@@ -24,158 +25,249 @@ ConfigProvider = Callable[[], dict]
 ConfigUpdater = Callable[[dict], dict]
 
 CONFIG_HTML = r"""<!doctype html>
-<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
 <title>Mucha — Konfiguracja</title>
 <style>
-:root{--bg:#080d12;--panel:#101720;--panel2:#0b1219;--line:#233143;--txt:#eef5fc;--muted:#8291a2;--a:#58dac4;--good:#55d98c;--bad:#ff7272}
-*{box-sizing:border-box}body{margin:0;background:linear-gradient(180deg,#080d12,#0b1118);color:var(--txt);font-family:Inter,system-ui,"Segoe UI",sans-serif}
-main{max-width:1450px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:18px}
-h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#c6d2df;text-decoration:none;border:1px solid var(--line);background:#0e161f;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:var(--a);border-color:var(--a);color:#06110e;font-weight:800}
-.grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:15px;min-width:0}.card h2{margin:0 0 12px;font-size:12px;text-transform:uppercase;letter-spacing:.09em;color:#aebdca}.fields{display:grid;grid-template-columns:1fr 1fr;gap:9px}.field{background:var(--panel2);border:1px solid #1d2a39;border-radius:11px;padding:10px}.field label{display:block;color:var(--muted);font-size:11px;margin-bottom:6px}.field input[type=number],.field input[type=text]{width:100%;border:1px solid #263749;background:#071019;color:var(--txt);border-radius:8px;padding:8px}.toggle{display:flex;align-items:center;justify-content:space-between;gap:12px}
-.channels{display:flex;flex-direction:column;gap:6px;max-height:430px;overflow:auto}.channel{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:8px;background:var(--panel2);border:1px solid #1d2a39;border-radius:9px}.channel small{color:var(--muted)}button{border:0;border-radius:11px;padding:11px 16px;background:var(--a);color:#06110e;font-weight:800;cursor:pointer}.bar{position:sticky;bottom:12px;margin-top:14px;background:rgba(10,16,23,.94);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;justify-content:space-between;gap:12px;align-items:center;backdrop-filter:blur(10px)}#status{font-size:12px;color:var(--muted)}.ok{color:var(--good)!important}.bad{color:var(--bad)!important}
-@media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
-</style></head><body><main>
-<div class="top"><div><h1>⚙ Konfiguracja Muchy</h1><div class="sub">Zmiany są zapisywane do config.toml i stosowane na żywo.</div></div>
-<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
-<div class="grid">
-<div class="card"><h2>Język / szybkie uczenie</h2><div class="fields" id="language-fields"></div></div>
-<div class="card"><h2>Zachowanie i relacje</h2><div class="fields" id="behavior-fields"></div></div>
-<div class="card"><h2>Voice / TTS</h2><div class="fields" id="voice-fields"></div></div>
-<div class="card"><h2>Wykluczone kanały tekstowe</h2><div class="channels" id="text-channels"></div></div>
-<div class="card"><h2>Wykluczone kanały Voice</h2><div class="channels" id="voice-channels"></div></div>
-<div class="card"><h2>Wykluczone serwery Voice</h2><div class="channels" id="voice-guilds"></div></div>
+:root{--bg:#070c12;--panel:#0e1721;--panel2:#09121a;--line:#22364a;--txt:#eef7ff;--muted:#8295a8;--a:#58dac4;--blue:#70aaff;--good:#55d98c;--warn:#f2c45f;--bad:#ff7272}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 12% 0%,rgba(88,218,196,.09),transparent 28%),linear-gradient(180deg,#070c12,#091019);color:var(--txt);font-family:Inter,system-ui,"Segoe UI",sans-serif}
+main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:16px}.brand{display:flex;gap:12px;align-items:center}.logo{font-size:34px}
+h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#c6d2df;text-decoration:none;border:1px solid var(--line);background:#0e161f;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:var(--a);border-color:var(--a);color:#06110e;font-weight:850}
+.intro{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;background:linear-gradient(135deg,rgba(88,218,196,.08),rgba(112,170,255,.05));border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:12px}.intro strong{font-size:13px}.intro p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.5}.search{width:min(360px,42vw);border:1px solid #294157;background:#071019;color:var(--txt);border-radius:10px;padding:10px 12px;outline:0}.search:focus{border-color:var(--a);box-shadow:0 0 0 3px rgba(88,218,196,.08)}
+.layout{display:grid;grid-template-columns:1fr 1fr;gap:12px}.section{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;min-width:0}.section.wide{grid-column:span 2}.section summary{list-style:none;cursor:pointer;padding:15px 16px;display:flex;justify-content:space-between;align-items:center;gap:14px}.section summary::-webkit-details-marker{display:none}.section summary:hover{background:rgba(255,255,255,.015)}.section-title b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.09em}.section-title small{display:block;color:var(--muted);font-size:10px;margin-top:4px;line-height:1.4}.chev{color:#6f879b;font-size:13px}.section[open] .chev{transform:rotate(90deg)}.section-body{border-top:1px solid var(--line);padding:13px}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.field{background:var(--panel2);border:1px solid #1c2d3e;border-radius:11px;padding:11px;min-width:0}.field.hidden{display:none}.field-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.field label{display:block;color:#d8e4ee;font-size:11px;font-weight:700;line-height:1.35}.hint{color:#72879a;font-size:9px;line-height:1.45;margin-top:4px;min-height:25px}.field input[type=number],.field input[type=text]{width:100%;margin-top:8px;border:1px solid #294057;background:#050d14;color:var(--txt);border-radius:9px;padding:9px 10px;font:inherit}.field input:focus{outline:0;border-color:var(--a);box-shadow:0 0 0 3px rgba(88,218,196,.07)}
+.switch{position:relative;width:42px;height:23px;flex:0 0 auto}.switch input{opacity:0;width:0;height:0}.slider{position:absolute;inset:0;background:#172534;border:1px solid #2a4054;border-radius:999px;cursor:pointer;transition:.15s}.slider:before{content:"";position:absolute;width:17px;height:17px;left:2px;top:2px;border-radius:50%;background:#8194a6;transition:.15s}.switch input:checked+.slider{background:rgba(88,218,196,.22);border-color:rgba(88,218,196,.6)}.switch input:checked+.slider:before{transform:translateX(19px);background:var(--a);box-shadow:0 0 12px rgba(88,218,196,.45)}
+.channels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:420px;overflow:auto}.channel{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:9px;background:var(--panel2);border:1px solid #1d2e3e;border-radius:9px}.channel input{accent-color:var(--a)}.channel b{font-size:11px}.channel small{color:var(--muted);font-size:9px;word-break:break-all}
+.savebar{position:sticky;bottom:12px;z-index:20;margin-top:14px;background:rgba(7,13,20,.95);border:1px solid #294057;border-radius:15px;padding:12px 13px;display:flex;justify-content:space-between;gap:12px;align-items:center;backdrop-filter:blur(12px);box-shadow:0 20px 55px rgba(0,0,0,.28)}.status-wrap{min-width:0}.status{font-size:12px;color:var(--muted);line-height:1.4}.dirty{font-size:9px;color:#6f8497;margin-top:3px}.ok{color:var(--good)!important}.bad{color:var(--bad)!important}.warn{color:var(--warn)!important}
+button{border:0;border-radius:11px;padding:11px 16px;background:var(--a);color:#06110e;font-weight:850;cursor:pointer;white-space:nowrap}button:disabled{opacity:.45;cursor:not-allowed}.secondary{background:#111d28;color:#b9cad8;border:1px solid #294057}
+@media(max-width:980px){.layout{grid-template-columns:1fr}.section.wide{grid-column:auto}.fields,.channels{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}.intro{grid-template-columns:1fr}.search{width:100%}}@media(max-width:560px){main{padding:12px}.savebar{align-items:stretch;flex-direction:column}.savebar button{width:100%}}
+</style>
+</head>
+<body><main>
+<div class="top">
+ <div class="brand"><div class="logo">⚙</div><div><h1>Konfiguracja Muchy</h1><div class="sub">Edytujesz aktywne ustawienia. Zapis trafia do config.local.toml, a Mucha automatycznie uruchamia się ponownie.</div></div></div>
+ <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/public">👁 Publiczny</a><a href="/logout">Wyloguj</a></div>
 </div>
-<div class="bar"><div id="status">Ładowanie konfiguracji…</div><button id="save">Zapisz konfigurację</button></div>
-</main><script>
+
+<div class="intro">
+ <div><strong>Zmiany są trwałe</strong><p>Wartości są walidowane przed zapisem. Po kliknięciu zapisu panel zapisze override, zrestartuje usługę Muchy i poczeka aż dashboard ponownie odpowie.</p></div>
+ <input class="search" id="search" type="search" placeholder="Szukaj ustawienia, np. TTS, reward, cooldown…">
+</div>
+
+<div class="layout" id="sections"></div>
+
+<div class="savebar">
+ <div class="status-wrap"><div class="status" id="status">Ładowanie konfiguracji…</div><div class="dirty" id="dirty">—</div></div>
+ <div style="display:flex;gap:8px"><button class="secondary" id="reload" type="button">Odrzuć zmiany</button><button id="save" type="button" disabled>Zapisz i zrestartuj Muchę</button></div>
+</div>
+</main>
+
+<script>
 const $=id=>document.getElementById(id);
-let state=null;
-const fields={
- language:[
-  ["min_chars_before_speaking","Min. znaków przed mówieniem","number",50],
-  ["min_unique_chars_before_speaking","Min. unikalnych znaków","number",1],
-  ["max_generated_chars","Maks. długość odpowiedzi","number",5],
-  ["spontaneous_text","Spontaniczne pisanie","bool"],
-  ["reply_cooldown_seconds","Cooldown odpowiedzi [s]","number",1],
-  ["spontaneous_cooldown_seconds","Cooldown spontaniczny [s]","number",5],
-  ["learn_from_bots","Ucz się od botów","bool"],
-  ["hybrid_word_enabled","Hybryda słowa + znaki","bool"],
-  ["word_model_probability","Szansa użycia modelu słów","number",0.01],
-  ["word_max_tokens","Maks. słów w odpowiedzi","number",1],
-  ["word_recent_window_seconds","Okno świeżej pamięci [s]","number",60],
-  ["word_recent_boost","Bonus świeżych wzorców ×","number",0.05],
-  ["word_frequency_exponent","Siła częstych przejść słów","number",0.05],
-  ["word_arousal_flatten","Losowość słów od arousal","number",0.01],
-  ["char_frequency_exponent","Siła częstych przejść znaków","number",0.05],
-  ["char_arousal_flatten","Losowość znaków od arousal","number",0.01],
-  ["word_reward_scale","Siła rewardu modelu słów","number",0.01],\n  ["connectome_word_control_enabled","Connectome steruje słowami","bool"],\n  ["connectome_word_control_min_vocab","Próg słownika dla connectome","number",50],\n  ["connectome_word_control_strength","Siła wpływu connectome na słowa","number",0.05],\n  ["connectome_word_control_candidates","Kandydaci słów oceniani przez connectome","number",1]
- ],
- behavior:[
-  ["speak_threshold","Próg mówienia","number",0.01],
-  ["reaction_threshold","Próg reakcji","number",0.01],
-  ["reaction_cooldown_seconds","Cooldown reakcji [s]","number",1],
-  ["social_learning_enabled","Social learning","bool"],
-  ["social_window_seconds","Okno uczenia społecznego [s]","number",10],
-  ["word_reuse_reward","Reward za powtórzone słowo","number",0.01],
-  ["phrase_reuse_reward","Reward za powtórzoną frazę","number",0.01],
-  ["direct_reply_reward","Reward za reply","number",0.01],
-  ["self_repeat_penalty","Kara za self-repeat","number",0.01],
-  ["user_affinity_positive_step","Affinity + za reakcję","number",0.01],
-  ["user_affinity_negative_step","Affinity - za reakcję","number",0.01],
-  ["direct_reply_affinity_step","Affinity + za reply","number",0.001],
-  ["mention_affinity_step","Affinity + za @Mucha","number",0.001],
-  ["continued_conversation_affinity_step","Affinity + za kontynuację rozmowy","number",0.001],
-  ["word_reuse_affinity_step","Affinity + za przejęte słowo","number",0.001],
-  ["phrase_reuse_affinity_step","Affinity + za przejętą frazę","number",0.001],
-  ["voice_join_affinity_step","Affinity + za wejście do VC","number",0.001],
-  ["voice_stay_affinity_step","Affinity + za zostanie na VC","number",0.001],
-  ["voice_stay_seconds","Po ilu sekundach liczyć wspólne VC","number",1],
-  ["tts_stay_affinity_step","Affinity + za zostanie po TTS","number",0.001],
-  ["tts_stay_seconds","Ile sekund po TTS obserwować","number",1],
-  ["voice_leave_after_join_affinity_step","Affinity - za ucieczkę po wejściu Muchy","number",0.001],
-  ["voice_leave_after_join_seconds","Okno ucieczki po wejściu Muchy [s]","number",1],
-  ["tts_leave_affinity_step","Affinity - za wyjście po TTS","number",0.001],
-  ["tts_leave_seconds","Okno wyjścia po TTS [s]","number",1],
-  ["ignored_reply_affinity_step","Affinity - za aktywne ignorowanie odpowiedzi","number",0.001],
-  ["ignored_reply_seconds","Okno ignorowania odpowiedzi [s]","number",1],
-  ["negative_contact_cooldown_seconds","Cooldown naturalnych minusów [s]","number",1],
-  ["negative_streak_window_seconds","Okno negative streak [s]","number",10],
-  ["negative_streak_multiplier_step","Wzrost mnożnika negative streak","number",0.05],
-  ["negative_streak_max_multiplier","Maks. mnożnik negative streak","number",0.05],
-  ["positive_contact_cooldown_seconds","Cooldown naturalnych plusów [s]","number",1],
-  ["familiar_affinity_threshold","Próg znajomego użytkownika","number",0.01],
-  ["user_avoid_threshold","Próg unikania użytkownika","number",0.01],
-  ["ignore_disliked_users_text","Nie odpisuj nielubianym","bool"],
-  ["avoid_disliked_users_on_voice","Omijaj nielubianych na VC","bool"]
- ],
- voice:[
-  ["poll_seconds","Voice poll [s]","number",1],
-  ["minimum_dwell_seconds","Minimum dwell [s]","number",1],
-  ["maximum_dwell_seconds","Maximum dwell [s]","number",1],
-  ["move_threshold","Próg move","number",0.01],
-  ["join_threshold","Próg join","number",0.01],
-  ["leave_threshold","Próg leave","number",0.01],
-  ["include_empty_channels","Uwzględniaj puste VC","bool"],
-  ["tts_enabled","TTS włączony","bool"],
-  ["tts_interval_seconds","TTS interval [s]","number",1],
-  ["tts_volume","Głośność TTS","number",0.05],
-  ["stt_enabled","Słuchanie użytkowników (STT)","bool"],
-  ["stt_model","Model Whisper","text"],
-  ["stt_language","Język STT","text"],
-  ["stt_device","Urządzenie STT","text"],
-  ["stt_compute_type","Compute type STT","text"],
-  ["stt_cpu_threads","Wątki CPU STT","number",1],
-  ["stt_silence_seconds","Cisza kończąca wypowiedź [s]","number",0.1],
-  ["stt_min_segment_seconds","Min. wypowiedź [s]","number",0.1],
-  ["stt_max_segment_seconds","Max. segment [s]","number",0.5],
-  ["stt_min_chars","Min. znaków transkrypcji","number",1],
-  ["stt_beam_size","Beam size STT","number",1],
-  ["random_audio_enabled","Rare audio","bool"]
- ]
-};
-function renderField(section,[key,label,type,step]){
- const value=state[section][key];
- if(type==="bool")return '<div class="field toggle"><label for="'+section+'-'+key+'">'+label+'</label><input id="'+section+'-'+key+'" type="checkbox" '+(value?'checked':'')+'></div>';
- if(type==="text")return '<div class="field"><label for="'+section+'-'+key+'">'+label+'</label><input id="'+section+'-'+key+'" type="text" value="'+esc(value)+'"></div>';
- return '<div class="field"><label for="'+section+'-'+key+'">'+label+'</label><input id="'+section+'-'+key+'" type="number" step="'+(step||1)+'" value="'+value+'"></div>';
-}
-function renderChannels(kind){
- const root=$(kind+"-channels"), items=state.channels[kind]||[];
- root.innerHTML=items.map(ch=>'<label class="channel"><input type="checkbox" data-'+kind+'="'+ch.id+'" '+(ch.blocked?'checked':'')+'><div><b>'+esc(ch.name)+'</b><br><small>'+esc(ch.guild)+'</small></div><small>'+ch.id+'</small></label>').join("")||"<small>Brak kanałów.</small>";
-}
-function renderVoiceGuilds(){
- const root=$("voice-guilds"),items=state.guilds||[];
- root.innerHTML=items.map(g=>'<label class="channel"><input type="checkbox" data-voice-guild="'+g.id+'" '+(g.voice_blocked?'checked':'')+'><div><b>'+esc(g.name)+'</b><br><small>Całkowity zakaz VC</small></div><small>'+g.id+'</small></label>').join("")||"<small>Brak serwerów.</small>";
-}
+let state=null,baseline="",dirtyCount=0;
+
+const groups=[
+ {id:"language-main",title:"Język i odpowiedzi",desc:"Kiedy Mucha może mówić i jak długie odpowiedzi generuje.",section:"language",open:true,fields:[
+  ["min_chars_before_speaking","Minimum danych przed mówieniem","number",50,100,1000000,"Ile poznanych znaków musi mieć model zanim zacznie odpowiadać."],
+  ["min_unique_chars_before_speaking","Minimum unikalnych znaków","number",1,5,500,"Chroni przed startem na bardzo ubogim materiale."],
+  ["max_generated_chars","Maksymalna długość odpowiedzi","number",5,24,700,"Twardy limit długości generowanego tekstu."],
+  ["spontaneous_text","Spontaniczne pisanie","bool",0,0,0,"Pozwala Musze pisać bez bezpośredniego pytania."],
+  ["reply_cooldown_seconds","Cooldown odpowiedzi","number",1,0,3600,"Minimalna przerwa między odpowiedziami na wiadomości."],
+  ["spontaneous_cooldown_seconds","Cooldown spontaniczny","number",5,1,86400,"Minimalna przerwa między spontanicznymi wiadomościami."],
+  ["learn_from_bots","Ucz się od botów","bool",0,0,0,"Jeśli wyłączone, wiadomości innych botów nie uczą modelu."]
+ ]},
+ {id:"language-model",title:"Model słów + connectome",desc:"Jak model językowy łączy statystyki słów z aktualnym stanem connectomu.",section:"language",open:true,fields:[
+  ["hybrid_word_enabled","Hybrydowy generator słów","bool",0,0,0,"Łączy model słów i generator znakowy."],
+  ["word_model_probability","Szansa modelu słów","number",0.01,0,1,"1.0 = prawie zawsze generator słów, 0 = generator znakowy."],
+  ["word_max_tokens","Maksymalna liczba słów","number",1,3,60,"Limit słów w odpowiedzi generowanej przez model słów."],
+  ["word_recent_window_seconds","Okno świeżej pamięci","number",60,60,604800,"Jak długo niedawne przejścia słów są traktowane jako świeże."],
+  ["word_recent_boost","Bonus świeżych wzorców","number",0.05,1,5,"Mnożnik dla niedawno poznanych przejść."],
+  ["word_frequency_exponent","Wpływ częstotliwości słów","number",0.05,0.1,2,"Wyższa wartość mocniej faworyzuje częste przejścia."],
+  ["word_arousal_flatten","Losowość słów od arousal","number",0.01,0,1,"Zwiększa spłaszczenie rozkładu przy pobudzeniu."],
+  ["char_frequency_exponent","Wpływ częstotliwości znaków","number",0.05,0.1,2,"Odpowiednik dla generatora znakowego."],
+  ["char_arousal_flatten","Losowość znaków od arousal","number",0.01,0,1,"Losowość warstwy znakowej."],
+  ["word_reward_scale","Siła rewardu słów","number",0.01,0,1,"Jak mocno reakcje wzmacniają użyte słowa/przejścia."],
+  ["connectome_word_control_enabled","Connectome steruje doborem słów","bool",0,0,0,"Pozwala stanowi connectomu zmieniać szanse kandydatów słów."],
+  ["connectome_word_control_min_vocab","Próg słownika dla connectome","number",50,8,100000,"Od ilu unikalnych słów włącza się sterowanie connectomu."],
+  ["connectome_word_control_strength","Siła wpływu connectome","number",0.05,0,2,"0 = brak wpływu, wyższe wartości mocniej zmieniają wybór słów."],
+  ["connectome_word_control_candidates","Kandydaci oceniani przez connectome","number",1,4,96,"Ile najlepszych kandydatów słów connectome ocenia na krok."]
+ ]},
+ {id:"behavior",title:"Zachowanie",desc:"Progi mówienia, reakcji i podstawowe parametry uczenia społecznego.",section:"behavior",open:true,fields:[
+  ["speak_threshold","Próg mówienia","number",0.01,0,1,"Niżej = Mucha łatwiej decyduje się mówić."],
+  ["reaction_threshold","Próg reakcji emoji","number",0.01,0,1,"Niżej = częściej reaguje emoji."],
+  ["reaction_cooldown_seconds","Cooldown reakcji","number",1,0,3600,"Minimalny odstęp między reakcjami."],
+  ["social_learning_enabled","Uczenie społeczne","bool",0,0,0,"Włącza reward/affinity z zachowań użytkowników."],
+  ["social_window_seconds","Okno uczenia społecznego","number",10,30,86400,"Jak długo wcześniejsza akcja może dostać feedback."],
+  ["word_reuse_reward","Reward za przejęte słowo","number",0.01,0,1,"Nagroda gdy użytkownik później użyje słowa Muchy."],
+  ["phrase_reuse_reward","Reward za przejętą frazę","number",0.01,0,1,"Nagroda za ponowne użycie dłuższej frazy."],
+  ["direct_reply_reward","Reward za odpowiedź użytkownika","number",0.01,0,1,"Nagroda gdy ktoś bezpośrednio odpowie Musze."],
+  ["self_repeat_penalty","Kara za powtarzanie siebie","number",0.01,0,1,"Kara za zbyt podobne własne wypowiedzi."]
+ ]},
+ {id:"relations",title:"Relacje / affinity",desc:"Jak szybko Mucha zaczyna lubić, znać albo unikać użytkowników.",section:"behavior",open:false,fields:[
+  ["user_affinity_positive_step","Affinity + za pozytywną reakcję","number",0.01,0,1,"Bazowy plus za pozytywne emoji."],
+  ["user_affinity_negative_step","Affinity - za negatywną reakcję","number",0.01,0,1,"Bazowy minus za negatywne emoji."],
+  ["direct_reply_affinity_step","Affinity + za reply","number",0.001,0,0.25,"Zmiana za bezpośrednią odpowiedź."],
+  ["mention_affinity_step","Affinity + za @Mucha","number",0.001,0,0.25,"Zmiana za oznaczenie Muchy."],
+  ["continued_conversation_affinity_step","Affinity + za kontynuację rozmowy","number",0.001,0,0.25,"Zmiana za dalszy ciąg rozmowy."],
+  ["word_reuse_affinity_step","Affinity + za przejęte słowo","number",0.001,0,0.25,"Zmiana gdy użytkownik przejmuje słowo Muchy."],
+  ["phrase_reuse_affinity_step","Affinity + za przejętą frazę","number",0.001,0,0.25,"Zmiana za przejęcie frazy."],
+  ["voice_join_affinity_step","Affinity + za wejście do VC","number",0.001,0,0.25,"Plus za dołączenie do wspólnego voice."],
+  ["voice_stay_affinity_step","Affinity + za pozostanie na VC","number",0.001,0,0.25,"Plus za pozostanie z Muchą."],
+  ["voice_stay_seconds","Czas wymagany na VC","number",1,5,3600,"Po ilu sekundach naliczyć plus."],
+  ["tts_stay_affinity_step","Affinity + za zostanie po TTS","number",0.001,0,0.25,"Plus za pozostanie po wypowiedzi głosowej."],
+  ["tts_stay_seconds","Obserwacja po TTS","number",1,5,3600,"Okno oczekiwania po TTS."],
+  ["voice_leave_after_join_affinity_step","Affinity - za ucieczkę z VC","number",0.001,0,0.25,"Minus gdy ktoś szybko wychodzi po wejściu Muchy."],
+  ["voice_leave_after_join_seconds","Okno ucieczki z VC","number",1,1,300,"Ile sekund uznawać za szybką ucieczkę."],
+  ["tts_leave_affinity_step","Affinity - za wyjście po TTS","number",0.001,0,0.25,"Minus za szybkie wyjście po TTS."],
+  ["tts_leave_seconds","Okno wyjścia po TTS","number",1,1,300,"Ile sekund obserwować po TTS."],
+  ["ignored_reply_affinity_step","Affinity - za ignorowanie","number",0.001,0,0.10,"Minus gdy użytkownik jest aktywny, ale ignoruje odpowiedź Muchy."],
+  ["ignored_reply_seconds","Okno ignorowania","number",1,5,600,"Czas oczekiwania na odpowiedź."],
+  ["negative_contact_cooldown_seconds","Cooldown naturalnych minusów","number",1,1,3600,"Ogranicza częstotliwość ujemnych zdarzeń."],
+  ["negative_streak_window_seconds","Okno negative streak","number",10,30,86400,"Okno zliczania serii negatywnych reakcji."],
+  ["negative_streak_multiplier_step","Wzrost mnożnika negative streak","number",0.05,0,1,"Jak szybko rośnie siła kolejnych minusów."],
+  ["negative_streak_max_multiplier","Maks. mnożnik negative streak","number",0.05,1,3,"Górny limit mnożnika."],
+  ["positive_contact_cooldown_seconds","Cooldown naturalnych plusów","number",1,1,3600,"Ogranicza częstotliwość dodatnich zdarzeń."],
+  ["familiar_affinity_threshold","Próg znajomego","number",0.01,-1,1,"Od tej wartości użytkownik jest traktowany jako znajomy."],
+  ["user_avoid_threshold","Próg unikania użytkownika","number",0.01,-1,1,"Poniżej tej wartości Mucha może unikać użytkownika."],
+  ["ignore_disliked_users_text","Nie odpisuj nielubianym","bool",0,0,0,"Blokuje tekstowe odpowiedzi do mocno nielubianych."],
+  ["avoid_disliked_users_on_voice","Omijaj nielubianych na VC","bool",0,0,0,"Wpływa na wybór kanałów voice."]
+ ]},
+ {id:"voice-main",title:"Voice",desc:"Ruch po kanałach i podstawowe zachowanie głosowe.",section:"voice",open:false,fields:[
+  ["poll_seconds","Interwał decyzji voice","number",1,1,3600,"Co ile sekund Mucha ocenia sytuację na voice."],
+  ["minimum_dwell_seconds","Minimalny pobyt","number",1,0,86400,"Najkrótszy normalny pobyt na kanale."],
+  ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie rośnie presja na zmianę kanału."],
+  ["move_threshold","Próg move","number",0.01,0,1,"Próg decyzji o zmianie kanału."],
+  ["join_threshold","Próg join","number",0.01,0,1,"Próg decyzji o wejściu na voice."],
+  ["leave_threshold","Próg leave","number",0.01,0,1,"Próg decyzji o opuszczeniu voice."],
+  ["include_empty_channels","Uwzględniaj puste kanały","bool",0,0,0,"Pozwala eksplorować puste kanały."]
+ ]},
+ {id:"voice-audio",title:"TTS / STT",desc:"Mówienie i rozpoznawanie głosu.",section:"voice",open:false,fields:[
+  ["tts_enabled","TTS włączony","bool",0,0,0,"Pozwala Musze mówić na voice."],
+  ["tts_interval_seconds","Interwał TTS","number",1,1,3600,"Minimalna przerwa między próbami TTS."],
+  ["tts_volume","Głośność TTS","number",0.05,0,2,"Poziom głośności od 0 do 2."],
+  ["stt_enabled","STT / słuchanie użytkowników","bool",0,0,0,"Włącza transkrypcję mowy."],
+  ["stt_model","Model Whisper","text",0,0,0,"Np. tiny, base, small."],
+  ["stt_language","Język STT","text",0,0,0,"Kod języka, np. pl."],
+  ["stt_device","Urządzenie STT","text",0,0,0,"Np. cpu lub cuda."],
+  ["stt_compute_type","Typ obliczeń STT","text",0,0,0,"Np. int8, float16."],
+  ["stt_cpu_threads","Wątki CPU STT","number",1,1,64,"Liczba wątków dla STT na CPU."],
+  ["stt_silence_seconds","Cisza kończąca wypowiedź","number",0.1,0.2,5,"Po jakiej ciszy zamknąć segment."],
+  ["stt_min_segment_seconds","Minimalny segment","number",0.1,0.2,10,"Krótsze fragmenty są ignorowane."],
+  ["stt_max_segment_seconds","Maksymalny segment","number",0.5,2,60,"Dłuższy głos zostanie pocięty."],
+  ["stt_min_chars","Minimum znaków transkrypcji","number",1,1,100,"Minimalna długość zaakceptowanego tekstu."],
+  ["stt_beam_size","Beam size STT","number",1,1,10,"Wyższe = wolniej, zwykle dokładniej."],
+  ["random_audio_enabled","Losowe audio","bool",0,0,0,"Włącza rzadkie losowe audio."]
+ ]}
+];
+
+const channelSections=[
+ {id:"blocked-text",title:"Wykluczone kanały tekstowe",desc:"Zaznaczone kanały są całkowicie pomijane przez część tekstową.",kind:"text"},
+ {id:"blocked-voice",title:"Wykluczone kanały voice",desc:"Mucha nie wejdzie na zaznaczone kanały voice.",kind:"voice"},
+ {id:"blocked-guild",title:"Wykluczone serwery voice",desc:"Całkowity zakaz voice dla zaznaczonych serwerów.",kind:"guild"}
+];
+
 function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
-async function load(){
- const r=await fetch("/api/config",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);state=await r.json();
- $("language-fields").innerHTML=fields.language.map(f=>renderField("language",f)).join("");
- $("behavior-fields").innerHTML=fields.behavior.map(f=>renderField("behavior",f)).join("");
- $("voice-fields").innerHTML=fields.voice.map(f=>renderField("voice",f)).join("");
- renderChannels("text");renderChannels("voice");renderVoiceGuilds();$("status").textContent="Gotowe.";
+function fieldId(section,key){return section+"-"+key}
+function renderField(section,f){
+ const [key,label,type,step,min,max,hint]=f,value=state[section]?.[key],id=fieldId(section,key);
+ const search=(label+" "+key+" "+hint+" "+section).toLowerCase();
+ if(type==="bool")return '<div class="field" data-search="'+esc(search)+'"><div class="field-head"><div><label for="'+id+'">'+esc(label)+'</label><div class="hint">'+esc(hint)+'</div></div><label class="switch"><input id="'+id+'" type="checkbox" '+(value?'checked':'')+'><span class="slider"></span></label></div></div>';
+ if(type==="text")return '<div class="field" data-search="'+esc(search)+'"><label for="'+id+'">'+esc(label)+'</label><div class="hint">'+esc(hint)+'</div><input id="'+id+'" type="text" value="'+esc(value)+'"></div>';
+ return '<div class="field" data-search="'+esc(search)+'"><label for="'+id+'">'+esc(label)+'</label><div class="hint">'+esc(hint)+'</div><input id="'+id+'" type="number" step="'+step+'" min="'+min+'" max="'+max+'" value="'+value+'"></div>';
 }
+function renderSections(){
+ const root=$("sections");
+ root.innerHTML=groups.map(g=>'<details class="section" '+(g.open?'open':'')+' data-group="'+g.id+'"><summary><div class="section-title"><b>'+esc(g.title)+'</b><small>'+esc(g.desc)+'</small></div><span class="chev">▶</span></summary><div class="section-body"><div class="fields">'+g.fields.map(f=>renderField(g.section,f)).join("")+'</div></div></details>').join("")
+ +channelSections.map(c=>'<details class="section '+(c.kind==="guild"?'wide':'')+'" data-group="'+c.id+'"><summary><div class="section-title"><b>'+esc(c.title)+'</b><small>'+esc(c.desc)+'</small></div><span class="chev">▶</span></summary><div class="section-body"><div class="channels" id="'+c.id+'-list"></div></div></details>').join("");
+ renderChannels();
+ bindInputs();
+}
+function renderChannels(){
+ const text=state.channels?.text||[],voice=state.channels?.voice||[],guilds=state.guilds||[];
+ $("blocked-text-list").innerHTML=text.map(ch=>channelRow("text",ch.id,ch.name,ch.guild,ch.blocked)).join("")||'<div class="hint">Brak kanałów tekstowych.</div>';
+ $("blocked-voice-list").innerHTML=voice.map(ch=>channelRow("voice",ch.id,ch.name,ch.guild,ch.blocked)).join("")||'<div class="hint">Brak kanałów voice.</div>';
+ $("blocked-guild-list").innerHTML=guilds.map(g=>channelRow("voice-guild",g.id,g.name,"Całkowity zakaz VC",g.voice_blocked)).join("")||'<div class="hint">Brak serwerów.</div>';
+}
+function channelRow(kind,id,name,sub,checked){return '<label class="channel"><input type="checkbox" data-'+kind+'="'+id+'" '+(checked?'checked':'')+'><div><b>'+esc(name)+'</b><br><small>'+esc(sub)+'</small></div><small>'+id+'</small></label>'}
+function bindInputs(){document.querySelectorAll("input").forEach(el=>{if(el.id==="search")return;el.addEventListener("input",markDirty);el.addEventListener("change",markDirty)})}
 function collect(){
  const out={language:{},behavior:{},voice:{}};
- for(const section of ["language","behavior","voice"])for(const [key,,type] of fields[section]){
-  const el=$(section+"-"+key);out[section][key]=type==="bool"?el.checked:(type==="text"?el.value:Number(el.value));
+ for(const g of groups)for(const [key,,type] of g.fields){
+  const el=$(fieldId(g.section,key));if(!el)continue;
+  out[g.section][key]=type==="bool"?el.checked:(type==="text"?el.value:Number(el.value))
  }
  out.blocked_text_channel_ids=[...document.querySelectorAll("[data-text]:checked")].map(x=>Number(x.dataset.text));
  out.blocked_voice_channel_ids=[...document.querySelectorAll("[data-voice]:checked")].map(x=>Number(x.dataset.voice));
  out.blocked_voice_guild_ids=[...document.querySelectorAll("[data-voice-guild]:checked")].map(x=>Number(x.dataset.voiceGuild));
- return out;
+ return out
+}
+function stable(v){return JSON.stringify(v,Object.keys(v).sort())}
+function snapshotForm(){const o=collect();return JSON.stringify(o)}
+function markDirty(){
+ if(!state)return;
+ const changed=snapshotForm()!==baseline;
+ dirtyCount=changed?1:0;
+ $("save").disabled=!changed;
+ $("dirty").textContent=changed?"Masz niezapisane zmiany.":"Brak niezapisanych zmian.";
+ $("dirty").className="dirty "+(changed?"warn":"")
+}
+function applySearch(){
+ const q=$("search").value.trim().toLowerCase();
+ document.querySelectorAll(".field[data-search]").forEach(el=>el.classList.toggle("hidden",!!q&&!el.dataset.search.includes(q)));
+ document.querySelectorAll(".section").forEach(sec=>{
+  if(!q)return;
+  const fields=[...sec.querySelectorAll(".field[data-search]")];
+  if(fields.some(x=>!x.classList.contains("hidden")))sec.open=true
+ })
+}
+async function load(){
+ $("status").textContent="Ładowanie konfiguracji…";$("status").className="status";
+ const r=await fetch("/api/config",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);
+ state=await r.json();renderSections();baseline=snapshotForm();markDirty();
+ $("status").textContent="Gotowe • "+(state.config_path||"config.local.toml");$("status").className="status ok"
+}
+const sleep=ms=>new Promise(r=>setTimeout(r,ms));
+async function waitForRestart(){
+ $("status").textContent="Restartuję Muchę…";$("status").className="status warn";
+ await sleep(1400);
+ for(let i=0;i<35;i++){
+  try{
+   const r=await fetch("/health?restart="+Date.now(),{cache:"no-store"});
+   if(r.ok&&i>=2){
+    await load();
+    $("status").textContent="Zapisano i zrestartowano Muchę. Nowa konfiguracja jest aktywna.";
+    $("status").className="status ok";
+    return
+   }
+  }catch(e){}
+  await sleep(900)
+ }
+ $("status").textContent="Konfiguracja zapisana, ale panel nie potwierdził powrotu usługi. Sprawdź status systemd.";
+ $("status").className="status bad"
 }
 $("save").onclick=async()=>{
- $("save").disabled=true;$("status").textContent="Zapisywanie…";$("status").className="";
+ $("save").disabled=true;$("reload").disabled=true;$("status").textContent="Waliduję i zapisuję config.local.toml…";$("status").className="status";
  try{
   const r=await fetch("/api/config",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(collect())});
   const d=await r.json();if(!r.ok||!d.ok)throw new Error(d.error||("HTTP "+r.status));
-  state=d.config;$("status").textContent="Zapisano: "+(d.changed||[]).join(", ");$("status").className="ok";
-  renderChannels("text");renderChannels("voice");renderVoiceGuilds();
- }catch(e){$("status").textContent="Błąd: "+e.message;$("status").className="bad"}
- finally{$("save").disabled=false}
+  state=d.config;baseline=JSON.stringify(collect());
+  $("dirty").textContent="Brak niezapisanych zmian.";
+  if(d.changed?.length){
+   $("status").textContent="Zapisano "+d.changed.length+" zmian. Restart usługi zaplanowany…";$("status").className="status ok";
+   if(d.restart?.scheduled)await waitForRestart();else await load()
+  }else{
+   $("status").textContent="Brak faktycznych zmian do zapisania.";$("status").className="status ok";await load()
+  }
+ }catch(e){$("status").textContent="Błąd zapisu: "+e.message;$("status").className="status bad"}
+ finally{$("reload").disabled=false;markDirty()}
 };
-load().catch(e=>{$("status").textContent="Błąd ładowania: "+e.message;$("status").className="bad"});
-</script></body></html>"""
+$("reload").onclick=()=>load().catch(e=>{$("status").textContent="Błąd ładowania: "+e.message;$("status").className="status bad"});
+$("search").addEventListener("input",applySearch);
+load().catch(e=>{$("status").textContent="Błąd ładowania: "+e.message;$("status").className="status bad"});
+</script>
+</body></html>"""
 
 AFFINITY_HTML = r"""<!doctype html>
 <html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
@@ -1015,6 +1107,32 @@ async function update(){
 window.addEventListener("resize",resize);resize();draw();setInterval(update,1100);update();
 </script>
 </body></html>"""
+PUBLIC_OVERVIEW_HTML = r"""<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mucha — publiczny podgląd</title>
+<style>
+:root{--bg:#070c12;--panel:#0e1721;--line:#22364a;--txt:#eef7ff;--muted:#8295a8;--a:#58dac4;--blue:#70aaff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 15% 0%,rgba(88,218,196,.10),transparent 30%),linear-gradient(180deg,#070c12,#091019);color:var(--txt);font-family:Inter,system-ui,"Segoe UI",sans-serif}main{max-width:1320px;margin:auto;padding:24px}.top{display:flex;justify-content:space-between;gap:15px;align-items:center;margin-bottom:18px}.brand{display:flex;gap:12px;align-items:center}.logo{font-size:38px}h1{margin:0;font-size:25px}.sub{color:var(--muted);font-size:12px;margin-top:4px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#c6d2df;text-decoration:none;border:1px solid var(--line);background:#0e161f;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:var(--a);border-color:var(--a);color:#06110e;font-weight:850}
+.hero{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}.card{background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}.card small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px}.card strong{font-size:20px}.section{margin-top:12px;background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:16px}.section h2{margin:0 0 13px;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#aabccc}.actions{display:grid;grid-template-columns:repeat(2,1fr);gap:9px}.act{display:grid;grid-template-columns:90px 1fr 48px;gap:8px;align-items:center;font-size:11px}.track{height:8px;background:#071019;border:1px solid #1d2b39;border-radius:999px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--a));border-radius:999px}.foot{margin-top:12px;color:#687c8f;font-size:10px}
+@media(max-width:760px){main{padding:13px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.actions{grid-template-columns:1fr}}
+</style></head><body><main>
+<div class="top"><div class="brand"><div class="logo">🪰</div><div><h1>Mucha — publiczny podgląd</h1><div class="sub">Tryb tylko do odczytu. Nie daje dostępu do konfiguracji, logów ani prywatnych danych użytkowników.</div></div></div>
+<div class="nav"><a class="active" href="/public">🏠 Podgląd</a><a href="/public/connectome">🧬 Connectome</a><a href="/public/neuromap">🧠 Neuro-map</a><a href="/public/associations">🕸 Skojarzenia</a><a href="/login">🔒 Admin</a></div></div>
+<section class="hero">
+ <div class="card"><small>Neurony</small><strong id="neurons">—</strong></div>
+ <div class="card"><small>Połączenia</small><strong id="connections">—</strong></div>
+ <div class="card"><small>Aktywne neurony</small><strong id="active">—</strong></div>
+ <div class="card"><small>Tick</small><strong id="tick">—</strong></div>
+</section>
+<div class="section"><h2>Aktualne readouty zachowania</h2><div class="actions" id="actions"></div></div>
+<div class="section"><h2>Język</h2><div class="actions"><div class="act"><b>Słownik</b><div></div><span id="vocab">—</span></div><div class="act"><b>Generator</b><div></div><span id="generator">—</span></div><div class="act"><b>Reward</b><div></div><span id="reward">—</span></div><div class="act"><b>Status</b><div></div><span id="ready">—</span></div></div></div>
+<div class="foot">Publiczny endpoint pokazuje tylko dane techniczne i wizualizacje. Panel administratora pozostaje chroniony logowaniem.</div>
+<script>
+const $=id=>document.getElementById(id),nfmt=n=>Number(n||0).toLocaleString("pl-PL");
+function renderActions(scores){const order=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];$("actions").innerHTML=order.map(k=>{const v=Number((scores||{})[k]||0);return '<div class="act"><b>'+k+'</b><div class="track"><div class="fill" style="width:'+Math.max(0,Math.min(100,v*100))+'%"></div></div><span>'+v.toFixed(3)+'</span></div>'}).join("")}
+async function update(){try{const r=await fetch("/api/public/state",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);const s=await r.json(),d=s.diag||{},l=s.language_diag||{};$("neurons").textContent=nfmt(d.neurons);$("connections").textContent=nfmt(d.connections);$("active").textContent=nfmt(d.active_abs_gt_0_1);$("tick").textContent=nfmt(d.ticks);$("vocab").textContent=nfmt(l.word_vocab||0);$("generator").textContent=l.last_generator||"—";$("reward").textContent=Number(d.reward_trace||0).toFixed(3);$("ready").textContent=s.language_ready?"GOTOWA":"UCZY SIĘ";renderActions(s.scores||{})}catch(e){console.error(e)}}setInterval(update,1200);update();
+</script></main></body></html>"""
+
 LOGIN_HTML = r"""<!doctype html>
 <html lang="pl">
 <head>
@@ -1889,6 +2007,8 @@ class WebDashboard:
         connectome_provider: ConnectomeProvider | None = None,
         neuromap_provider: NeuromapProvider | None = None,
         association_provider: AssociationProvider | None = None,
+        public_readonly_enabled: bool = False,
+        service_unit: str = "mucha.service",
     ):
         self.snapshot_provider = snapshot_provider
         self.host = host
@@ -1907,6 +2027,8 @@ class WebDashboard:
         self.connectome_provider = connectome_provider
         self.neuromap_provider = neuromap_provider
         self.association_provider = association_provider
+        self.public_readonly_enabled = bool(public_readonly_enabled)
+        self.service_unit = str(service_unit or "mucha.service").strip()
         self.runner: web.AppRunner | None = None
         self.site: web.TCPSite | None = None
         self._bind_host = self.host
@@ -1948,6 +2070,13 @@ class WebDashboard:
         if request.path in {"/login", "/health"}:
             return await handler(request)
 
+        if self.public_readonly_enabled and (
+            request.path == "/public"
+            or request.path.startswith("/public/")
+            or request.path.startswith("/api/public/")
+        ):
+            return await handler(request)
+
         if self._is_authenticated(request):
             return await handler(request)
 
@@ -1981,6 +2110,10 @@ class WebDashboard:
         app.router.add_get("/neuromap", self._neuromap_page)
         app.router.add_get("/associations", self._associations_page)
         app.router.add_get("/config", self._config_page)
+        app.router.add_get("/public", self._public_index)
+        app.router.add_get("/public/connectome", self._public_connectome_page)
+        app.router.add_get("/public/neuromap", self._public_neuromap_page)
+        app.router.add_get("/public/associations", self._public_associations_page)
         app.router.add_get("/brain", self._brain)
         app.router.add_get("/login", self._login_get)
         app.router.add_post("/login", self._login_post)
@@ -1989,6 +2122,10 @@ class WebDashboard:
         app.router.add_get("/api/connectome", self._connectome_state)
         app.router.add_get("/api/neuromap", self._neuromap_state)
         app.router.add_get("/api/associations", self._associations_state)
+        app.router.add_get("/api/public/state", self._public_state)
+        app.router.add_get("/api/public/connectome", self._public_connectome_state)
+        app.router.add_get("/api/public/neuromap", self._public_neuromap_state)
+        app.router.add_get("/api/public/associations", self._public_associations_state)
         app.router.add_get("/api/overview", self._overview)
         app.router.add_get("/api/config", self._config_get)
         app.router.add_post("/api/config", self._config_post)
@@ -2039,11 +2176,128 @@ class WebDashboard:
     async def _associations_page(self, request: web.Request) -> web.Response:
         return web.Response(text=ASSOCIATIONS_HTML, content_type="text/html")
 
+    def _ensure_public_enabled(self) -> None:
+        if not self.public_readonly_enabled:
+            raise web.HTTPNotFound(text="public dashboard disabled")
+
+    @staticmethod
+    def _publicize_html(html: str) -> str:
+        replacements = (
+            ('href="/"', 'href="/public"'),
+            ('href="/connectome"', 'href="/public/connectome"'),
+            ('href="/neuromap"', 'href="/public/neuromap"'),
+            ('href="/associations"', 'href="/public/associations"'),
+            ('fetch("/api/state"', 'fetch("/api/public/state"'),
+            ('fetch("/api/connectome', 'fetch("/api/public/connectome'),
+            ('fetch("/api/neuromap', 'fetch("/api/public/neuromap'),
+            ('fetch("/api/associations"', 'fetch("/api/public/associations"'),
+            ('<a href="/logout">Wyloguj</a>', '<a href="/login">🔒 Admin</a>'),
+        )
+        for old, new in replacements:
+            html = html.replace(old, new)
+        for link in (
+            '<a href="/details">📋 Szczegóły</a>',
+            '<a href="/affinity">🤝 Affinity</a>',
+            '<a href="/config">⚙ Konfiguracja</a>',
+        ):
+            html = html.replace(link, "")
+        return html
+
+    async def _public_index(self, request: web.Request) -> web.Response:
+        self._ensure_public_enabled()
+        return web.Response(text=PUBLIC_OVERVIEW_HTML, content_type="text/html")
+
+    async def _public_connectome_page(self, request: web.Request) -> web.Response:
+        self._ensure_public_enabled()
+        return web.Response(
+            text=self._publicize_html(CONNECTOME_HTML),
+            content_type="text/html",
+        )
+
+    async def _public_neuromap_page(self, request: web.Request) -> web.Response:
+        self._ensure_public_enabled()
+        return web.Response(
+            text=self._publicize_html(NEUROMAP_HTML),
+            content_type="text/html",
+        )
+
+    async def _public_associations_page(self, request: web.Request) -> web.Response:
+        self._ensure_public_enabled()
+        return web.Response(
+            text=self._publicize_html(ASSOCIATIONS_HTML),
+            content_type="text/html",
+        )
+
+    @staticmethod
+    def _safe_public_state(snap: dict) -> dict:
+        diag = dict(snap.get("diag") or {})
+        language_diag = dict(snap.get("language_diag") or {})
+        return {
+            "diag": diag,
+            "scores": dict(snap.get("scores") or {}),
+            "language_diag": language_diag,
+            "language_ready": bool(snap.get("language_ready")),
+            "paused": bool(snap.get("paused")),
+            "source": snap.get("source", "unknown"),
+            "last_event": "ukryte w trybie publicznym",
+            "last_action": "ukryte w trybie publicznym",
+        }
+
+    async def _public_state(self, request: web.Request) -> web.Response:
+        self._ensure_public_enabled()
+        snap = await self.snapshot_provider()
+        return web.json_response(
+            self._safe_public_state(snap),
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
+
+    async def _public_connectome_state(self, request: web.Request) -> web.Response:
+        self._ensure_public_enabled()
+        if self.connectome_provider is None:
+            raise web.HTTPServiceUnavailable(text="connectome provider unavailable")
+        raw = str(request.query.get("follow", "")).strip().lower()
+        snap = await self.connectome_provider(raw in {"1", "true", "yes", "on"})
+        return web.json_response(
+            snap,
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
+
+    async def _public_neuromap_state(self, request: web.Request) -> web.Response:
+        self._ensure_public_enabled()
+        if self.neuromap_provider is None:
+            raise web.HTTPServiceUnavailable(text="neuromap provider unavailable")
+        projection = str(request.query.get("projection", "xy")).strip().lower()
+        if projection not in {"xy", "xz", "yz"}:
+            projection = "xy"
+        snap = dict(await self.neuromap_provider(projection))
+        snap["last_event"] = "ukryte w trybie publicznym"
+        snap["last_action"] = "ukryte w trybie publicznym"
+        return web.json_response(
+            snap,
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
+
+    async def _public_associations_state(self, request: web.Request) -> web.Response:
+        self._ensure_public_enabled()
+        if self.association_provider is None:
+            raise web.HTTPServiceUnavailable(text="association provider unavailable")
+        snap = dict(await self.association_provider())
+        snap["last_event"] = "ukryte w trybie publicznym"
+        snap["last_action"] = "ukryte w trybie publicznym"
+        return web.json_response(
+            snap,
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
+
     async def _config_get(self, request: web.Request) -> web.Response:
         if self.config_provider is None:
             raise web.HTTPServiceUnavailable(text="config provider unavailable")
+        payload = self.config_provider()
+        payload["config_path"] = str(
+            Path(__file__).resolve().parents[1] / "config.local.toml"
+        )
         return web.json_response(
-            self.config_provider(),
+            payload,
             dumps=lambda x: json.dumps(x, ensure_ascii=False),
         )
 
@@ -2055,6 +2309,19 @@ class WebDashboard:
             if not isinstance(payload, dict):
                 raise ValueError("JSON musi być obiektem")
             result = self.config_updater(payload)
+            changed = list(result.get("changed") or [])
+            if result.get("ok") and changed:
+                result["restart"] = {
+                    "scheduled": True,
+                    "unit": self.service_unit,
+                    "delay_seconds": 1.2,
+                }
+                asyncio.create_task(self._restart_service_after_config_save())
+            else:
+                result["restart"] = {
+                    "scheduled": False,
+                    "unit": self.service_unit,
+                }
             return web.json_response(
                 result,
                 dumps=lambda x: json.dumps(x, ensure_ascii=False),
@@ -2064,6 +2331,25 @@ class WebDashboard:
                 {"ok": False, "error": str(exc)},
                 status=400,
                 dumps=lambda x: json.dumps(x, ensure_ascii=False),
+            )
+
+    async def _restart_service_after_config_save(self) -> None:
+        await asyncio.sleep(1.2)
+        command = ["systemctl", "restart", self.service_unit]
+        if hasattr(os, "geteuid") and os.geteuid() != 0:
+            command = ["sudo", "-n", *command]
+        try:
+            subprocess.Popen(
+                command,
+                stdin=subprocess.DEVNULL,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                start_new_session=True,
+            )
+        except OSError:
+            log.exception(
+                "Nie udało się uruchomić restartu usługi %s",
+                self.service_unit,
             )
 
     async def _brain(self, request: web.Request) -> web.StreamResponse:

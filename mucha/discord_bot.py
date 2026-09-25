@@ -277,6 +277,8 @@ class MuchaClient(discord.Client):
             connectome_provider=self._connectome_dashboard_snapshot,
             neuromap_provider=self._neuromap_dashboard_snapshot,
             association_provider=self._association_dashboard_snapshot,
+            public_readonly_enabled=cfg.web_ui.public_readonly_enabled,
+            service_unit=cfg.web_ui.service_unit,
             host=cfg.web_ui.host,
             port=cfg.web_ui.port,
             auto_open=cfg.web_ui.auto_open,
@@ -524,7 +526,7 @@ class MuchaClient(discord.Client):
             ("voice", "random_audio_enabled"): (bool, None, None),
         }
 
-        config_path = Path("config.local.toml")
+        config_path = Path(__file__).resolve().parents[1] / "config.local.toml"
         if config_path.exists():
             with config_path.open("rb") as handle:
                 raw = tomllib.load(handle)
@@ -550,9 +552,11 @@ class MuchaClient(discord.Client):
             if maximum is not None:
                 value = min(maximum, value)
 
+            current = getattr(getattr(self.cfg, section), key)
             raw.setdefault(section, {})[key] = value
             setattr(getattr(self.cfg, section), key, value)
-            changed.append(f"{section}.{key}")
+            if current != value:
+                changed.append(f"{section}.{key}")
 
         if "blocked_text_channel_ids" in payload:
             ids = tuple(
@@ -567,8 +571,10 @@ class MuchaClient(discord.Client):
             raw.setdefault("discord", {})[
                 "blocked_text_channel_ids"
             ] = list(ids)
+            current_ids = tuple(self.cfg.discord.blocked_text_channel_ids)
             self.cfg.discord.blocked_text_channel_ids = ids
-            changed.append("discord.blocked_text_channel_ids")
+            if current_ids != ids:
+                changed.append("discord.blocked_text_channel_ids")
 
         if "blocked_voice_channel_ids" in payload:
             ids = tuple(
@@ -583,8 +589,10 @@ class MuchaClient(discord.Client):
             raw.setdefault("voice", {})[
                 "blocked_voice_channel_ids"
             ] = list(ids)
+            current_ids = tuple(self.cfg.voice.blocked_voice_channel_ids)
             self.cfg.voice.blocked_voice_channel_ids = ids
-            changed.append("voice.blocked_voice_channel_ids")
+            if current_ids != ids:
+                changed.append("voice.blocked_voice_channel_ids")
 
         if "blocked_voice_guild_ids" in payload:
             ids = tuple(
@@ -599,8 +607,10 @@ class MuchaClient(discord.Client):
             raw.setdefault("voice", {})[
                 "blocked_voice_guild_ids"
             ] = list(ids)
+            current_ids = tuple(self.cfg.voice.blocked_voice_guild_ids)
             self.cfg.voice.blocked_voice_guild_ids = ids
-            changed.append("voice.blocked_voice_guild_ids")
+            if current_ids != ids:
+                changed.append("voice.blocked_voice_guild_ids")
 
         temp_path = config_path.with_suffix(".toml.tmp")
         temp_path.write_text(
@@ -747,10 +757,13 @@ class MuchaClient(discord.Client):
             "config",
             ", ".join(changed) if changed else "brak zmian",
         )
+        result_config = self._dashboard_config_snapshot()
+        result_config["config_path"] = str(config_path)
         return {
             "ok": True,
             "changed": changed,
-            "config": self._dashboard_config_snapshot(),
+            "config": result_config,
+            "config_path": str(config_path),
         }
 
     def _record_action(

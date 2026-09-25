@@ -192,6 +192,8 @@ class WebUIConfig:
     auth_password_env: str = "MUCHA_DASHBOARD_PASSWORD"
     session_hours: int = 168
     chaser_status_file: str = "/opt/mucha-chaser/state/chaser_status.json"
+    public_readonly_enabled: bool = False
+    service_unit: str = "mucha.service"
 
 
 @dataclass(slots=True)
