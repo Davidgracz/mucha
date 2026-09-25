@@ -758,7 +758,8 @@ class OnlineLanguage:
         if age >= window:
             return 1.0
         freshness = 1.0 - age / window
-        return 1.0 + (self.word_recent_boost - 1.0) * freshness
+        effective_boost = 1.0 + (self.word_recent_boost - 1.0) * 0.45
+        return 1.0 + (effective_boost - 1.0) * freshness
 
     def _word_weight(
         self,
@@ -865,54 +866,166 @@ class OnlineLanguage:
         if vocab < 8:
             return None
 
+        arousal = max(0.0, min(1.0, float(arousal)))
         ctx = self.words(context)
+        context_bigrams = set(zip(ctx, ctx[1:]))
+        context_trigrams = set(zip(ctx, ctx[1:], ctx[2:]))
         out: list[str] = []
         state: tuple[str, str] | None = None
+        punctuation = {".", "!", "?", ",", ";", ":"}
 
-        if len(ctx) >= 2:
-            a, b = ctx[-2], ctx[-1]
-            rows = self.db.execute(
-                "SELECT c,n,reward,last_seen FROM word_trigram "
-                "WHERE a=? AND b=? ORDER BY n DESC LIMIT 100",
-                (a, b),
-            ).fetchall()
-            rows = [
-                row
-                for row in rows
-                if str(row[0]) != WORD_END
-            ]
-            token = self._weighted_word_row(
-                rows,
-                arousal,
-                0,
-                out,
-            ) if rows else None
-            if token:
-                out.append(token)
-                state = (b, token)
+        def choose_mixed(
+            sources: list[tuple[float, list[tuple]]],
+            *,
+            allow_end: bool = True,
+        ) -> str | None:
+            combined: dict[str, float] = {}
+            lexical_count = sum(
+                1 for item in out if item not in punctuation
+            )
 
-        if state is None and ctx:
-            a = ctx[-1]
-            rows = self.db.execute(
+            for source_weight, rows in sources:
+                if source_weight <= 0.0 or not rows:
+                    continue
+
+                local: list[tuple[str, float]] = []
+                for row in rows:
+                    token = str(row[0])
+                    if not allow_end and token == WORD_END:
+                        continue
+
+                    n = int(row[1])
+                    reward = float(row[2])
+                    last_seen = float(row[3])
+                    repeat_penalty = 1.0
+
+                    if out and token == out[-1]:
+                        repeat_penalty *= 0.08
+                    if len(out) >= 2 and token == out[-2]:
+                        repeat_penalty *= 0.30
+                    if (
+                        token in punctuation
+                        and lexical_count < 2
+                    ):
+                        repeat_penalty *= 0.04
+
+                    # Do not simply mirror the current prompt. Learned
+                    # transitions still matter, but exact prompt n-grams are
+                    # deliberately less attractive than new combinations.
+                    if out and (out[-1], token) in context_bigrams:
+                        repeat_penalty *= 0.55
+                    if (
+                        len(out) >= 2
+                        and (out[-2], out[-1], token)
+                        in context_trigrams
+                    ):
+                        repeat_penalty *= 0.38
+
+                    local.append(
+                        (
+                            token,
+                            self._word_weight(
+                                n,
+                                reward,
+                                last_seen,
+                                arousal,
+                                repeat_penalty,
+                            ),
+                        )
+                    )
+
+                local_total = sum(weight for _, weight in local)
+                if local_total <= 0.0:
+                    continue
+
+                # Normalize every Markov order independently first. This makes
+                # the interpolation weights meaningful even when one table has
+                # many more candidates or much larger raw counts.
+                for token, weight in local:
+                    combined[token] = combined.get(token, 0.0) + (
+                        source_weight * weight / local_total
+                    )
+
+            if not combined:
+                return None
+            return self._weighted_choice(list(combined.items()))
+
+        def source_weights(
+            trigram_rows: list[tuple],
+            bigram_rows: list[tuple],
+            generated_tokens: int,
+        ) -> tuple[float, float, float]:
+            # Calm state follows grammar more closely; exploration deliberately
+            # backs off to shorter history so separate learned phrases can cross.
+            tri = 0.55 - 0.25 * arousal
+            bi = 0.30 + 0.05 * arousal
+            uni = 1.0 - tri - bi
+
+            # A single known continuation is effectively memorized text. Reduce
+            # its authority so the model gets a real chance to invent a branch.
+            if len(trigram_rows) <= 1:
+                moved = tri * 0.55
+                tri -= moved
+                bi += moved * 0.55
+                uni += moved * 0.45
+            if len(bigram_rows) <= 1:
+                moved = bi * 0.25
+                bi -= moved
+                uni += moved
+
+            # The longer one exact path survives, the more strongly we invite a
+            # backoff. This prevents long verbatim runs through training text.
+            if generated_tokens >= 3:
+                moved = min(tri * 0.45, 0.04 * generated_tokens)
+                tri -= moved
+                bi += moved * 0.45
+                uni += moved * 0.55
+
+            total = tri + bi + uni
+            if total <= 0.0:
+                return 0.0, 0.0, 1.0
+            return tri / total, bi / total, uni / total
+
+        unigram_rows = self.db.execute(
+            "SELECT token,n,reward,last_seen FROM word_unigram "
+            "ORDER BY n DESC LIMIT 260"
+        ).fetchall()
+
+        # First word: use the current context as a hint, not as a hard path.
+        if ctx:
+            trigram_rows: list[tuple] = []
+            if len(ctx) >= 2:
+                trigram_rows = self.db.execute(
+                    "SELECT c,n,reward,last_seen FROM word_trigram "
+                    "WHERE a=? AND b=? ORDER BY n DESC LIMIT 120",
+                    (ctx[-2], ctx[-1]),
+                ).fetchall()
+
+            bigram_rows = self.db.execute(
                 "SELECT b,n,reward,last_seen FROM word_bigram "
-                "WHERE a=? ORDER BY n DESC LIMIT 120",
-                (a,),
+                "WHERE a=? ORDER BY n DESC LIMIT 160",
+                (ctx[-1],),
             ).fetchall()
-            rows = [
-                row
-                for row in rows
-                if str(row[0]) != WORD_END
-            ]
-            token = self._weighted_word_row(
-                rows,
-                arousal,
-                0,
-                out,
-            ) if rows else None
-            if token:
-                out.append(token)
-                state = (a, token)
 
+            tri_w, bi_w, uni_w = source_weights(
+                trigram_rows,
+                bigram_rows,
+                0,
+            )
+            token = choose_mixed(
+                [
+                    (tri_w, trigram_rows),
+                    (bi_w, bigram_rows),
+                    (uni_w, unigram_rows),
+                ],
+                allow_end=False,
+            )
+            if token is not None:
+                out.append(token)
+                state = (ctx[-1], token)
+
+        # No useful contextual start: choose a learned sentence opening, but
+        # only as a seed. Later tokens still use interpolated backoff.
         if state is None:
             rows = self.db.execute(
                 "SELECT a,b,n,last_seen FROM word_starts "
@@ -920,13 +1033,13 @@ class OnlineLanguage:
             ).fetchall()
             weighted: list[tuple[str, float]] = []
             for a, b, n, last_seen in rows:
-                if a in {".", "!", "?", ",", ";", ":"}:
+                if a in punctuation:
                     continue
                 packed = str(a) + "\u0000" + str(b)
                 weighted.append(
                     (
                         packed,
-                        (max(1.0, float(n)) ** 0.92)
+                        (max(1.0, float(n)) ** 0.78)
                         * self._recent_multiplier(float(last_seen)),
                     )
                 )
@@ -934,9 +1047,11 @@ class OnlineLanguage:
             if packed:
                 a, b = packed.split("\u0000", 1)
                 if b == WORD_END:
-                    return self._format_word_tokens([a])
-                out.extend([a, b])
-                state = (a, b)
+                    out.append(a)
+                    state = (WORD_START_B, a)
+                else:
+                    out.extend([a, b])
+                    state = (a, b)
 
         if state is None:
             return None
@@ -949,54 +1064,38 @@ class OnlineLanguage:
                 4,
                 int(
                     base_tokens
-                    + float(arousal)
-                    * max(0, max_tokens - base_tokens)
+                    + arousal * max(0, max_tokens - base_tokens)
                 ),
             ),
         )
 
         while len(out) < target_tokens:
             a, b = state
-            rows = self.db.execute(
+            trigram_rows = self.db.execute(
                 "SELECT c,n,reward,last_seen FROM word_trigram "
-                "WHERE a=? AND b=? ORDER BY n DESC LIMIT 120",
+                "WHERE a=? AND b=? ORDER BY n DESC LIMIT 140",
                 (a, b),
             ).fetchall()
-            token = self._weighted_word_row(
-                rows,
-                arousal,
-                0,
-                out,
-            ) if rows else None
+            bigram_rows = self.db.execute(
+                "SELECT b,n,reward,last_seen FROM word_bigram "
+                "WHERE a=? ORDER BY n DESC LIMIT 170",
+                (b,),
+            ).fetchall()
 
-            if token is None:
-                rows2 = self.db.execute(
-                    "SELECT b,n,reward,last_seen FROM word_bigram "
-                    "WHERE a=? ORDER BY n DESC LIMIT 140",
-                    (b,),
-                ).fetchall()
-                token = self._weighted_word_row(
-                    rows2,
-                    arousal,
-                    0,
-                    out,
-                ) if rows2 else None
+            tri_w, bi_w, uni_w = source_weights(
+                trigram_rows,
+                bigram_rows,
+                len(out),
+            )
+            token = choose_mixed(
+                [
+                    (tri_w, trigram_rows),
+                    (bi_w, bigram_rows),
+                    (uni_w, unigram_rows),
+                ]
+            )
 
-            if token is None:
-                rows3 = self.db.execute(
-                    "SELECT token,n,reward,last_seen FROM word_unigram "
-                    "ORDER BY n DESC LIMIT 220"
-                ).fetchall()
-                token = self._weighted_word_row(
-                    rows3,
-                    arousal,
-                    0,
-                    out,
-                ) if rows3 else None
-
-            if token is None:
-                break
-            if token == WORD_END:
+            if token is None or token == WORD_END:
                 break
 
             out.append(token)
@@ -1005,7 +1104,7 @@ class OnlineLanguage:
             lexical = sum(
                 1
                 for item in out
-                if item not in {".", "!", "?", ",", ";", ":"}
+                if item not in punctuation
             )
             if (
                 token in {".", "!", "?"}
@@ -1027,6 +1126,43 @@ class OnlineLanguage:
 
         return text
 
+    def _word_output_too_close_to_context(
+        self,
+        generated: str,
+        context: str,
+    ) -> bool:
+        generated_words = [
+            token
+            for token in self.words(generated)
+            if token not in {".", "!", "?", ",", ";", ":"}
+        ]
+        context_words = [
+            token
+            for token in self.words(context)
+            if token not in {".", "!", "?", ",", ";", ":"}
+        ]
+        if not generated_words or not context_words:
+            return False
+
+        if generated_words == context_words:
+            return True
+
+        if len(generated_words) >= 2 and len(context_words) >= 2:
+            context_bigrams = set(
+                zip(context_words, context_words[1:])
+            )
+            generated_bigrams = list(
+                zip(generated_words, generated_words[1:])
+            )
+            shared = sum(
+                pair in context_bigrams
+                for pair in generated_bigrams
+            )
+            if shared / max(1, len(generated_bigrams)) >= 0.75:
+                return True
+
+        return False
+
     def generate(
         self,
         context: str = "",
@@ -1040,7 +1176,20 @@ class OnlineLanguage:
             self.hybrid_word_enabled
             and self.rng.random() < self.word_model_probability
         ):
-            word_text = self._generate_words(context, arousal)
+            word_text = None
+            for attempt in range(4):
+                candidate = self._generate_words(context, arousal)
+                if not candidate:
+                    continue
+                word_text = candidate
+                if (
+                    attempt >= 3
+                    or not self._word_output_too_close_to_context(
+                        candidate,
+                        context,
+                    )
+                ):
+                    break
             if word_text:
                 self._last_generator = "words"
                 return (
