@@ -19,6 +19,7 @@ log = logging.getLogger("mucha.web")
 SnapshotProvider = Callable[[], Awaitable[dict]]
 ConnectomeProvider = Callable[[bool], Awaitable[dict]]
 NeuromapProvider = Callable[[str], Awaitable[dict]]
+AssociationProvider = Callable[[], Awaitable[dict]]
 ConfigProvider = Callable[[], dict]
 ConfigUpdater = Callable[[dict], dict]
 
@@ -35,7 +36,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 @media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 </style></head><body><main>
 <div class="top"><div><h1>⚙ Konfiguracja Muchy</h1><div class="sub">Zmiany są zapisywane do config.toml i stosowane na żywo.</div></div>
-<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
+<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
 <div class="grid">
 <div class="card"><h2>Język / szybkie uczenie</h2><div class="fields" id="language-fields"></div></div>
 <div class="card"><h2>Zachowanie i relacje</h2><div class="fields" id="behavior-fields"></div></div>
@@ -192,7 +193,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 @media(max-width:900px){.grid{grid-template-columns:1fr}.span2{grid-column:auto}.kpis{grid-template-columns:1fr 1fr}.phrases{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 </style></head><body><main>
 <div class="top"><div><h1>🤝 Affinity / Zasady relacji</h1><div class="sub">Live podgląd tego, co zwiększa i obniża stosunek Muchy do użytkowników.</div></div>
-<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a class="active" href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
+<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a class="active" href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
 
 <div class="grid">
   <div class="card span2">
@@ -275,6 +276,65 @@ async function update(){
 }
 setInterval(update,2000);update();
 </script></main></body></html>"""
+
+ASSOCIATIONS_HTML = r"""<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mucha — Mapa skojarzeń</title>
+<style>
+:root{--bg:#050910;--panel:#0d151e;--panel2:#08111a;--line:#203247;--txt:#eef7ff;--muted:#7f92a5;--cyan:#55ead0;--blue:#6da8ff;--good:#58df98;--bad:#ff7474;--warn:#ffd166}
+*{box-sizing:border-box}body{margin:0;color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(circle at 18% 0%,rgba(85,234,208,.11),transparent 30%),radial-gradient(circle at 84% 5%,rgba(109,168,255,.11),transparent 31%),linear-gradient(180deg,#050910,#07101a)}
+main{max-width:1640px;margin:auto;padding:22px}.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:14px}.brand{display:flex;gap:13px;align-items:center}.logo{font-size:38px}h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#bacada;text-decoration:none;border:1px solid var(--line);background:#0b141d;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:linear-gradient(90deg,var(--cyan),#7ce5d4);border-color:var(--cyan);color:#04120e;font-weight:850}
+.hero{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}.kpi,.card{background:linear-gradient(180deg,rgba(13,21,30,.97),rgba(8,15,23,.97));border:1px solid var(--line);border-radius:16px}.kpi{padding:13px}.kpi small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}.kpi strong{font-size:17px}.kpi em{display:block;color:#8799aa;font-size:9px;font-style:normal;margin-top:4px}
+.grid{display:grid;grid-template-columns:minmax(0,2.2fr) minmax(360px,.8fr);gap:12px}.card{padding:14px;min-width:0}.head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:10px}.head h2{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#9eb0c1}.live{font-size:9px;color:var(--good);font-weight:850;letter-spacing:.1em}.graph{height:720px;border:1px solid #17283a;border-radius:14px;overflow:hidden;position:relative;background:radial-gradient(circle at 50% 50%,rgba(85,234,208,.035),transparent 44%),#050b12}.graph canvas{width:100%;height:100%;display:block}.tip{position:absolute;display:none;pointer-events:none;z-index:4;max-width:280px;padding:9px 10px;background:rgba(5,10,16,.96);border:1px solid #31506c;border-radius:10px;font-size:10px;line-height:1.5}.side{display:flex;flex-direction:column;gap:12px}.ins{min-height:160px}.empty{color:var(--muted);font-size:11px;line-height:1.5}.meta{display:grid;grid-template-columns:1fr 1fr;gap:7px}.meta div{padding:8px;background:var(--panel2);border:1px solid #17283a;border-radius:9px}.meta small{display:block;color:#74899d;font-size:8px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:3px}.meta b{font-size:11px}.assoc{display:flex;flex-direction:column;gap:6px;max-height:430px;overflow:auto}.row{display:grid;grid-template-columns:1fr 58px;gap:8px;padding:8px;border:1px solid #17283a;background:var(--panel2);border-radius:9px;font-size:10px;cursor:pointer}.row:hover{border-color:#34566f}.row small{display:block;color:var(--muted);margin-top:3px}.pos{color:var(--good)}.neg{color:var(--bad)}.note{margin-top:10px;color:#71869a;font-size:9px;line-height:1.55}.legend{display:flex;gap:12px;flex-wrap:wrap;color:#75899c;font-size:9px;margin-top:8px}.legend i{display:inline-block;width:9px;height:3px;border-radius:999px;margin-right:5px;vertical-align:middle}.lstruct{background:var(--blue)}.lpos{background:var(--good)}.lneg{background:var(--bad)}
+@media(max-width:1100px){.grid{grid-template-columns:1fr}.graph{height:620px}.hero{grid-template-columns:repeat(3,1fr)}}@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.graph{height:520px}}
+</style>
+</head>
+<body><main>
+<div class="top">
+ <div class="brand"><div class="logo">🕸</div><div><h1>Mapa skojarzeń Muchy</h1><div class="sub">Słowa są węzłami connectomu; krawędzie wynikają z propagacji po macierzy oraz wyuczonego plastic bias par słów.</div></div></div>
+ <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a class="active" href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
+</div>
+<section class="hero">
+ <div class="kpi"><small>Słowa na mapie</small><strong id="nodes">—</strong><em>recent + learned vocabulary</em></div>
+ <div class="kpi"><small>Widoczne skojarzenia</small><strong id="edges">—</strong><em>najsilniejsze krawędzie</em></div>
+ <div class="kpi"><small>Najsilniejsze</small><strong id="strongest">—</strong><em id="strongest-w">—</em></div>
+ <div class="kpi"><small>Reward trace</small><strong id="reward">—</strong><em>bieżący ślad nagrody</em></div>
+ <div class="kpi"><small>Tick</small><strong id="tick">—</strong><em id="source">runtime</em></div>
+</section>
+<section class="grid">
+ <div class="card">
+  <div class="head"><h2>Connectome word graph</h2><span class="live" id="live">LIVE</span></div>
+  <div class="graph" id="wrap"><canvas id="canvas"></canvas><div class="tip" id="tip"></div></div>
+  <div class="legend"><span><i class="lstruct"></i> struktura connectomu</span><span><i class="lpos"></i> dodatni learned bias</span><span><i class="lneg"></i> ujemny learned bias</span></div>
+  <div class="note">Mapa nie korzysta z osobnej bazy relacji. Każde słowo ma deterministyczną populację sensoryczną, jej sygnał propaguje się przez właściwą macierz connectomu, a reakcje użytkowników zmieniają plastic bias śladu uczenia.</div>
+ </div>
+ <div class="side">
+  <div class="card ins"><div class="head"><h2>Wybrane słowo</h2><span id="event" class="live">—</span></div><div id="inspector" class="empty">Kliknij słowo na mapie.</div></div>
+  <div class="card"><div class="head"><h2>Najsilniejsze połączenia</h2><span id="method" class="live">connectome</span></div><div id="assoc" class="assoc"></div></div>
+ </div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id),canvas=$("canvas"),ctx=canvas.getContext("2d"),wrap=$("wrap"),tip=$("tip");
+let data={nodes:[],edges:[]},points=new Map(),hover=null,selected=null,mouse={x:0,y:0},dpr=1;
+const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
+const nfmt=n=>Number(n||0).toLocaleString("pl-PL");
+function resize(){const r=wrap.getBoundingClientRect();dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0)}
+function seed(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
+function syncPoints(){const r=wrap.getBoundingClientRect(),cx=r.width/2,cy=r.height/2,R=Math.min(r.width,r.height)*.34;data.nodes.forEach((n,i)=>{if(points.has(n.id))return;const a=2*Math.PI*(i/Math.max(1,data.nodes.length)+seed(n.id)*.18);points.set(n.id,{x:cx+Math.cos(a)*R,y:cy+Math.sin(a)*R,vx:0,vy:0})});for(const key of [...points.keys()])if(!data.nodes.some(n=>n.id===key))points.delete(key)}
+function physics(){const r=wrap.getBoundingClientRect(),nodes=data.nodes,by=id=>points.get(id);for(let i=0;i<nodes.length;i++){const a=by(nodes[i].id);if(!a)continue;for(let j=i+1;j<nodes.length;j++){const b=by(nodes[j].id);if(!b)continue;let dx=b.x-a.x,dy=b.y-a.y,d2=Math.max(80,dx*dx+dy*dy),d=Math.sqrt(d2),f=1500/d2;a.vx-=dx/d*f;a.vy-=dy/d*f;b.vx+=dx/d*f;b.vy+=dy/d*f}}data.edges.forEach(e=>{const a=by(e.source),b=by(e.target);if(!a||!b)return;let dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy)),target=105+80*(1-Number(e.weight||0)),f=(d-target)*(.0009+.0022*Number(e.weight||0));a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f});const cx=r.width/2,cy=r.height/2;nodes.forEach(n=>{const p=by(n.id);if(!p)return;p.vx+=(cx-p.x)*.0007;p.vy+=(cy-p.y)*.0007;p.vx*=.90;p.vy*=.90;p.x=Math.max(30,Math.min(r.width-30,p.x+p.vx));p.y=Math.max(30,Math.min(r.height-30,p.y+p.vy))})}
+function edgeColor(e,a){const learned=Number(e.learned||0);if(learned>.10)return "rgba(88,223,152,"+a+")";if(learned<-.10)return "rgba(255,116,116,"+a+")";return "rgba(109,168,255,"+a+")"}
+function draw(){physics();const r=wrap.getBoundingClientRect();ctx.clearRect(0,0,r.width,r.height);data.edges.forEach(e=>{const a=points.get(e.source),b=points.get(e.target);if(!a||!b)return;const w=Number(e.weight||0);ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=edgeColor(e,.12+.72*w);ctx.lineWidth=.6+5*w;ctx.stroke()});hover=null;for(const n of data.nodes){const p=points.get(n.id);if(!p)continue;const rad=10+12*Number(n.salience||0);if(Math.hypot(mouse.x-p.x,mouse.y-p.y)<=rad+5)hover=n;ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);ctx.fillStyle=(selected&&selected.id===n.id)?"rgba(85,234,208,.95)":"rgba(18,39,55,.96)";ctx.fill();ctx.strokeStyle="rgba(85,234,208,"+(.25+.65*Number(n.brain_score||0))+")";ctx.lineWidth=1.2+2.2*Number(n.salience||0);ctx.stroke();ctx.fillStyle="#eaf5ff";ctx.font="600 11px system-ui";ctx.textAlign="center";ctx.fillText(n.id,p.x,p.y+rad+14)}if(hover){const p=points.get(hover.id);tip.style.display="block";tip.style.left=Math.min(r.width-270,p.x+16)+"px";tip.style.top=Math.min(r.height-120,p.y+16)+"px";tip.innerHTML="<b>"+esc(hover.id)+"</b><br>brain score "+Number(hover.brain_score||0).toFixed(3)+"<br>activation "+Number(hover.activation||0).toFixed(4)+"<br>plastic bias "+Number(hover.plastic_bias||0).toFixed(5)}else tip.style.display="none";requestAnimationFrame(draw)}
+function inspect(n){selected=n;if(!n){$("inspector").className="empty";$("inspector").textContent="Kliknij słowo na mapie.";return}$("inspector").className="";$("inspector").innerHTML="<h3 style='margin:0 0 9px'>"+esc(n.id)+"</h3><div class='meta'><div><small>brain score</small><b>"+Number(n.brain_score||0).toFixed(3)+"</b></div><div><small>salience</small><b>"+Number(n.salience||0).toFixed(3)+"</b></div><div><small>activation</small><b>"+Number(n.activation||0).toFixed(5)+"</b></div><div><small>plastic bias</small><b>"+Number(n.plastic_bias||0).toFixed(6)+"</b></div><div><small>liczba wystąpień</small><b>"+nfmt(n.count)+"</b></div><div><small>language reward</small><b>"+Number(n.language_reward||0).toFixed(3)+"</b></div></div>"}
+function render(d){data=d||{nodes:[],edges:[]};syncPoints();$("nodes").textContent=nfmt(d.node_count);$("edges").textContent=nfmt(d.edge_count);$("reward").textContent=Number(d.reward_trace||0).toFixed(3);$("tick").textContent=nfmt(d.ticks);$("source").textContent=d.source||"runtime";$("event").textContent=d.last_event||"—";$("method").textContent="CONNECTOME";const s=d.strongest;$("strongest").textContent=s?(s.source+" ↔ "+s.target):"—";$("strongest-w").textContent=s?("waga "+Number(s.weight||0).toFixed(3)):"brak krawędzi";$("assoc").innerHTML=(d.edges||[]).slice(0,18).map(e=>"<div class='row' data-a='"+esc(e.source)+"' data-b='"+esc(e.target)+"'><div><b>"+esc(e.source)+" ↔ "+esc(e.target)+"</b><small>structure "+Number(e.structural||0).toFixed(3)+" • learned <span class='"+(Number(e.learned||0)>=0?"pos":"neg")+"'>"+(Number(e.learned||0)>=0?"+":"")+Number(e.learned||0).toFixed(3)+"</span> • activity "+Number(e.pair_activation||0).toFixed(3)+"</small></div><b>"+Number(e.weight||0).toFixed(3)+"</b></div>").join("")||"<div class='empty'>Za mało wspólnej aktywności, żeby pokazać krawędzie.</div>";document.querySelectorAll(".row").forEach(x=>x.onclick=()=>{const n=data.nodes.find(n=>n.id===x.dataset.a)||data.nodes.find(n=>n.id===x.dataset.b);if(n)inspect(n)});if(selected){const fresh=data.nodes.find(n=>n.id===selected.id);if(fresh)inspect(fresh);else inspect(null)}$("live").textContent="LIVE"}
+async function update(){try{const r=await fetch("/api/associations",{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}}
+canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top});canvas.addEventListener("mouseleave",()=>{mouse.x=-9999;mouse.y=-9999});canvas.addEventListener("click",()=>{if(hover)inspect(hover)});
+window.addEventListener("resize",()=>{resize();syncPoints()});resize();draw();setInterval(update,1400);update();
+</script>
+</body></html>"""
 
 CONNECTOME_HTML = r"""<!doctype html>
 <html lang="pl">
@@ -1625,6 +1685,7 @@ class WebDashboard:
         config_updater: ConfigUpdater | None = None,
         connectome_provider: ConnectomeProvider | None = None,
         neuromap_provider: NeuromapProvider | None = None,
+        association_provider: AssociationProvider | None = None,
     ):
         self.snapshot_provider = snapshot_provider
         self.host = host
@@ -1642,6 +1703,7 @@ class WebDashboard:
         self.config_updater = config_updater
         self.connectome_provider = connectome_provider
         self.neuromap_provider = neuromap_provider
+        self.association_provider = association_provider
         self.runner: web.AppRunner | None = None
         self.site: web.TCPSite | None = None
         self._bind_host = self.host
@@ -1714,6 +1776,7 @@ class WebDashboard:
         app.router.add_get("/affinity", self._affinity_page)
         app.router.add_get("/connectome", self._connectome_page)
         app.router.add_get("/neuromap", self._neuromap_page)
+        app.router.add_get("/associations", self._associations_page)
         app.router.add_get("/config", self._config_page)
         app.router.add_get("/brain", self._brain)
         app.router.add_get("/login", self._login_get)
@@ -1722,6 +1785,7 @@ class WebDashboard:
         app.router.add_get("/api/state", self._state)
         app.router.add_get("/api/connectome", self._connectome_state)
         app.router.add_get("/api/neuromap", self._neuromap_state)
+        app.router.add_get("/api/associations", self._associations_state)
         app.router.add_get("/api/overview", self._overview)
         app.router.add_get("/api/config", self._config_get)
         app.router.add_post("/api/config", self._config_post)
@@ -1768,6 +1832,9 @@ class WebDashboard:
 
     async def _neuromap_page(self, request: web.Request) -> web.Response:
         return web.Response(text=NEUROMAP_HTML, content_type="text/html")
+
+    async def _associations_page(self, request: web.Request) -> web.Response:
+        return web.Response(text=ASSOCIATIONS_HTML, content_type="text/html")
 
     async def _config_get(self, request: web.Request) -> web.Response:
         if self.config_provider is None:
@@ -1886,6 +1953,20 @@ class WebDashboard:
         if projection not in {"xy", "xz", "yz"}:
             projection = "xy"
         snap = await self.neuromap_provider(projection)
+        return web.json_response(
+            snap,
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
+
+    async def _associations_state(
+        self,
+        request: web.Request,
+    ) -> web.Response:
+        if self.association_provider is None:
+            raise web.HTTPServiceUnavailable(
+                text="association provider unavailable"
+            )
+        snap = await self.association_provider()
         return web.json_response(
             snap,
             dumps=lambda x: json.dumps(x, ensure_ascii=False),

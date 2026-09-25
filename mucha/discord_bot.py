@@ -276,6 +276,7 @@ class MuchaClient(discord.Client):
             snapshot_provider=self._console_snapshot,
             connectome_provider=self._connectome_dashboard_snapshot,
             neuromap_provider=self._neuromap_dashboard_snapshot,
+            association_provider=self._association_dashboard_snapshot,
             host=cfg.web_ui.host,
             port=cfg.web_ui.port,
             auto_open=cfg.web_ui.auto_open,
@@ -3377,6 +3378,31 @@ class MuchaClient(discord.Client):
                 edge_limit=150 if follow_activity else 190,
                 follow_activity=follow_activity,
             )
+
+    async def _association_dashboard_snapshot(self) -> dict:
+        word_rows = self.language.association_words(limit=28)
+        words = [str(row.get("word", "")) for row in word_rows]
+        async with self._brain_lock:
+            graph = self.brain.word_association_snapshot(
+                words,
+                max_nodes=28,
+                edge_limit=72,
+            )
+
+        metadata = {
+            str(row.get("word", "")): row
+            for row in word_rows
+        }
+        for node in graph.get("nodes", []):
+            info = metadata.get(str(node.get("id", "")), {})
+            node["count"] = int(info.get("count", 0))
+            node["language_reward"] = float(info.get("reward", 0.0))
+            node["last_seen"] = float(info.get("last_seen", 0.0))
+
+        graph["last_event"] = self._last_brain_event
+        graph["last_action"] = self._last_brain_action
+        graph["language_diag"] = self.language.diagnostics()
+        return graph
 
     async def _neuromap_dashboard_snapshot(
         self,

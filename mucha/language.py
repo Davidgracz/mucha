@@ -1571,6 +1571,67 @@ class OnlineLanguage:
             "updated_at": float(row[2]),
         }
 
+    def association_words(self, limit: int = 28) -> list[dict]:
+        """Return a mixed recent/popular vocabulary window for the brain map."""
+        limit = max(4, min(40, int(limit)))
+        fetch_limit = max(limit * 3, 24)
+        recent = self.db.execute(
+            """
+            SELECT token,n,reward,last_seen
+            FROM word_unigram
+            WHERE LENGTH(token) >= 3
+            ORDER BY last_seen DESC, n DESC
+            LIMIT ?
+            """,
+            (fetch_limit,),
+        ).fetchall()
+        popular = self.db.execute(
+            """
+            SELECT token,n,reward,last_seen
+            FROM word_unigram
+            WHERE LENGTH(token) >= 3
+            ORDER BY (n + MAX(reward, 0) * 8.0) DESC, last_seen DESC
+            LIMIT ?
+            """,
+            (fetch_limit,),
+        ).fetchall()
+
+        merged: dict[str, dict] = {}
+        ordered: list[str] = []
+        recent_i = 0
+        popular_i = 0
+        while len(ordered) < limit and (
+            recent_i < len(recent) or popular_i < len(popular)
+        ):
+            for rows, pos_name in ((recent, "recent"), (popular, "popular")):
+                pos = recent_i if pos_name == "recent" else popular_i
+                if pos >= len(rows):
+                    continue
+                token, n, reward, last_seen = rows[pos]
+                if pos_name == "recent":
+                    recent_i += 1
+                else:
+                    popular_i += 1
+                token = str(token or "").strip().lower()
+                if (
+                    len(token) < 3
+                    or token == "@user"
+                    or WORD_RE.fullmatch(token) is None
+                ):
+                    continue
+                if token not in merged:
+                    ordered.append(token)
+                merged[token] = {
+                    "word": token,
+                    "count": int(n),
+                    "reward": float(reward),
+                    "last_seen": float(last_seen),
+                }
+                if len(ordered) >= limit:
+                    break
+
+        return [merged[token] for token in ordered[:limit]]
+
     def top_word_feedback(self, limit: int = 20) -> list[dict]:
         rows = self.db.execute(
             """

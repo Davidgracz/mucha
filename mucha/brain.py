@@ -61,6 +61,9 @@ class FlyBrain:
         self._neuro_map_region_source = "cell_class"
         self._neuro_map_history = deque(maxlen=180)
         self._action_output_pools: dict[str, np.ndarray] = {}
+        self._word_association_signature_cache: dict[
+            str, tuple[np.ndarray, np.ndarray]
+        ] = {}
         self._init_neuro_map_metadata()
         self.last_learning: dict = {
             "amount": 0.0,
@@ -595,6 +598,250 @@ class FlyBrain:
         )
         raw = 0.35 * sensory_raw + 0.65 * output_raw
         return _sigmoid(3.0 * raw + 0.06 * self.reward_trace)
+
+    def _word_association_signature(
+        self,
+        token: str,
+        width: int = 32,
+        target_count: int = 512,
+    ) -> tuple[np.ndarray, np.ndarray]:
+        """Return a cached one-hop connectome signature for a learned word."""
+        token = str(token).strip().lower()
+        cached = self._word_association_signature_cache.get(token)
+        if cached is not None:
+            return cached
+
+        seed_cpu = self._subset(
+            "sensory:text:word:" + token,
+            self.c.sensory,
+            width,
+        )
+        if not len(seed_cpu):
+            empty = (
+                np.empty(0, dtype=np.int32),
+                np.empty(0, dtype=np.float32),
+            )
+            self._word_association_signature_cache[token] = empty
+            return empty
+
+        spread = self.c.matrix[:, seed_cpu]
+        strength = np.asarray(
+            np.abs(spread).sum(axis=1)
+        ).reshape(-1).astype(np.float32, copy=False)
+        nonzero = np.flatnonzero(strength > 0)
+        if not len(nonzero):
+            empty = (
+                np.empty(0, dtype=np.int32),
+                np.empty(0, dtype=np.float32),
+            )
+            self._word_association_signature_cache[token] = empty
+            return empty
+
+        k = min(max(32, int(target_count)), len(nonzero))
+        values = strength[nonzero]
+        if k >= len(nonzero):
+            order = np.argsort(values)[::-1]
+        else:
+            part = np.argpartition(values, -k)[-k:]
+            order = part[np.argsort(values[part])[::-1]]
+
+        idx = nonzero[order[:k]].astype(np.int32, copy=False)
+        val = strength[idx].astype(np.float32, copy=False)
+        norm = float(np.linalg.norm(val))
+        if norm > 1e-12:
+            val = (val / norm).astype(np.float32, copy=False)
+
+        if len(self._word_association_signature_cache) >= 512:
+            self._word_association_signature_cache.clear()
+        result = (idx, val)
+        self._word_association_signature_cache[token] = result
+        return result
+
+    def word_association_snapshot(
+        self,
+        words: Iterable[str],
+        max_nodes: int = 28,
+        edge_limit: int = 70,
+    ) -> dict:
+        """Build a word-association graph directly from the live connectome.
+
+        Words use their deterministic sensory populations. Structural affinity
+        comes from overlap between their one-hop propagation signatures.
+        Pair-specific sensory populations add live activity and learned
+        plastic-bias terms, so Discord reward can strengthen or weaken edges
+        without maintaining a separate association database.
+        """
+        max_nodes = max(4, min(40, int(max_nodes)))
+        edge_limit = max(8, min(160, int(edge_limit)))
+        cleaned: list[str] = []
+        seen: set[str] = set()
+        for raw in words:
+            token = str(raw or "").strip().lower()
+            if (
+                len(token) < 3
+                or token in seen
+                or re.fullmatch(
+                    r"[^\W_]+(?:['’][^\W_]+)?",
+                    token,
+                    flags=re.UNICODE,
+                )
+                is None
+            ):
+                continue
+            seen.add(token)
+            cleaned.append(token)
+            if len(cleaned) >= max_nodes:
+                break
+
+        state_cpu = self.compute.to_cpu(self.state).astype(
+            np.float32,
+            copy=False,
+        )
+        bias_cpu = self.compute.to_cpu(self.plastic_bias).astype(
+            np.float32,
+            copy=False,
+        )
+        max_bias = max(1e-6, float(self.cfg.max_bias))
+
+        nodes: list[dict] = []
+        signatures: dict[str, tuple[np.ndarray, np.ndarray]] = {}
+        for token in cleaned:
+            sensory_idx = self._subset(
+                "sensory:text:word:" + token,
+                self.c.sensory,
+                32,
+            )
+            output_idx = self._subset(
+                "output:language:word:" + token,
+                self.c.output,
+                32,
+            )
+            idx = np.unique(
+                np.concatenate([sensory_idx, output_idx])
+            ).astype(np.int32, copy=False)
+            activation = (
+                float(np.mean(np.abs(state_cpu[idx])))
+                if len(idx)
+                else 0.0
+            )
+            signed_activation = (
+                float(np.mean(state_cpu[idx]))
+                if len(idx)
+                else 0.0
+            )
+            bias = (
+                float(np.mean(bias_cpu[idx]))
+                if len(idx)
+                else 0.0
+            )
+            brain_score = float(self.language_word_score(token))
+            salience = max(
+                0.0,
+                min(
+                    1.0,
+                    0.55 * brain_score
+                    + 0.30 * min(1.0, activation / 0.22)
+                    + 0.15 * min(1.0, abs(bias) / max_bias),
+                ),
+            )
+            signatures[token] = self._word_association_signature(token)
+            nodes.append({
+                "id": token,
+                "brain_score": brain_score,
+                "salience": salience,
+                "activation": activation,
+                "signed_activation": signed_activation,
+                "plastic_bias": bias,
+                "sensory_neurons": int(len(sensory_idx)),
+                "output_neurons": int(len(output_idx)),
+            })
+
+        edges: list[dict] = []
+        for left_i, left in enumerate(cleaned):
+            idx_a, val_a = signatures[left]
+            norm_a = float(np.linalg.norm(val_a))
+            for right in cleaned[left_i + 1:]:
+                idx_b, val_b = signatures[right]
+                norm_b = float(np.linalg.norm(val_b))
+                structural = 0.0
+                if len(idx_a) and len(idx_b) and norm_a > 0 and norm_b > 0:
+                    _, pos_a, pos_b = np.intersect1d(
+                        idx_a,
+                        idx_b,
+                        assume_unique=True,
+                        return_indices=True,
+                    )
+                    if len(pos_a):
+                        structural = float(
+                            np.dot(val_a[pos_a], val_b[pos_b])
+                            / max(1e-12, norm_a * norm_b)
+                        )
+
+                pair_forward = self._subset(
+                    f"sensory:text:pair:{left}|{right}",
+                    self.c.sensory,
+                    24,
+                )
+                pair_reverse = self._subset(
+                    f"sensory:text:pair:{right}|{left}",
+                    self.c.sensory,
+                    24,
+                )
+                pair_idx = np.unique(
+                    np.concatenate([pair_forward, pair_reverse])
+                ).astype(np.int32, copy=False)
+                pair_activation = (
+                    float(np.mean(np.abs(state_cpu[pair_idx])))
+                    if len(pair_idx)
+                    else 0.0
+                )
+                pair_bias = (
+                    float(np.mean(bias_cpu[pair_idx]))
+                    if len(pair_idx)
+                    else 0.0
+                )
+                learned = math.tanh(
+                    pair_bias / max(1e-6, max_bias * 0.22)
+                )
+                activity = min(1.0, pair_activation / 0.22)
+                weight = max(
+                    0.0,
+                    min(
+                        1.0,
+                        0.76 * structural
+                        + 0.16 * learned
+                        + 0.08 * activity,
+                    ),
+                )
+                if weight <= 0.002:
+                    continue
+                edges.append({
+                    "source": left,
+                    "target": right,
+                    "weight": weight,
+                    "structural": structural,
+                    "learned": float(learned),
+                    "pair_activation": pair_activation,
+                    "pair_bias": pair_bias,
+                })
+
+        edges.sort(key=lambda item: float(item["weight"]), reverse=True)
+        edges = edges[:edge_limit]
+        strongest = edges[0] if edges else None
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "node_count": len(nodes),
+            "edge_count": len(edges),
+            "strongest": strongest,
+            "reward_trace": float(self.reward_trace),
+            "ticks": int(self.tick_count),
+            "source": self.c.metadata.get("source", "unknown"),
+            "method": (
+                "word sensory pools + one-hop connectome overlap + "
+                "pair plastic bias/activity"
+            ),
+        }
 
     def action_scores(self) -> dict[str, float]:
         return {name: self.readout("action:" + name, 128) for name in self.ACTIONS}

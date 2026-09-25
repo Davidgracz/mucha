@@ -12,7 +12,7 @@ from mucha.config import BrainConfig
 from mucha.connectome import Connectome
 from mucha.brain import FlyBrain
 from mucha.language import OnlineLanguage
-from mucha.web_ui import CONNECTOME_HTML, NEUROMAP_HTML
+from mucha.web_ui import ASSOCIATIONS_HTML, CONNECTOME_HTML, NEUROMAP_HTML
 
 
 def main():
@@ -47,6 +47,17 @@ def main():
         assert "/api/neuromap" in NEUROMAP_HTML
         assert "Runtime correlation" in NEUROMAP_HTML
         assert "FOLLOW ACTIVITY" in CONNECTOME_HTML
+        assert "Mapa skojarzeń Muchy" in ASSOCIATIONS_HTML
+        assert "/api/associations" in ASSOCIATIONS_HTML
+
+        assoc = b.word_association_snapshot(
+            ["siema", "mucha", "ciebie", "spacer"],
+            max_nodes=8,
+            edge_limit=12,
+        )
+        assert assoc["node_count"] == 4
+        assert assoc["method"].startswith("word sensory pools")
+        assert all(0.0 <= edge["weight"] <= 1.0 for edge in assoc["edges"])
 
         visual = b.connectome_visual_snapshot(24, 60)
         assert visual["selected_neurons"] >= 12
@@ -112,6 +123,9 @@ def main():
         assert brain_diag["connectome_word_control_ready"]
         assert brain_diag["connectome_word_control_last"]["active"]
         assert brain_diag["connectome_word_control_last"]["evaluated"] > 0
+        association_words = lang.association_words(8)
+        assert association_words
+        assert all(len(item["word"]) >= 3 for item in association_words)
 
         lang.reinforce_text(text, 1)
         lang.close()
