@@ -29,13 +29,23 @@ def main():
         assert 0 <= b.language_word_score("siema") <= 1
         assert "x" in c.neuron_meta
         assert "cell_class" in c.neuron_meta
+        assert "primary_neuropil" in c.neuron_meta
         neuro = b.neuro_map_snapshot(80, "xy")
         assert neuro["coordinate_mode"] == "synthetic"
+        assert neuro["region_source"] == "neuropil"
+        assert neuro["neuropil_labels"] == 3
         assert len(neuro["nodes"]) >= 40
         assert len(neuro["reference"]) > 0
         assert neuro["regions"]
+        assert neuro["regions"][0]["history"]
+        for _ in range(9):
+            b.step(1)
+            neuro = b.neuro_map_snapshot(80, "xy")
+        assert neuro["history_samples"] >= 10
+        assert neuro["regions"][0]["correlation_samples"] >= 10
         assert "Fly Brain Neuro-map" in NEUROMAP_HTML
         assert "/api/neuromap" in NEUROMAP_HTML
+        assert "Runtime correlation" in NEUROMAP_HTML
         assert "FOLLOW ACTIVITY" in CONNECTOME_HTML
 
         visual = b.connectome_visual_snapshot(24, 60)
