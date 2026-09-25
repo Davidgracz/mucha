@@ -9,3 +9,6 @@ data/connectome/*.npz
 data/connectome/*.npy
 data/connectome/manifest.json
 raw_flywire/
+
+# VPS/dashboard runtime overrides
+config.local.toml
