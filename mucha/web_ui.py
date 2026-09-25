@@ -33,7 +33,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 @media(max-width:900px){.grid{grid-template-columns:1fr}.fields{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 </style></head><body><main>
 <div class="top"><div><h1>⚙ Konfiguracja Muchy</h1><div class="sub">Zmiany są zapisywane do config.toml i stosowane na żywo.</div></div>
-<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
+<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
 <div class="grid">
 <div class="card"><h2>Język / szybkie uczenie</h2><div class="fields" id="language-fields"></div></div>
 <div class="card"><h2>Zachowanie i relacje</h2><div class="fields" id="behavior-fields"></div></div>
@@ -64,7 +64,7 @@ const fields={
   ["word_arousal_flatten","Losowość słów od arousal","number",0.01],
   ["char_frequency_exponent","Siła częstych przejść znaków","number",0.05],
   ["char_arousal_flatten","Losowość znaków od arousal","number",0.01],
-  ["word_reward_scale","Siła rewardu modelu słów","number",0.01]
+  ["word_reward_scale","Siła rewardu modelu słów","number",0.01],\n  ["connectome_word_control_enabled","Connectome steruje słowami","bool"],\n  ["connectome_word_control_min_vocab","Próg słownika dla connectome","number",50],\n  ["connectome_word_control_strength","Siła wpływu connectome na słowa","number",0.05],\n  ["connectome_word_control_candidates","Kandydaci słów oceniani przez connectome","number",1]
  ],
  behavior:[
   ["speak_threshold","Próg mówienia","number",0.01],
@@ -274,6 +274,211 @@ async function update(){
 setInterval(update,2000);update();
 </script></main></body></html>"""
 
+CONNECTOME_HTML = r"""<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mucha — Neural Connectome</title>
+<style>
+:root{
+ --bg:#05080d;--panel:#0b1119;--panel2:#080d14;--line:#1c2b3b;--txt:#edf7ff;--muted:#7890a5;
+ --cyan:#55ead0;--blue:#6da8ff;--violet:#b58cff;--pink:#ff78b7;--good:#56e39a;--warn:#ffd166;--bad:#ff7373;
+}
+*{box-sizing:border-box}
+body{margin:0;color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:
+ radial-gradient(circle at 18% -10%,rgba(85,234,208,.12),transparent 30%),
+ radial-gradient(circle at 82% 0%,rgba(109,168,255,.11),transparent 30%),
+ radial-gradient(circle at 52% 110%,rgba(181,140,255,.08),transparent 35%),
+ linear-gradient(180deg,#05080d,#081018 52%,#05090e)}
+body:before{content:"";position:fixed;inset:0;pointer-events:none;opacity:.22;background-image:
+ linear-gradient(rgba(255,255,255,.018) 1px,transparent 1px),
+ linear-gradient(90deg,rgba(255,255,255,.018) 1px,transparent 1px);background-size:34px 34px}
+main{max-width:1600px;margin:auto;padding:22px}
+.top{display:flex;justify-content:space-between;gap:16px;align-items:center;margin-bottom:16px}
+.brand{display:flex;align-items:center;gap:13px}.logo{font-size:37px;filter:drop-shadow(0 0 18px rgba(85,234,208,.32))}
+h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}
+.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#b9cad9;text-decoration:none;border:1px solid var(--line);background:#0b131c;padding:8px 11px;border-radius:10px;font-size:12px}
+.nav a:hover{border-color:#36536e;color:white}.nav a.active{background:linear-gradient(90deg,var(--cyan),#78e6d4);color:#03110d;border-color:var(--cyan);font-weight:850}
+.hero{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}
+.kpi,.card{background:linear-gradient(180deg,rgba(12,19,28,.96),rgba(8,14,21,.96));border:1px solid var(--line);border-radius:16px;box-shadow:0 16px 50px rgba(0,0,0,.18)}
+.kpi{padding:13px 14px;position:relative;overflow:hidden}.kpi:after{content:"";position:absolute;inset:auto -20px -28px auto;width:86px;height:86px;border-radius:50%;background:radial-gradient(circle,rgba(85,234,208,.10),transparent 70%)}
+.kpi small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}.kpi strong{font-size:18px}.kpi em{display:block;color:#9eb1c3;font-size:10px;font-style:normal;margin-top:4px}
+.grid{display:grid;grid-template-columns:minmax(0,2.1fr) minmax(330px,.9fr);gap:12px}.card{padding:14px;min-width:0}.card h2{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#9eb1c3}
+.card-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}.live{display:inline-flex;gap:7px;align-items:center;color:var(--good);font-size:10px;font-weight:800;letter-spacing:.1em}.live i{width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 15px var(--good);animation:pulse 1.2s infinite}
+@keyframes pulse{50%{opacity:.35;transform:scale(.75)}}
+.graph-wrap{position:relative;height:650px;overflow:hidden;border-radius:14px;border:1px solid #172535;background:
+ radial-gradient(circle at 50% 50%,rgba(109,168,255,.04),transparent 44%),
+ linear-gradient(180deg,#050a10,#07101a)}
+#net{width:100%;height:100%;display:block}.graph-label{position:absolute;top:10px;padding:5px 8px;border-radius:999px;background:rgba(5,10,16,.72);border:1px solid #1a2a39;color:#8198ac;font-size:9px;text-transform:uppercase;letter-spacing:.12em;backdrop-filter:blur(7px)}
+.gl-left{left:10px}.gl-mid{left:50%;transform:translateX(-50%)}.gl-right{right:10px}
+.tooltip{position:absolute;display:none;z-index:4;pointer-events:none;padding:9px 10px;border-radius:10px;background:rgba(4,9,14,.94);border:1px solid #29425a;box-shadow:0 10px 35px rgba(0,0,0,.4);font-size:11px;min-width:175px}.tooltip b{color:white}.tooltip span{color:#8ba0b3}
+.flow{display:grid;grid-template-columns:1fr 46px 1.35fr 46px 1fr 46px 1.2fr;gap:7px;align-items:center;margin-bottom:12px}
+.flowbox{min-height:92px;padding:11px;border-radius:14px;border:1px solid #1a2a39;background:#071019;position:relative;overflow:hidden}.flowbox:after{content:"";position:absolute;width:90px;height:90px;border-radius:50%;right:-35px;bottom:-45px;background:radial-gradient(circle,rgba(85,234,208,.09),transparent 70%)}
+.flowbox small{display:block;color:#758ca1;font-size:9px;text-transform:uppercase;letter-spacing:.12em;margin-bottom:6px}.flowbox strong{font-size:13px}.flowbox p{margin:5px 0 0;color:#8297aa;font-size:10px;line-height:1.45}
+.arrow{text-align:center;color:#44647d;font-size:22px;animation:arrow 1.6s ease-in-out infinite}@keyframes arrow{50%{color:var(--cyan);text-shadow:0 0 15px rgba(85,234,208,.6)}}
+.side{display:flex;flex-direction:column;gap:12px}.actions{display:flex;flex-direction:column;gap:8px}.act{display:grid;grid-template-columns:92px 1fr 42px;gap:8px;align-items:center;font-size:11px}.act label{color:#a9bac9}.track{height:8px;border-radius:999px;background:#050b11;border:1px solid #172636;overflow:hidden}.fill{height:100%;border-radius:999px;background:linear-gradient(90deg,var(--blue),var(--cyan));box-shadow:0 0 14px rgba(85,234,208,.22)}
+.readout{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{padding:10px;background:#071019;border:1px solid #172635;border-radius:11px}.mini small{display:block;color:#70879b;font-size:9px;text-transform:uppercase;letter-spacing:.1em}.mini strong{display:block;margin-top:4px;font-size:13px;word-break:break-word}
+.lang-status{padding:12px;border-radius:13px;border:1px solid #1a2d3e;background:linear-gradient(135deg,rgba(85,234,208,.06),rgba(109,168,255,.05))}
+.lang-top{display:flex;justify-content:space-between;align-items:center;gap:10px}.badge{padding:5px 8px;border-radius:999px;font-size:9px;font-weight:850;letter-spacing:.08em}.badge.on{background:rgba(86,227,154,.13);color:var(--good);border:1px solid rgba(86,227,154,.35)}.badge.wait{background:rgba(255,209,102,.10);color:var(--warn);border:1px solid rgba(255,209,102,.28)}
+.progress{height:8px;background:#050b11;border:1px solid #172636;border-radius:999px;overflow:hidden;margin:10px 0 5px}.progress div{height:100%;background:linear-gradient(90deg,var(--violet),var(--cyan));box-shadow:0 0 16px rgba(181,140,255,.25)}
+.muted{color:var(--muted);font-size:10px;line-height:1.5}
+table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;border-bottom:1px solid rgba(28,43,59,.58);text-align:left}th{color:#6f879c;font-weight:600}td{color:#b7c6d3}.plus{color:var(--cyan)}.minus{color:var(--pink)}
+.event{font:10px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;color:#9eb0c0;background:#060c12;border:1px solid #162536;border-radius:11px;padding:10px;word-break:break-word}
+.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;color:#7990a4;font-size:9px}.lg{display:inline-flex;align-items:center;gap:5px}.lg i{width:8px;height:8px;border-radius:50%}.sens{background:var(--cyan)}.internal{background:var(--blue)}.mod{background:var(--violet)}.out{background:var(--pink)}
+@media(max-width:1120px){.grid{grid-template-columns:1fr}.graph-wrap{height:560px}.hero{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:760px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.graph-wrap{height:500px}}
+</style>
+</head>
+<body><main>
+<div class="top">
+ <div class="brand"><div class="logo">🧬</div><div><h1>Neural Connectome</h1><div class="sub">Live funkcjonalny widok aktywnej części mózgu Muchy — nie jest to rekonstrukcja anatomiczna.</div></div></div>
+ <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a class="active" href="/connectome">🧬 Connectome</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
+</div>
+
+<section class="hero">
+ <div class="kpi"><small>Neurony</small><strong id="k-neurons">—</strong><em>pełny connectome</em></div>
+ <div class="kpi"><small>Połączenia</small><strong id="k-connections">—</strong><em>synapsy w macierzy</em></div>
+ <div class="kpi"><small>Aktywne |a| &gt; .1</small><strong id="k-active">—</strong><em>bieżący tick</em></div>
+ <div class="kpi"><small>Mean |activation|</small><strong id="k-mean">—</strong><em id="k-backend">backend —</em></div>
+ <div class="kpi"><small>Reward trace</small><strong id="k-reward">—</strong><em id="k-tick">tick —</em></div>
+</section>
+
+<section class="flow">
+ <div class="flowbox"><small>1 • INPUT</small><strong>Discord / Voice / słowa</strong><p>Bodźce trafiają do stabilnych populacji sensorycznych.</p></div>
+ <div class="arrow">→</div>
+ <div class="flowbox"><small>2 • PROPAGATION</small><strong>139k neuronów + 3.7M połączeń</strong><p>Aktywność rozchodzi się po prawdziwej topologii FlyWire i miesza z pamięcią/plastycznością.</p></div>
+ <div class="arrow">→</div>
+ <div class="flowbox"><small>3 • READOUT</small><strong>speak / explore / voice / react</strong><p>Populacje wyjściowe zamieniają stan mózgu na decyzje.</p></div>
+ <div class="arrow">→</div>
+ <div class="flowbox"><small>4 • LANGUAGE / ACTION</small><strong>generator + connectome</strong><p>Po rozbudowie słownika connectome może również zmieniać szanse konkretnych słów.</p></div>
+</section>
+
+<section class="grid">
+ <div class="card">
+  <div class="card-head"><h2>Live neural activity graph</h2><div class="live"><i></i><span id="live">LIVE</span></div></div>
+  <div class="graph-wrap" id="graph-wrap">
+   <canvas id="net"></canvas>
+   <div class="graph-label gl-left">sensory</div><div class="graph-label gl-mid">internal / modulatory</div><div class="graph-label gl-right">output</div>
+   <div class="tooltip" id="tip"></div>
+  </div>
+  <div class="legend"><span class="lg"><i class="sens"></i> sensory</span><span class="lg"><i class="internal"></i> internal</span><span class="lg"><i class="mod"></i> modulatory</span><span class="lg"><i class="out"></i> output</span><span>• rozmiar = |aktywacja| • jasność krawędzi = wpływ</span></div>
+ </div>
+
+ <div class="side">
+  <div class="card"><div class="card-head"><h2>Action readouts</h2><span class="muted">0 → 1</span></div><div class="actions" id="actions"></div></div>
+  <div class="card"><div class="card-head"><h2>Connectome → słowa</h2><span id="word-badge" class="badge wait">UCZY SŁOWNIK</span></div>
+   <div class="lang-status">
+    <div class="lang-top"><div><strong id="word-vocab">—</strong><div class="muted">unikalnych słów</div></div><div style="text-align:right"><strong id="word-eval">—</strong><div class="muted">ostatnio ocenionych kandydatów</div></div></div>
+    <div class="progress"><div id="word-progress" style="width:0%"></div></div>
+    <div class="muted" id="word-detail">—</div>
+   </div>
+  </div>
+  <div class="card"><div class="card-head"><h2>Current brain context</h2></div>
+   <div class="readout">
+    <div class="mini"><small>ostatni bodziec</small><strong id="event">—</strong></div>
+    <div class="mini"><small>ostatnia akcja</small><strong id="last-action">—</strong></div>
+    <div class="mini"><small>wybrane neurony</small><strong id="selected">—</strong></div>
+    <div class="mini"><small>krawędzie live</small><strong id="edges">—</strong></div>
+   </div>
+  </div>
+  <div class="card"><div class="card-head"><h2>Najaktywniejsze neurony</h2></div>
+   <table><thead><tr><th>root_id</th><th>rola</th><th>activation</th><th>bias</th></tr></thead><tbody id="node-table"></tbody></table>
+  </div>
+  <div class="card"><div class="card-head"><h2>Signal monitor</h2></div><div class="event" id="signal">czekam na dane…</div></div>
+ </div>
+</section>
+</main>
+<script>
+const $=id=>document.getElementById(id);
+const canvas=$("net"),ctx=canvas.getContext("2d"),wrap=$("graph-wrap"),tip=$("tip");
+let snap=null,layout={},hover=null,lastUpdate=0;
+const colors={sensory:"#55ead0",internal:"#6da8ff",modulatory:"#b58cff",output:"#ff78b7"};
+const nfmt=n=>Number(n||0).toLocaleString("pl-PL");
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
+function resize(){const r=wrap.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0)}
+function roleTarget(n,w,h){
+ const seed=hash(n.id),seed2=hash(n.id+"x");
+ if(n.role==="sensory")return {x:w*(.07+.12*seed),y:h*(.10+.80*seed2)};
+ if(n.role==="output")return {x:w*(.82+.11*seed),y:h*(.10+.80*seed2)};
+ if(n.role==="modulatory")return {x:w*(.35+.30*seed),y:h*(.08+.22*seed2)};
+ return {x:w*(.28+.45*seed),y:h*(.25+.64*seed2)};
+}
+function updateLayout(nodes){
+ const r=wrap.getBoundingClientRect();
+ for(const n of nodes){
+  const t=roleTarget(n,r.width,r.height);
+  if(!layout[n.id])layout[n.id]={x:t.x+(hash(n.id+"a")-.5)*20,y:t.y+(hash(n.id+"b")-.5)*20,tx:t.x,ty:t.y};
+  layout[n.id].tx=t.x;layout[n.id].ty=t.y;
+ }
+ const live=new Set(nodes.map(n=>n.id));for(const id of Object.keys(layout))if(!live.has(id))delete layout[id];
+}
+function drawGrid(w,h){
+ ctx.save();ctx.strokeStyle="rgba(73,108,137,.07)";ctx.lineWidth=1;
+ for(let x=24;x<w;x+=48){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,h);ctx.stroke()}
+ for(let y=24;y<h;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
+ ctx.restore();
+}
+function draw(){
+ requestAnimationFrame(draw);
+ const r=wrap.getBoundingClientRect(),w=r.width,h=r.height;ctx.clearRect(0,0,w,h);drawGrid(w,h);
+ if(!snap)return;
+ const v=snap.connectome_visual||{},nodes=v.nodes||[],edges=v.edges||[];
+ updateLayout(nodes);
+ for(const p of Object.values(layout)){p.x+=(p.tx-p.x)*.055;p.y+=(p.ty-p.y)*.055}
+ const byId=Object.fromEntries(nodes.map(n=>[n.id,n]));
+ let maxImp=.0001;for(const e of edges)maxImp=Math.max(maxImp,Number(e.importance||0));
+ const t=performance.now()/1000;
+ for(const e of edges){
+  const a=layout[e.source],b=layout[e.target];if(!a||!b)continue;
+  const q=clamp(Number(e.importance||0)/maxImp,0,1);
+  ctx.strokeStyle="rgba(90,151,197,"+(0.05+q*.34)+")";ctx.lineWidth=.45+q*1.35;
+  ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
+  const source=byId[e.source],act=Math.abs(Number(source&&source.activation||0));
+  if(act>.12&&q>.18){
+   const phase=(t*(.16+.48*q)+hash(e.source+e.target))%1;
+   const x=a.x+(b.x-a.x)*phase,y=a.y+(b.y-a.y)*phase;
+   ctx.fillStyle=colors[source.role]||colors.internal;ctx.globalAlpha=.35+.55*q;ctx.beginPath();ctx.arc(x,y,1.3+q*1.8,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+  }
+ }
+ hover=null;
+ for(const n of nodes){
+  const p=layout[n.id];if(!p)continue;const act=Math.abs(Number(n.activation||0)),rad=3.2+Math.min(9,act*11);
+  const c=colors[n.role]||colors.internal;
+  ctx.shadowColor=c;ctx.shadowBlur=5+act*16;ctx.fillStyle=c;ctx.globalAlpha=.38+Math.min(.62,act*.75);
+  ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;
+  if(mouse.inside){const dx=mouse.x-p.x,dy=mouse.y-p.y;if(dx*dx+dy*dy<(rad+8)*(rad+8))hover=n}
+ }
+ if(hover){const p=layout[hover.id];ctx.strokeStyle="#ffffff";ctx.lineWidth=1;ctx.globalAlpha=.8;ctx.beginPath();ctx.arc(p.x,p.y,12+Math.abs(Number(hover.activation||0))*8,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
+}
+const mouse={x:0,y:0,inside:false};
+canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.inside=true;if(hover){tip.style.display="block";tip.style.left=Math.min(r.width-195,mouse.x+14)+"px";tip.style.top=Math.min(r.height-120,mouse.y+14)+"px";tip.innerHTML="<b>"+hover.id+"</b><br><span>"+hover.role+"</span><br>activation "+Number(hover.activation||0).toFixed(5)+"<br>eligibility "+Number(hover.eligibility||0).toFixed(5)+"<br>bias "+Number(hover.bias||0).toFixed(5)}else tip.style.display="none"});
+canvas.addEventListener("mouseleave",()=>{mouse.inside=false;tip.style.display="none"});
+function renderActions(scores){
+ const order=["speak","explore","react","voice_join","voice_move","voice_leave","stay"];
+ $("actions").innerHTML=order.map(k=>{const v=clamp(Number(scores[k]||0),0,1);return '<div class="act"><label>'+k+'</label><div class="track"><div class="fill" style="width:'+(v*100).toFixed(1)+'%"></div></div><b>'+v.toFixed(2)+'</b></div>'}).join("");
+}
+function render(s){
+ snap=s;const d=s.diag||{},v=s.connectome_visual||{},ld=s.language_diag||{},cw=ld.connectome_word_control_last||{};
+ $("k-neurons").textContent=nfmt(d.neurons);$("k-connections").textContent=nfmt(d.connections);$("k-active").textContent=nfmt(d.active_abs_gt_0_1);$("k-mean").textContent=Number(d.mean_abs||0).toFixed(5);$("k-reward").textContent=Number(d.reward_trace||0).toFixed(3);$("k-backend").textContent=(d.backend||"—")+" • "+(d.device||"");$("k-tick").textContent="tick "+nfmt(d.ticks);
+ $("selected").textContent=nfmt(v.selected_neurons);$("edges").textContent=nfmt(v.selected_edges);$("event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";renderActions(s.scores||{});
+ const vocab=Number(ld.word_vocab||0),min=Number(ld.connectome_word_control_min_vocab||1),ready=!!ld.connectome_word_control_ready,pct=clamp(vocab/min*100,0,100);
+ $("word-vocab").textContent=nfmt(vocab)+" / "+nfmt(min);$("word-progress").style.width=pct.toFixed(1)+"%";$("word-badge").textContent=ready?"AKTYWNY":"UCZY SŁOWNIK";$("word-badge").className="badge "+(ready?"on":"wait");
+ $("word-eval").textContent=nfmt(cw.evaluated||0);$("word-detail").textContent="Siła wpływu: "+Number(ld.connectome_word_control_strength||0).toFixed(2)+" • średni ostatni score: "+Number(cw.mean_score||.5).toFixed(3)+" • generator: "+(ld.last_generator||"—");
+ const nodes=(v.nodes||[]).slice().sort((a,b)=>Math.abs(Number(b.activation))-Math.abs(Number(a.activation))).slice(0,12);
+ $("node-table").innerHTML=nodes.map(n=>'<tr><td>'+n.id+'</td><td>'+n.role+'</td><td class="'+(Number(n.activation)>=0?"plus":"minus")+'">'+(Number(n.activation)>=0?"+":"")+Number(n.activation).toFixed(4)+'</td><td>'+Number(n.bias||0).toFixed(5)+'</td></tr>').join("")||'<tr><td colspan="4">Brak danych.</td></tr>';
+ $("signal").textContent="INPUT  "+(s.last_event||"—")+"\nCONNECTOME  mean |a| "+Number(d.mean_abs||0).toFixed(5)+" / max "+Number(d.max_abs||0).toFixed(5)+"\nREADOUT  speak "+Number((s.scores||{}).speak||0).toFixed(3)+" / explore "+Number((s.scores||{}).explore||0).toFixed(3)+"\nOUTPUT  "+(s.last_action||"—");
+ lastUpdate=Date.now();$("live").textContent="LIVE";
+}
+async function update(){
+ try{const r=await fetch("/api/state",{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}
+ catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}
+}
+window.addEventListener("resize",resize);resize();draw();setInterval(update,800);update();
+</script>
+</body></html>"""
+
 LOGIN_HTML = r"""<!doctype html>
 <html lang="pl">
 <head>
@@ -350,7 +555,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
 <body><main>
 <div class="top">
   <div class="brand"><div class="logo">🪰</div><div><h1>Mucha Control Center</h1><div class="sub">VPS • Discord • Connectome • Chaser • Audio</div></div></div>
-  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
+  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
@@ -1230,6 +1435,7 @@ class WebDashboard:
         app.router.add_get("/", self._index)
         app.router.add_get("/details", self._details)
         app.router.add_get("/affinity", self._affinity_page)
+        app.router.add_get("/connectome", self._connectome_page)
         app.router.add_get("/config", self._config_page)
         app.router.add_get("/brain", self._brain)
         app.router.add_get("/login", self._login_get)
@@ -1277,6 +1483,9 @@ class WebDashboard:
     async def _config_page(self, request: web.Request) -> web.Response:
         return web.Response(text=CONFIG_HTML, content_type="text/html")
 
+    async def _connectome_page(self, request: web.Request) -> web.Response:
+        return web.Response(text=CONNECTOME_HTML, content_type="text/html")
+
     async def _config_get(self, request: web.Request) -> web.Response:
         if self.config_provider is None:
             raise web.HTTPServiceUnavailable(text="config provider unavailable")
@@ -1305,7 +1514,7 @@ class WebDashboard:
             )
 
     async def _brain(self, request: web.Request) -> web.StreamResponse:
-        raise web.HTTPFound("/details")
+        raise web.HTTPFound("/connectome")
 
     async def _login_get(self, request: web.Request) -> web.Response:
         if self._is_authenticated(request):
