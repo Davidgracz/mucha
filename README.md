@@ -94,29 +94,42 @@ python bot.py
 
 ## 4. Jak uczy się pisać
 
-Model języka jest pusty na pierwszym starcie. Nie ma słownika, listy gotowych słów, zdań ani pretreningu.
+Model języka nadal nie korzysta z ChatGPT ani innego pretrenowanego LLM. Uczy się online wyłącznie z wiadomości Discord, transkrypcji STT i późniejszego feedbacku.
 
-Każda zwykła wiadomość użytkownika aktualizuje online model przejść **znak po znaku** w `state/language.sqlite3`. Generator nie wybiera gotowych słów z tabeli — każdą wypowiedź składa litera po literze na podstawie wyuczonych przejść znakowych. Dlatego na początku wynik może przypominać bełkot, a wraz z obserwacją większej liczby rozmów powinny pojawiać się coraz bardziej naturalne fragmenty i słowa.
+Aktualny generator jest hybrydowy:
 
-Stare tabele word-level (`unigram`, `bigram`, `trigram`) mogą pozostać w istniejącej bazie po aktualizacji, ale nowy generator ich nie używa. Nowe uczenie korzysta wyłącznie z tabel `char_*`, które przy pierwszym uruchomieniu są puste.
+- `char_unigram/bigram/trigram` uczą pisowni i pozwalają składać nowe formy znak po znaku,
+- `word_unigram/bigram/trigram` uczą kolejności całych słów i dzięki temu szybciej tworzą sensowne krótkie wypowiedzi,
+- `word_starts` zapamiętuje typowe początki,
+- specjalny znacznik końca wypowiedzi uczy model, kiedy zakończyć zdanie zamiast doklejać losowe słowa,
+- świeżo zaobserwowane przejścia słów dostają tymczasowy `recent boost`, który stopniowo zanika.
 
-Domyślnie Mucha dopuści generowanie dopiero po:
+Każda wiadomość lub transkrypcja aktualizuje oba poziomy pamięci w `state/language.sqlite3` od razu. Domyślnie generator próbuje użyć modelu słów z prawdopodobieństwem 0.90, a model znakowy pozostaje fallbackiem i źródłem bardziej eksperymentalnych form.
 
-- 1200 zaobserwowanych znakach,
-- 18 różnych znakach.
-
-Konfiguracja:
+Domyślna konfiguracja:
 
 ```toml
 [language]
-min_chars_before_speaking = 1200
-min_unique_chars_before_speaking = 18
-max_generated_chars = 220
+min_chars_before_speaking = 800
+min_unique_chars_before_speaking = 16
+max_generated_chars = 120
+hybrid_word_enabled = true
+word_model_probability = 0.90
+word_max_tokens = 14
+word_recent_window_seconds = 3600
+word_recent_boost = 2.00
+word_frequency_exponent = 0.95
+word_arousal_flatten = 0.12
+char_frequency_exponent = 0.90
+char_arousal_flatten = 0.15
+word_reward_scale = 0.12
 ```
 
-Stary `config.toml` z polami `min_tokens_before_speaking`, `min_unique_tokens_before_speaking` i `max_generated_tokens` jest automatycznie mapowany przy starcie na ustawienia modelu znakowego.
+Pozytywny/negatywny feedback wzmacnia lub osłabia zarówno wykorzystane przejścia znakowe, jak i znane przejścia słów. Bezpośredni reply człowieka do wypowiedzi Muchy daje również małe wzmocnienie tej konkretnej wypowiedzi językowej.
 
-Pozytywny lub negatywny feedback pod wypowiedzią Muchy wzmacnia albo osłabia konkretne trójki znaków użyte podczas generowania oraz odpowiedni ślad uczenia w connectome.
+Stare tabele `unigram/bigram/trigram/starts`, jeśli istnieją w bazie z wcześniejszej wersji, są jednorazowo używane do zasilenia nowego modelu słów. Nie dostają jednak bonusu świeżości, więc nowe rozmowy mogą szybko zacząć wpływać na aktualne zachowanie.
+
+W `/details` widać rozmiar słownika, liczbę word-bigramów i word-trigramów oraz czy ostatnia wypowiedź pochodziła z generatora `words` czy `characters`. W `/config` wszystkie parametry hybrydowego języka można zmieniać na żywo.
 
 ## 5. Voice
 
@@ -474,7 +487,7 @@ Gdy Mucha siedzi na voice, co 10 sekund dostaje okazję do powiedzenia czegoś. 
 Jeśli chce mówić:
 
 1. connectome dostaje bodziec `voice:tts-opportunity:guild:<id>`,
-2. ten sam character-level generator, który tworzy wiadomości tekstowe, składa wypowiedź znak po znaku,
+2. ten sam hybrydowy generator słowo+znak, który tworzy wiadomości tekstowe, generuje treść,
 3. ostatnia wiadomość tekstowa z tego samego serwera jest używana jako kontekst,
 4. lokalny `pyttsx3` generuje WAV,
 5. Discord odtwarza WAV przez FFmpeg na aktualnym voice.
@@ -684,7 +697,7 @@ stt_beam_size = 1
 
 Model jest ładowany w tle po starcie. Przy pierwszym uruchomieniu może zostać pobrany do `state/whisper`.
 
-Surowe audio użytkowników nie jest zapisywane jako pliki. PCM jest trzymane tymczasowo w RAM na czas krótkiego segmentu i usuwane po przekazaniu go do transkrypcji. Rozpoznany tekst trafia do tego samego character-level uczenia, z którego Mucha korzysta dla wiadomości tekstowych.
+Surowe audio użytkowników nie jest zapisywane jako pliki. PCM jest trzymane tymczasowo w RAM na czas krótkiego segmentu i usuwane po przekazaniu go do transkrypcji. Rozpoznany tekst trafia do tego samego hybrydowego uczenia słów i znaków, z którego Mucha korzysta dla wiadomości tekstowych.
 
 Connectome dostaje m.in.:
 
