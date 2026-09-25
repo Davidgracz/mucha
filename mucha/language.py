@@ -7,6 +7,7 @@ import sqlite3
 import time
 from collections import Counter
 from pathlib import Path
+from typing import Callable
 
 MENTION_RE = re.compile(r"<@!?\d+>|<@&\d+>|<#\d+>")
 URL_RE = re.compile(r"https?://\S+", re.I)
@@ -48,6 +49,10 @@ class OnlineLanguage:
         char_frequency_exponent: float = 0.90,
         char_arousal_flatten: float = 0.15,
         word_reward_scale: float = 0.12,
+        connectome_word_control_enabled: bool = True,
+        connectome_word_control_min_vocab: int = 1500,
+        connectome_word_control_strength: float = 0.35,
+        connectome_word_control_candidates: int = 24,
     ):
         self.path = Path(db_path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
@@ -89,6 +94,29 @@ class OnlineLanguage:
             0.0,
             min(1.0, float(word_reward_scale)),
         )
+        self.connectome_word_control_enabled = bool(
+            connectome_word_control_enabled
+        )
+        self.connectome_word_control_min_vocab = max(
+            8,
+            int(connectome_word_control_min_vocab),
+        )
+        self.connectome_word_control_strength = max(
+            0.0,
+            min(2.0, float(connectome_word_control_strength)),
+        )
+        self.connectome_word_control_candidates = max(
+            4,
+            min(96, int(connectome_word_control_candidates)),
+        )
+        self._brain_word_control_last: dict = {
+            "active": False,
+            "ready": False,
+            "vocab": 0,
+            "min_vocab": self.connectome_word_control_min_vocab,
+            "evaluated": 0,
+            "mean_score": 0.5,
+        }
         self._last_generator = "none"
         self._init_schema()
         self._bootstrap_from_legacy_words()
@@ -628,6 +656,25 @@ class OnlineLanguage:
             "last_generator": self._last_generator,
             "word_model_probability": self.word_model_probability,
             "word_recent_boost": self.word_recent_boost,
+            "connectome_word_control_enabled": (
+                self.connectome_word_control_enabled
+            ),
+            "connectome_word_control_ready": bool(
+                self.connectome_word_control_enabled
+                and word_vocab >= self.connectome_word_control_min_vocab
+            ),
+            "connectome_word_control_min_vocab": (
+                self.connectome_word_control_min_vocab
+            ),
+            "connectome_word_control_strength": (
+                self.connectome_word_control_strength
+            ),
+            "connectome_word_control_candidates": (
+                self.connectome_word_control_candidates
+            ),
+            "connectome_word_control_last": dict(
+                self._brain_word_control_last
+            ),
             "legacy_bootstrap_chars": int(legacy_chars_row[0]) if legacy_chars_row else 0,
             "legacy_bootstrap_items": int(legacy_items_row[0]) if legacy_items_row else 0,
             "ready": self.ready(),
@@ -854,6 +901,7 @@ class OnlineLanguage:
         self,
         context: str,
         arousal: float,
+        brain_word_score: Callable[[str], float] | None = None,
     ) -> str | None:
         if not self.hybrid_word_enabled:
             return None
@@ -865,6 +913,43 @@ class OnlineLanguage:
         )
         if vocab < 8:
             return None
+
+        brain_ready = bool(
+            self.connectome_word_control_enabled
+            and vocab >= self.connectome_word_control_min_vocab
+        )
+        brain_active = bool(
+            brain_ready
+            and brain_word_score is not None
+            and self.connectome_word_control_strength > 0.0
+        )
+        brain_score_cache: dict[str, float] = {}
+        brain_scores_used: list[float] = []
+        self._brain_word_control_last = {
+            "active": brain_active,
+            "ready": brain_ready,
+            "vocab": vocab,
+            "min_vocab": self.connectome_word_control_min_vocab,
+            "evaluated": 0,
+            "mean_score": 0.5,
+        }
+
+        def get_brain_score(token: str) -> float:
+            if not brain_active or brain_word_score is None:
+                return 0.5
+            cached = brain_score_cache.get(token)
+            if cached is not None:
+                return cached
+            try:
+                score = max(
+                    0.0,
+                    min(1.0, float(brain_word_score(token))),
+                )
+            except Exception:
+                score = 0.5
+            brain_score_cache[token] = score
+            brain_scores_used.append(score)
+            return score
 
         arousal = max(0.0, min(1.0, float(arousal)))
         ctx = self.words(context)
@@ -948,6 +1033,30 @@ class OnlineLanguage:
 
             if not combined:
                 return None
+
+            if brain_active:
+                ranked = sorted(
+                    combined.items(),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )
+                adjusted = dict(combined)
+                checked = 0
+                for token, base_weight in ranked:
+                    if token in punctuation or token == WORD_END:
+                        continue
+                    score = get_brain_score(token)
+                    centered = (score - 0.5) * 2.0
+                    multiplier = math.exp(
+                        self.connectome_word_control_strength
+                        * centered
+                    )
+                    adjusted[token] = base_weight * multiplier
+                    checked += 1
+                    if checked >= self.connectome_word_control_candidates:
+                        break
+                combined = adjusted
+
             return self._weighted_choice(list(combined.items()))
 
         def source_weights(
@@ -1124,6 +1233,16 @@ class OnlineLanguage:
                 text = text[:last_space]
             text = text.rstrip(" ,;:")
 
+        if brain_active:
+            self._brain_word_control_last["evaluated"] = len(
+                brain_score_cache
+            )
+            self._brain_word_control_last["mean_score"] = (
+                sum(brain_scores_used) / len(brain_scores_used)
+                if brain_scores_used
+                else 0.5
+            )
+
         return text
 
     def _word_output_too_close_to_context(
@@ -1167,6 +1286,7 @@ class OnlineLanguage:
         self,
         context: str = "",
         arousal: float = 0.5,
+        brain_word_score: Callable[[str], float] | None = None,
     ) -> tuple[str | None, list[tuple[str, str, str]]]:
         if not self.ready():
             self._last_generator = "not-ready"
@@ -1178,7 +1298,11 @@ class OnlineLanguage:
         ):
             word_text = None
             for attempt in range(4):
-                candidate = self._generate_words(context, arousal)
+                candidate = self._generate_words(
+                    context,
+                    arousal,
+                    brain_word_score=brain_word_score,
+                )
                 if not candidate:
                     continue
                 word_text = candidate
