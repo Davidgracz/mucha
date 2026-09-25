@@ -129,6 +129,40 @@ class OnlineLanguage:
                 v INTEGER NOT NULL
             );
 
+            CREATE TABLE IF NOT EXISTS word_unigram(
+                token TEXT PRIMARY KEY,
+                n INTEGER NOT NULL,
+                reward REAL NOT NULL DEFAULT 0,
+                last_seen REAL NOT NULL DEFAULT 0
+            );
+
+            CREATE TABLE IF NOT EXISTS word_bigram(
+                a TEXT NOT NULL,
+                b TEXT NOT NULL,
+                n INTEGER NOT NULL,
+                reward REAL NOT NULL DEFAULT 0,
+                last_seen REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY(a,b)
+            );
+
+            CREATE TABLE IF NOT EXISTS word_trigram(
+                a TEXT NOT NULL,
+                b TEXT NOT NULL,
+                c TEXT NOT NULL,
+                n INTEGER NOT NULL,
+                reward REAL NOT NULL DEFAULT 0,
+                last_seen REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY(a,b,c)
+            );
+
+            CREATE TABLE IF NOT EXISTS word_starts(
+                a TEXT NOT NULL,
+                b TEXT NOT NULL,
+                n INTEGER NOT NULL,
+                last_seen REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY(a,b)
+            );
+
             CREATE TABLE IF NOT EXISTS social_user_affinity(
                 user_id INTEGER PRIMARY KEY,
                 display_name TEXT NOT NULL DEFAULT '',
@@ -292,6 +326,111 @@ class OnlineLanguage:
         cur.execute(
             "INSERT INTO char_stats(k,v) VALUES('legacy_bootstrap_v1',1) "
             "ON CONFLICT(k) DO UPDATE SET v=1"
+        )
+        self.db.commit()
+
+    def _bootstrap_word_model_from_legacy(self) -> None:
+        done = self.db.execute(
+            "SELECT v FROM char_stats WHERE k='hybrid_word_bootstrap_v1'"
+        ).fetchone()
+        if done:
+            return
+
+        now = time.time()
+        cur = self.db.cursor()
+        imported = 0
+
+        if self._table_exists("unigram"):
+            for token, n in self.db.execute(
+                "SELECT token,n FROM unigram ORDER BY n DESC LIMIT 10000"
+            ).fetchall():
+                token = str(token or "").strip().lower()
+                if not token:
+                    continue
+                count = max(1, min(50, int(n)))
+                cur.execute(
+                    "INSERT INTO word_unigram(token,n,reward,last_seen) "
+                    "VALUES(?,?,0,?) "
+                    "ON CONFLICT(token) DO UPDATE SET "
+                    "n=word_unigram.n+excluded.n, "
+                    "last_seen=MAX(word_unigram.last_seen,excluded.last_seen)",
+                    (token, count, now),
+                )
+                imported += 1
+
+        if self._table_exists("bigram"):
+            for a, b, n in self.db.execute(
+                "SELECT a,b,n FROM bigram ORDER BY n DESC LIMIT 20000"
+            ).fetchall():
+                a = str(a or "").strip().lower()
+                b = str(b or "").strip().lower()
+                if not a or not b:
+                    continue
+                count = max(1, min(30, int(n)))
+                cur.execute(
+                    "INSERT INTO word_bigram(a,b,n,reward,last_seen) "
+                    "VALUES(?,?,?,0,?) "
+                    "ON CONFLICT(a,b) DO UPDATE SET "
+                    "n=word_bigram.n+excluded.n, "
+                    "last_seen=MAX(word_bigram.last_seen,excluded.last_seen)",
+                    (a, b, count, now),
+                )
+                imported += 1
+
+        if self._table_exists("trigram"):
+            try:
+                rows = self.db.execute(
+                    "SELECT a,b,c,n FROM trigram "
+                    "ORDER BY n DESC LIMIT 30000"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                rows = []
+            for a, b, cc, n in rows:
+                a = str(a or "").strip().lower()
+                b = str(b or "").strip().lower()
+                cc = str(cc or "").strip().lower()
+                if not a or not b or not cc:
+                    continue
+                count = max(1, min(20, int(n)))
+                cur.execute(
+                    "INSERT INTO word_trigram(a,b,c,n,reward,last_seen) "
+                    "VALUES(?,?,?,?,0,?) "
+                    "ON CONFLICT(a,b,c) DO UPDATE SET "
+                    "n=word_trigram.n+excluded.n, "
+                    "last_seen=MAX(word_trigram.last_seen,excluded.last_seen)",
+                    (a, b, cc, count, now),
+                )
+                imported += 1
+
+        if self._table_exists("starts"):
+            try:
+                rows = self.db.execute(
+                    "SELECT a,b,n FROM starts ORDER BY n DESC LIMIT 5000"
+                ).fetchall()
+            except sqlite3.OperationalError:
+                rows = []
+            for a, b, n in rows:
+                a = str(a or "").strip().lower()
+                b = str(b or "").strip().lower()
+                if not a:
+                    continue
+                if not b:
+                    b = "."
+                count = max(1, min(20, int(n)))
+                cur.execute(
+                    "INSERT INTO word_starts(a,b,n,last_seen) "
+                    "VALUES(?,?,?,?) "
+                    "ON CONFLICT(a,b) DO UPDATE SET "
+                    "n=word_starts.n+excluded.n, "
+                    "last_seen=MAX(word_starts.last_seen,excluded.last_seen)",
+                    (a, b, count, now),
+                )
+
+        cur.execute(
+            "INSERT INTO char_stats(k,v) "
+            "VALUES('hybrid_word_bootstrap_v1',?) "
+            "ON CONFLICT(k) DO UPDATE SET v=excluded.v",
+            (max(1, imported),),
         )
         self.db.commit()
 
