@@ -92,6 +92,9 @@ move_margin = 0.05
 blocked_voice_channel_ids = [
   919905503465836594,
 ]
+blocked_voice_guild_ids = [
+  1552972475170689146,
+]
 include_empty_channels = true
 exclude_afk_channel = true
 
