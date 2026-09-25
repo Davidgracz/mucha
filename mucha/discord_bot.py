@@ -275,6 +275,7 @@ class MuchaClient(discord.Client):
         self.web_ui = WebDashboard(
             snapshot_provider=self._console_snapshot,
             connectome_provider=self._connectome_dashboard_snapshot,
+            neuromap_provider=self._neuromap_dashboard_snapshot,
             host=cfg.web_ui.host,
             port=cfg.web_ui.port,
             auto_open=cfg.web_ui.auto_open,
@@ -3376,6 +3377,27 @@ class MuchaClient(discord.Client):
                 edge_limit=150 if follow_activity else 190,
                 follow_activity=follow_activity,
             )
+
+    async def _neuromap_dashboard_snapshot(
+        self,
+        projection: str = "xy",
+    ) -> dict:
+        async with self._brain_lock:
+            brain_map = self.brain.neuro_map_snapshot(
+                count=220,
+                projection=projection,
+            )
+            scores = self.brain.action_scores()
+
+        language_diag = self.language.diagnostics()
+        return {
+            "brain_map": brain_map,
+            "scores": scores,
+            "last_event": self._last_brain_event,
+            "last_action": self._last_brain_action,
+            "language_diag": language_diag,
+            "source": self.connectome.metadata.get("source", "unknown"),
+        }
 
     async def _console_snapshot(self) -> dict:
         async with self._brain_lock:
