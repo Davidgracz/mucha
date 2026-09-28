@@ -401,6 +401,8 @@ class MuchaClient(discord.Client):
             "reward_opportunity_max_strength",
             "reward_opportunity_success_chance",
             "reward_opportunity_reward",
+            "reward_opportunity_stay_punish",
+            "reward_opportunity_stay_punish_interval_seconds",
             "minimum_dwell_seconds",
             "maximum_dwell_seconds",
             "move_threshold",
@@ -650,6 +652,12 @@ class MuchaClient(discord.Client):
             ),
             ("voice", "reward_opportunity_reward"): (
                 float, 0.0, 1.0
+            ),
+            ("voice", "reward_opportunity_stay_punish"): (
+                float, 0.0, 0.5
+            ),
+            ("voice", "reward_opportunity_stay_punish_interval_seconds"): (
+                int, 5, 3600
             ),
             ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
             ("voice", "maximum_dwell_seconds"): (int, 1, 86400),
