@@ -216,6 +216,7 @@ class MuchaClient(discord.Client):
             "updated_at": 0.0,
         }
         self._last_overstay_punish: dict[int, float] = {}
+        self._last_social_drive_punish: dict[int, float] = {}
         self._deadly_voice_until: dict[tuple[int, int], float] = {}
         self._voice_last_visit: dict[tuple[int, int], float] = {}
         self._chaser_follow_state: dict[tuple[int, int], dict] = {}
@@ -5537,7 +5538,10 @@ class MuchaClient(discord.Client):
         chaser_remaining = self._chaser_panic_remaining(guild.id, now)
         chaser_id = self._chaser_confirmed.get(guild.id)
         chaser_active = chaser_remaining > 0.0
-        arrived = self.voice_arrived.get(guild.id, now)
+        arrived = self.voice_arrived.setdefault(
+            guild.id,
+            now,
+        )
         if current is not None:
             self._voice_last_visit.setdefault((guild.id, current.id), arrived)
         dwell_elapsed = max(0.0, now - arrived)
@@ -5578,6 +5582,17 @@ class MuchaClient(discord.Client):
             "dwell_remaining": dwell_remaining,
             "overstay_seconds": overstay_seconds,
             "overstay_punished": False,
+            "outside_seconds": (
+                dwell_elapsed
+                if current is None
+                else 0.0
+            ),
+            "available_humans": 0,
+            "social_drive_active": False,
+            "social_drive_level": 0.0,
+            "social_drive_stay_punished": False,
+            "social_drive_stay_punish_amount": 0.0,
+            "social_join_reward": 0.0,
             "threat_active": threat_active,
             "threat_level": threat_level,
             "chaser_active": chaser_active,
@@ -5766,6 +5781,52 @@ class MuchaClient(discord.Client):
             self._voice_debug[guild.id] = debug
             return
 
+        available_human_ids = {
+            int(member.id)
+            for _, humans in channels
+            for member in humans
+        }
+        available_humans = len(available_human_ids)
+        outside_seconds = (
+            dwell_elapsed
+            if current is None
+            else 0.0
+        )
+        social_drive_level = 0.0
+        if (
+            connectome_voice_control
+            and self.cfg.voice.social_drive_enabled
+            and current is None
+            and available_humans > 0
+            and not chaser_active
+        ):
+            start_after = max(
+                0.0,
+                float(
+                    self.cfg.voice.social_drive_start_seconds
+                ),
+            )
+            ramp = max(
+                1.0,
+                float(
+                    self.cfg.voice.social_drive_ramp_seconds
+                ),
+            )
+            social_drive_level = max(
+                0.0,
+                min(
+                    1.0,
+                    (outside_seconds - start_after) / ramp,
+                ),
+            )
+
+        debug["outside_seconds"] = outside_seconds
+        debug["available_humans"] = available_humans
+        debug["social_drive_level"] = social_drive_level
+        debug["social_drive_active"] = bool(
+            social_drive_level > 0.0
+        )
+
         alternatives_count = sum(
             1
             for ch, _ in channels
@@ -5830,6 +5891,12 @@ class MuchaClient(discord.Client):
                     human_count=len(current_humans),
                     disliked_strength=disliked_strength,
                     alternatives=alternatives_count,
+                    outside_seconds=outside_seconds,
+                    available_humans=available_humans,
+                    social_drive_level=social_drive_level,
+                    social_drive_magnitude=float(
+                        self.cfg.voice.social_drive_max_magnitude
+                    ),
                 )
                 self.brain.step(
                     max(
@@ -5862,6 +5929,78 @@ class MuchaClient(discord.Client):
                 ch.id: self.brain.channel_affinity(guild.id, ch.id)
                 for ch, _ in channels
             }
+
+        if (
+            connectome_voice_control
+            and brain_decision is not None
+            and current is None
+            and social_drive_level > 0.0
+            and brain_decision["action"] == "stay"
+            and decision_trace is not None
+        ):
+            interval = max(
+                5.0,
+                float(
+                    self.cfg.voice.social_drive_learning_interval_seconds
+                ),
+            )
+            last_social_punish = (
+                self._last_social_drive_punish.get(
+                    guild.id,
+                    0.0,
+                )
+            )
+            if now - last_social_punish >= interval:
+                punish_amount = max(
+                    0.0,
+                    min(
+                        0.5,
+                        float(
+                            self.cfg.voice.social_drive_stay_punish
+                        )
+                        * social_drive_level,
+                    ),
+                )
+                if punish_amount > 0.0:
+                    async with self._brain_lock:
+                        self.brain.reward(
+                            -punish_amount,
+                            action="stay",
+                            trace=decision_trace,
+                        )
+                        self.brain.step(1)
+                        brain_decision = (
+                            self.brain.voice_action_decision(
+                                connected=False,
+                                can_join=bool(channels),
+                            )
+                        )
+                        scores = dict(
+                            brain_decision["scores"]
+                        )
+                        decision_trace = (
+                            self.brain.capture_learning_trace()
+                        )
+                        affinities = {
+                            ch.id: self.brain.channel_affinity(
+                                guild.id,
+                                ch.id,
+                            )
+                            for ch, _ in channels
+                        }
+                    self._last_social_drive_punish[
+                        guild.id
+                    ] = now
+                    debug["social_drive_stay_punished"] = True
+                    debug[
+                        "social_drive_stay_punish_amount"
+                    ] = -punish_amount
+                    self._record_reward(
+                        -punish_amount,
+                        "stay",
+                        "neural social drive outside voice",
+                        guild,
+                    )
 
         if brain_decision is not None:
             debug["brain_decision"] = {
@@ -5976,6 +6115,41 @@ class MuchaClient(discord.Client):
                 else:
                     async with self._brain_lock:
                         learning_trace = self.brain.capture_learning_trace()
+                if (
+                    connectome_voice_control
+                    and social_drive_level > 0.0
+                    and learning_trace is not None
+                ):
+                    join_reward = max(
+                        0.0,
+                        min(
+                            1.0,
+                            float(
+                                self.cfg.voice.social_join_reward
+                            )
+                            * (
+                                0.50
+                                + 0.50 * social_drive_level
+                            ),
+                        ),
+                    )
+                    if join_reward > 0.0:
+                        async with self._brain_lock:
+                            self.brain.reward(
+                                join_reward,
+                                action="voice_join",
+                                trace=learning_trace,
+                            )
+                            self.brain.step(1)
+                        debug["social_join_reward"] = (
+                            join_reward
+                        )
+                        self._record_reward(
+                            join_reward,
+                            "voice_join",
+                            "neural social drive join",
+                            guild,
+                        )
                 self._set_reinforceable(
                     guild,
                     "voice_join",
