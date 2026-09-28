@@ -2192,21 +2192,30 @@ class FlyBrain:
             return [int(pool[i]) for i in order[:k]]
 
         def active_selection(limit: int) -> list[int]:
+            """Choose active neurons plus real neighbors that connect them.
+
+            The old graph selected every visible dot independently, then drew
+            only edges whose two endpoints happened to be selected. In a
+            139k-node sparse graph this made many output dots look isolated.
+            Here ~60% of the view is activity-driven and the rest is filled by
+            actual presynaptic/postsynaptic neighbors of those core neurons.
+            """
             limit = max(12, min(int(limit), 80, self.c.n_neurons))
-            sensory_n = max(4, limit // 6)
-            output_n = max(5, limit // 5)
-            modulatory_n = max(3, limit // 10)
+            core_limit = max(12, min(limit, int(round(limit * 0.60))))
+            sensory_n = max(4, core_limit // 6)
+            output_n = max(5, core_limit // 5)
+            modulatory_n = max(3, core_limit // 10)
 
-            selected: list[int] = []
-            selected.extend(strongest(self.c.sensory, sensory_n))
-            selected.extend(strongest(self.c.output, output_n))
-            selected.extend(strongest(self.c.modulatory, modulatory_n))
+            core: list[int] = []
+            core.extend(strongest(self.c.sensory, sensory_n))
+            core.extend(strongest(self.c.output, output_n))
+            core.extend(strongest(self.c.modulatory, modulatory_n))
 
-            remaining = max(0, limit - len(set(selected)))
-            if remaining:
+            core_remaining = max(0, core_limit - len(set(core)))
+            if core_remaining:
                 k = min(
                     self.c.n_neurons,
-                    max(limit * 4, remaining),
+                    max(core_limit * 4, core_remaining),
                 )
                 if k >= self.c.n_neurons:
                     candidates = np.argsort(abs_state)[::-1]
@@ -2215,18 +2224,109 @@ class FlyBrain:
                     candidates = part[
                         np.argsort(abs_state[part])[::-1]
                     ]
-                selected.extend(int(i) for i in candidates)
+                core.extend(int(i) for i in candidates)
 
-            unique: list[int] = []
+            selected: list[int] = []
             seen: set[int] = set()
-            for idx in selected:
+            for idx in core:
                 if idx in seen:
                     continue
                 seen.add(idx)
-                unique.append(idx)
-                if len(unique) >= limit:
+                selected.append(idx)
+                if len(selected) >= core_limit:
                     break
-            return unique
+
+            neighbor_rank: dict[int, float] = {}
+
+            # Strong presynaptic partners make the path INTO pink/output
+            # neurons visible instead of showing an isolated output dot.
+            output_core = np.asarray(
+                [idx for idx in selected if idx in output_set],
+                dtype=np.int32,
+            )
+            if len(output_core):
+                incoming = self.c.matrix[output_core, :].tocoo()
+                for local_row, pre_idx, weight in zip(
+                    incoming.row,
+                    incoming.col,
+                    incoming.data,
+                ):
+                    source_idx = int(pre_idx)
+                    target_idx = int(output_core[int(local_row)])
+                    if source_idx == target_idx:
+                        continue
+                    importance = abs(float(weight)) * (
+                        0.30
+                        + abs(float(state_cpu[source_idx]))
+                        + 0.60 * abs(float(state_cpu[target_idx]))
+                    )
+                    neighbor_rank[source_idx] = max(
+                        neighbor_rank.get(source_idx, 0.0),
+                        importance * 1.45,
+                    )
+
+            # Also keep the first real postsynaptic partners of visible
+            # sensory neurons so input -> internal propagation can be seen.
+            sensory_core = np.asarray(
+                [idx for idx in selected if idx in sensory_set],
+                dtype=np.int32,
+            )
+            if len(sensory_core):
+                outgoing = self.c.matrix[:, sensory_core].tocoo()
+                for target_idx, local_col, weight in zip(
+                    outgoing.row,
+                    outgoing.col,
+                    outgoing.data,
+                ):
+                    source_idx = int(sensory_core[int(local_col)])
+                    target_idx = int(target_idx)
+                    if source_idx == target_idx:
+                        continue
+                    importance = abs(float(weight)) * (
+                        0.30
+                        + abs(float(state_cpu[source_idx]))
+                        + 0.50 * abs(float(state_cpu[target_idx]))
+                    )
+                    neighbor_rank[target_idx] = max(
+                        neighbor_rank.get(target_idx, 0.0),
+                        importance * 1.25,
+                    )
+
+            for neighbor_idx, _importance in sorted(
+                neighbor_rank.items(),
+                key=lambda item: item[1],
+                reverse=True,
+            ):
+                if neighbor_idx in seen:
+                    continue
+                seen.add(neighbor_idx)
+                selected.append(int(neighbor_idx))
+                if len(selected) >= limit:
+                    break
+
+            # Sparse corners can still have too few local neighbors. Fill the
+            # remaining slots by activity, preserving the requested count.
+            if len(selected) < limit:
+                k = min(
+                    self.c.n_neurons,
+                    max(limit * 5, limit - len(selected)),
+                )
+                if k >= self.c.n_neurons:
+                    candidates = np.argsort(abs_state)[::-1]
+                else:
+                    part = np.argpartition(abs_state, -k)[-k:]
+                    candidates = part[
+                        np.argsort(abs_state[part])[::-1]
+                    ]
+                for idx_raw in candidates:
+                    idx = int(idx_raw)
+                    if idx in seen:
+                        continue
+                    seen.add(idx)
+                    selected.append(idx)
+                    if len(selected) >= limit:
+                        break
+            return selected[:limit]
 
         dynamic = active_selection(count)
         now = time.monotonic()
@@ -2379,6 +2479,17 @@ class FlyBrain:
                     "importance": float(importance),
                 })
 
+        connected_ids: set[str] = set()
+        for edge in edges:
+            connected_ids.add(str(edge["source"]))
+            connected_ids.add(str(edge["target"]))
+        output_ids = {
+            str(node["id"])
+            for node in nodes
+            if "output" in node["roles"]
+        }
+        connected_output_ids = connected_ids & output_ids
+
         role_counts = {
             "sensory": sum(1 for n in nodes if "sensory" in n["roles"]),
             "internal": sum(1 for n in nodes if n["role"] == "internal"),
@@ -2394,6 +2505,14 @@ class FlyBrain:
             "role_counts": role_counts,
             "selected_neurons": len(nodes),
             "selected_edges": len(edges),
+            "connected_neurons": len(connected_ids),
+            "isolated_neurons": max(
+                0,
+                len(nodes) - len(connected_ids),
+            ),
+            "connected_output_neurons": len(
+                connected_output_ids
+            ),
             "total_neurons": int(self.c.n_neurons),
             "total_connections": int(self.c.matrix.nnz),
             "mean_abs_activation": float(
