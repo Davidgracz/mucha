@@ -1667,6 +1667,42 @@ class FlyBrain:
         for uid in users[:12]:
             self.activate_user_memory(uid, 0.08)
 
+    def inject_voice_reward_opportunity(
+        self,
+        guild_id: int,
+        channel_id: int,
+        *,
+        human_count: int,
+        strength: float,
+    ) -> None:
+        """Present a possible reward as sensory evidence, never as a score bonus."""
+        strength = max(0.0, min(4.0, float(strength)))
+        human_count = max(0, int(human_count))
+        if strength <= 0.0:
+            return
+
+        self.inject(
+            "voice:reward-opportunity:any",
+            strength,
+            192,
+        )
+        self.inject(
+            (
+                f"voice:reward-opportunity:guild:{guild_id}:"
+                f"channel:{channel_id}"
+            ),
+            0.82 * strength,
+            144,
+        )
+        self.inject(
+            (
+                "voice:reward-opportunity:people:"
+                f"{min(8, human_count)}"
+            ),
+            0.38 + 0.10 * min(8, human_count),
+            80,
+        )
+
     def step(self, ticks: int = 1) -> None:
         for _ in range(max(1, ticks)):
             leak, propagation_gain, noise_sigma = (
