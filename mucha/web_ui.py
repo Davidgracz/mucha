@@ -821,7 +821,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
    <div class="graph-label gl-left">sensory</div><div class="graph-label gl-mid">internal / modulatory</div><div class="graph-label gl-right">output</div>
    <div class="tooltip" id="tip"></div>
   </div>
-  <div class="legend"><span class="lg"><i class="sens"></i> sensory</span><span class="lg"><i class="internal"></i> internal</span><span class="lg"><i class="mod"></i> modulatory</span><span class="lg"><i class="out"></i> output</span><span>• rozmiar = |aktywacja| • domyślnie węzły są trzymane ~45 s • zmiany mają fade-in / fade-out</span></div>
+  <div class="legend"><span class="lg"><i class="sens"></i> sensory</span><span class="lg"><i class="internal"></i> internal</span><span class="lg"><i class="mod"></i> modulatory</span><span class="lg"><i class="out"></i> output</span><span style="color:var(--cyan)">◎ wybrana ścieżka</span><span>• rozmiar = |aktywacja| • domyślnie węzły są trzymane ~45 s • zmiany mają fade-in / fade-out</span></div>
  </div>
 
  <div class="side">
@@ -881,6 +881,28 @@ function updateLayout(nodes){
   layout[n.id].tx=t.x;layout[n.id].ty=t.y;
  }
 }
+function visualWithSelectedPath(v,p){
+ const nodes=(v.nodes||[]).map(n=>({...n})),edges=(v.edges||[]).map(e=>({...e}));
+ const nodeMap=new Map(nodes.map(n=>[String(n.id),n]));
+ const edgeMap=new Map(edges.map(e=>[String(e.source)+">"+String(e.target),e]));
+ for(const path of ((p&&p.paths)||[]).slice(0,2)){
+  for(const n of (path.nodes||[])){
+   const id=String(n.id);
+   const existing=nodeMap.get(id);
+   if(existing){existing.path=true;continue}
+   const added={id,role:n.role||"internal",activation:Number(n.activation||0),eligibility:Number(n.eligibility||0),bias:Number(n.bias||0),path:true};
+   nodes.push(added);nodeMap.set(id,added);
+  }
+  for(const e of (path.edges||[])){
+   const key=String(e.source)+">"+String(e.target);
+   const existing=edgeMap.get(key);
+   if(existing){existing.path=true;existing.learned_delta=Number(e.learned_delta||0);continue}
+   const added={source:String(e.source),target:String(e.target),weight:Number(e.effective_weight||e.base_weight||0),importance:Math.max(.001,Number(e.importance||0)),learned_delta:Number(e.learned_delta||0),path:true};
+   edges.push(added);edgeMap.set(key,added);
+  }
+ }
+ return {...v,nodes,edges};
+}
 function ingestGraph(v){
  const nowNodes=new Set((v.nodes||[]).map(n=>n.id));
  for(const entry of graphNodes.values())if(!nowNodes.has(entry.node.id))entry.targetAlpha=0;
@@ -919,9 +941,9 @@ function draw(){
   const e=item.edge,a=layout[e.source],b=layout[e.target];if(!a||!b)continue;
   const srcEntry=byId[e.source],dstEntry=byId[e.target];if(!srcEntry||!dstEntry)continue;
   const alpha=item.alpha*Math.min(srcEntry.alpha,dstEntry.alpha),q=clamp(Number(e.importance||0)/maxImp,0,1);
-  const target=dstEntry.node,source=srcEntry.node;
-  const rgb=target.role==="output"?"255,120,183":(Number(e.weight||0)<0?"181,140,255":"90,151,197");
-  ctx.strokeStyle="rgba("+rgb+","+(alpha*(0.15+q*.58))+")";ctx.lineWidth=.7+q*1.9;
+  const target=dstEntry.node,source=srcEntry.node,pathEdge=!!e.path;
+  const rgb=pathEdge?"85,234,208":(target.role==="output"?"255,120,183":(Number(e.weight||0)<0?"181,140,255":"90,151,197"));
+  ctx.strokeStyle="rgba("+rgb+","+(alpha*(pathEdge?.70:(0.15+q*.58)))+")";ctx.lineWidth=(pathEdge?2.2:.7)+q*(pathEdge?2.4:1.9);
   ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
 
   // Direction arrow near the postsynaptic neuron.
@@ -947,6 +969,7 @@ function draw(){
   const n=item.node,p=layout[n.id];if(!p)continue;const act=Math.abs(Number(n.activation||0)),rad=3.2+Math.min(9,act*11),c=colors[n.role]||colors.internal;
   ctx.shadowColor=c;ctx.shadowBlur=(5+act*16)*item.alpha;ctx.fillStyle=c;ctx.globalAlpha=item.alpha*(.38+Math.min(.62,act*.75));
   ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;
+  if(n.path&&item.alpha>.2){ctx.strokeStyle="#55ead0";ctx.lineWidth=1.8;ctx.globalAlpha=item.alpha*.9;ctx.beginPath();ctx.arc(p.x,p.y,rad+4,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
   if(mouse.inside&&item.alpha>.45){const dx=mouse.x-p.x,dy=mouse.y-p.y;if(dx*dx+dy*dy<(rad+8)*(rad+8))hover=n}
  }
  if(hover){const p=layout[hover.id];ctx.strokeStyle="#ffffff";ctx.lineWidth=1;ctx.globalAlpha=.8;ctx.beginPath();ctx.arc(p.x,p.y,12+Math.abs(Number(hover.activation||0))*8,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
@@ -1024,8 +1047,10 @@ function updateModeButton(){
 }
 $("follow-btn").onclick=()=>{followActivity=!followActivity;localStorage.setItem("mucha-connectome-follow",followActivity?"1":"0");updateModeButton();update()};
 function render(s,v){
- stateSnap=s;visualSnap=v;ingestGraph(v);
+ stateSnap=s;
  if(v.action_path){actionPathSnap=v.action_path;pathLastRequest=Date.now()}
+ const graphView=visualWithSelectedPath(v,actionPathSnap);
+ visualSnap=graphView;ingestGraph(graphView);
  renderActionPath(actionPathSnap);
  const d=s.diag||{},ld=s.language_diag||{},cw=ld.connectome_word_control_last||{};
  $("k-neurons").textContent=nfmt(d.neurons);$("k-connections").textContent=nfmt(d.connections);$("k-active").textContent=nfmt(d.active_abs_gt_0_1);$("k-mean").textContent=Number(d.mean_abs||0).toFixed(5);$("k-reward").textContent=Number(d.reward_trace||0).toFixed(3);$("k-backend").textContent=(d.backend||"—")+" • "+(d.device||"");$("k-tick").textContent="tick "+nfmt(d.ticks);$("k-synapses").textContent=nfmt(d.learned_synapses||0);$("k-synapse-delta").textContent="max |Δ| "+Number(d.synaptic_max_abs||0).toFixed(5);
