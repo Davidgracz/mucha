@@ -157,7 +157,8 @@ const groups=[
  ]},
  {id:"voice-main",title:"Voice",desc:"Ruch po kanałach i podstawowe zachowanie głosowe.",section:"voice",open:false,fields:[
   ["poll_seconds","Interwał decyzji voice","number",1,1,3600,"Co ile sekund Mucha ocenia sytuację na voice."],
-  ["minimum_dwell_seconds","Minimalny pobyt","number",1,0,86400,"Najkrótszy normalny pobyt na kanale."],
+  ["connectome_voice_control_enabled","Voice sterowany connectomem","bool",0,0,0,"Join / stay / move / leave wybiera konkurencja readoutów. Progi voice zostają tylko jako tryb legacy po wyłączeniu tej opcji."],
+  ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
   ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie rośnie presja na zmianę kanału."],
   ["move_threshold","Próg move","number",0.01,0,1,"Próg decyzji o zmianie kanału."],
   ["join_threshold","Próg join","number",0.01,0,1,"Próg decyzji o wejściu na voice."],
