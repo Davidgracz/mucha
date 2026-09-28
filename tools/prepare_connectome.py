@@ -152,6 +152,54 @@ def main():
     sparse.save_npz(out / "matrix.npz", mat, compressed=True)
     np.save(out / "root_ids.npy", root_ids, allow_pickle=False)
     np.savez_compressed(out / "pools.npz", sensory=sensory, output=output, modulatory=modulatory)
+
+    # Keep the available FlyWire annotations alongside the compact runtime.
+    # This lets action readouts anchor to named descending/motor neuron types
+    # instead of selecting arbitrary output neurons.
+    def text_column(*names: str) -> np.ndarray:
+        for name in names:
+            if name in cls.columns:
+                return (
+                    cls[name]
+                    .fillna("")
+                    .astype(str)
+                    .to_numpy()
+                )
+        return np.full(n, "", dtype="<U1")
+
+    primary_type = text_column(
+        "primary_type",
+        "cell_type",
+        "type",
+        "hemibrain_type",
+    )
+    neuron_meta = {
+        "super_class": text_column("super_class"),
+        "cell_class": text_column("class", "cell_class"),
+        "sub_class": text_column("sub_class"),
+        "side": text_column("side"),
+        "flow": text_column("flow"),
+        "nerve": text_column("nerve"),
+        "primary_type": primary_type,
+        "nt_type": np.asarray(
+            [
+                nt_by_id.get(str(int(rid)), "")
+                for rid in root_ids
+            ],
+            dtype=str,
+        ),
+    }
+    for axis in ("x", "y", "z"):
+        if axis in cls.columns:
+            neuron_meta[axis] = pd.to_numeric(
+                cls[axis],
+                errors="coerce",
+            ).to_numpy(np.float32)
+    np.savez_compressed(
+        out / "neuron_meta.npz",
+        **neuron_meta,
+    )
+
     manifest = {
         "source": "FlyWire Codex FAFB v783 (user-provided static downloads)",
         "neurons": int(n),
@@ -160,6 +208,8 @@ def main():
         "sensory_pool": int(len(sensory)),
         "output_pool": int(len(output)),
         "modulatory_pool": int(len(modulatory)),
+        "neuron_meta": True,
+        "annotation_fields": sorted(neuron_meta.keys()),
         "weighting": "log1p(syn_count) * neurotransmitter sign; incoming L1 normalization",
         "note": "Continuous lightweight runtime, not a biophysical reproduction of a real fly brain.",
     }
