@@ -1974,6 +1974,20 @@ class FlyBrain:
         bias_max_abs = self.compute.scalar(self.xp.max(bias_abs))
         bias_positive = self.compute.int_scalar(self.xp.count_nonzero(self.plastic_bias > 1e-7))
         bias_negative = self.compute.int_scalar(self.xp.count_nonzero(self.plastic_bias < -1e-7))
+        synaptic_values = np.asarray(
+            list(self._synaptic_delta_map.values()),
+            dtype=np.float32,
+        )
+        synaptic_mean_abs = (
+            float(np.mean(np.abs(synaptic_values)))
+            if synaptic_values.size
+            else 0.0
+        )
+        synaptic_max_abs = (
+            float(np.max(np.abs(synaptic_values)))
+            if synaptic_values.size
+            else 0.0
+        )
         hist_counts, hist_edges = self.xp.histogram(
             self.plastic_bias,
             bins=21,
@@ -2000,4 +2014,7 @@ class FlyBrain:
             "bias_positive": bias_positive,
             "bias_negative": bias_negative,
             "bias_hist": bias_hist,
+            "learned_synapses": len(self._synaptic_delta_map),
+            "synaptic_mean_abs": synaptic_mean_abs,
+            "synaptic_max_abs": synaptic_max_abs,
         }
