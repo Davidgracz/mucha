@@ -173,6 +173,7 @@ class FlyBrain:
             "after": {},
             "impact": {},
             "top_changed": [],
+            "top_synapses": [],
         }
         self._load_state()
         self._refresh_adaptive_speak_pool()
@@ -3064,7 +3065,7 @@ class FlyBrain:
             pre = int(key % n)
             try:
                 base_weight = float(
-                    self.c.matrix[post, pre]
+                    self._runtime_matrix_cpu[post, pre]
                 )
             except (TypeError, ValueError):
                 base_weight = 0.0
