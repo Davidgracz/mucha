@@ -5705,6 +5705,11 @@ class MuchaClient(discord.Client):
             "social_drive_stay_punished": False,
             "social_drive_stay_punish_amount": 0.0,
             "social_join_reward": 0.0,
+            "reward_opportunity_channel": None,
+            "reward_opportunity_strength": 0.0,
+            "reward_opportunity_remaining": 0.0,
+            "reward_opportunity_found": False,
+            "reward_opportunity_reward": 0.0,
             "threat_active": threat_active,
             "threat_level": threat_level,
             "chaser_active": chaser_active,
@@ -5939,6 +5944,48 @@ class MuchaClient(discord.Client):
             social_drive_level > 0.0
         )
 
+        reward_opportunity = None
+        if (
+            connectome_voice_control
+            and current is None
+            and not chaser_active
+        ):
+            reward_opportunity = (
+                self._voice_reward_opportunity_for(
+                    guild.id,
+                    channels,
+                    now,
+                )
+            )
+        elif current is not None:
+            self._voice_reward_opportunity.pop(
+                guild.id,
+                None,
+            )
+
+        if reward_opportunity is not None:
+            debug["reward_opportunity_channel"] = (
+                reward_opportunity["channel_name"]
+            )
+            debug["reward_opportunity_strength"] = float(
+                reward_opportunity["strength"]
+            )
+            debug["reward_opportunity_remaining"] = max(
+                0.0,
+                float(
+                    reward_opportunity["expires_at"]
+                )
+                - now,
+            )
+            for row in debug["channels"]:
+                if int(row["id"]) == int(
+                    reward_opportunity["channel_id"]
+                ):
+                    row["reward_opportunity"] = True
+                    row["reward_opportunity_strength"] = float(
+                        reward_opportunity["strength"]
+                    )
+
         alternatives_count = sum(
             1
             for ch, _ in channels
@@ -5989,6 +6036,23 @@ class MuchaClient(discord.Client):
                     float(self.cfg.voice.deadly_threat_magnitude)
                     * (0.5 + 0.5 * memory_strength),
                     128,
+                )
+
+            if (
+                connectome_voice_control
+                and reward_opportunity is not None
+            ):
+                self.brain.inject_voice_reward_opportunity(
+                    guild.id,
+                    int(
+                        reward_opportunity["channel_id"]
+                    ),
+                    human_count=int(
+                        reward_opportunity["human_count"]
+                    ),
+                    strength=float(
+                        reward_opportunity["strength"]
+                    ),
                 )
 
             if connectome_voice_control:
@@ -6176,6 +6240,16 @@ class MuchaClient(discord.Client):
                 affinities,
                 now,
                 current_id=None,
+                preferred_channel_id=(
+                    int(
+                        reward_opportunity["channel_id"]
+                    )
+                    if (
+                        connectome_voice_control
+                        and reward_opportunity is not None
+                    )
+                    else None
+                ),
             )
             if target is None:
                 debug["decision"] = "NIE WCHODZĘ"
@@ -6227,6 +6301,62 @@ class MuchaClient(discord.Client):
                 else:
                     async with self._brain_lock:
                         learning_trace = self.brain.capture_learning_trace()
+                if (
+                    connectome_voice_control
+                    and reward_opportunity is not None
+                    and int(target.id)
+                    == int(
+                        reward_opportunity["channel_id"]
+                    )
+                    and learning_trace is not None
+                ):
+                    opportunity_success = (
+                        self.random.random()
+                        < max(
+                            0.0,
+                            min(
+                                1.0,
+                                float(
+                                    self.cfg.voice.reward_opportunity_success_chance
+                                ),
+                            ),
+                        )
+                    )
+                    debug["reward_opportunity_found"] = bool(
+                        opportunity_success
+                    )
+                    if opportunity_success:
+                        opportunity_reward = max(
+                            0.0,
+                            min(
+                                1.0,
+                                float(
+                                    self.cfg.voice.reward_opportunity_reward
+                                ),
+                            ),
+                        )
+                        if opportunity_reward > 0.0:
+                            async with self._brain_lock:
+                                self.brain.reward(
+                                    opportunity_reward,
+                                    action="voice_join",
+                                    trace=learning_trace,
+                                )
+                                self.brain.step(1)
+                            debug[
+                                "reward_opportunity_reward"
+                            ] = opportunity_reward
+                            self._record_reward(
+                                opportunity_reward,
+                                "voice_join",
+                                "random voice reward opportunity",
+                                guild,
+                            )
+                    self._voice_reward_opportunity.pop(
+                        guild.id,
+                        None,
+                    )
+
                 if (
                     connectome_voice_control
                     and social_drive_level > 0.0
