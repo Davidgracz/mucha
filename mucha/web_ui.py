@@ -1915,6 +1915,11 @@ function renderVoiceDebug(items){
   }
   root.innerHTML=items.map(v=>{
     const s=v.scores||{},bd=v.brain_decision||{},neural=!!v.connectome_voice_control;
+    const tie=bd.tie_evidence||{};
+    const tieSummary=Object.entries(tie).map(([name,row])=>
+      esc(name)+" "+Number((row||{}).support||0).toFixed(4)
+    ).join(" • ");
+    const onVoice=!!v.current;
     const channels=(v.channels||[]).map(ch=>{
       const aff=ch.affinity==null?"—":Number(ch.affinity).toFixed(3);
       const explore=ch.exploration_score==null?"—":Number(ch.exploration_score).toFixed(3);
@@ -1943,12 +1948,14 @@ function renderVoiceDebug(items){
       '<div class="voice-pill"><small>VOICE POLICY</small><strong class="'+(neural?"ok":"warn")+'">'+(neural?"CONNECTOME":"LEGACY")+'</strong></div>'+
       '<div class="voice-pill"><small>winner / margin</small><strong>'+esc(bd.action||"—")+' / '+(bd.margin==null?"—":Number(bd.margin).toFixed(3))+'</strong></div>'+
       '<div class="voice-pill"><small>runner-up</small><strong>'+esc(bd.runner_up||"—")+' '+(bd.runner_up_score==null?"":Number(bd.runner_up_score).toFixed(3))+'</strong></div>'+
+      '<div class="voice-pill"><small>neural tie-break</small><strong class="'+(bd.tie_break?"ok":"")+'">'+esc(bd.tie_break||"niepotrzebny")+'</strong></div>'+
+      '<div class="voice-pill"><small>tie evidence</small><strong>'+esc(tieSummary||"—")+'</strong></div>'+
       '<div class="voice-pill"><small>voice_join</small><strong>'+Number(s.voice_join??0).toFixed(3)+(neural?"":" / "+Number(v.join_threshold??0).toFixed(3))+'</strong></div>'+
       '<div class="voice-pill"><small>voice_move</small><strong>'+Number(s.voice_move??0).toFixed(3)+(neural?"":" / "+Number(v.move_threshold??0).toFixed(3))+'</strong></div>'+
       '<div class="voice-pill"><small>voice_leave</small><strong>'+Number(s.voice_leave??0).toFixed(3)+(neural?"":" / "+Number(v.leave_threshold??0).toFixed(3))+'</strong></div>'+
       '<div class="voice-pill"><small>stay</small><strong>'+Number(s.stay??0).toFixed(3)+'</strong></div>'+
-      '<div class="voice-pill"><small>czas na kanale / limit</small><strong>'+Number(v.dwell_elapsed??0).toFixed(0)+' / '+Number(v.maximum_dwell_seconds??0).toFixed(0)+' s</strong></div>'+
-      '<div class="voice-pill"><small>minimum dwell</small><strong>'+Number(v.dwell_remaining??0).toFixed(1)+' s</strong></div>'+
+      (onVoice?'<div class="voice-pill"><small>czas na kanale / limit</small><strong>'+Number(v.dwell_elapsed??0).toFixed(0)+' / '+Number(v.maximum_dwell_seconds??0).toFixed(0)+' s</strong></div>':'')+
+      (onVoice?'<div class="voice-pill"><small>minimum dwell</small><strong>'+Number(v.dwell_remaining??0).toFixed(1)+' s</strong></div>':'')+
       '<div class="voice-pill"><small>poza voice</small><strong>'+Number(v.outside_seconds??0).toFixed(0)+' s</strong></div>'+
       '<div class="voice-pill"><small>ludzie dostępni</small><strong>'+Number(v.available_humans||0)+'</strong></div>'+
       '<div class="voice-pill"><small>social drive</small><strong class="'+(Number(v.social_drive_level||0)>0?"ok":"")+'">'+(Number(v.social_drive_level||0)*100).toFixed(1)+'%</strong></div>'+
@@ -1962,8 +1969,8 @@ function renderVoiceDebug(items){
       '<div class="voice-pill"><small>ignored cue punish</small><strong class="'+(v.reward_opportunity_stay_punished?"no":"")+'">'+(v.reward_opportunity_stay_punished?Number(v.reward_opportunity_stay_punish_amount||0).toFixed(3):"nie")+'</strong></div>'+
       '<div class="voice-pill"><small>social drive guided</small><strong class="'+(String(v.social_drive_guided_mode||"").startsWith("connectome-guided")?"ok":"warn")+'">'+esc(v.social_drive_guided_mode||"—")+' • '+Number(v.social_drive_guided_neurons||0)+' n</strong></div>'+
       '<div class="voice-pill"><small>nagroda znaleziona?</small><strong class="'+(v.reward_opportunity_found?"ok":"")+'">'+(v.reward_opportunity_found?"TAK +"+Number(v.reward_opportunity_reward||0).toFixed(3):"nie / jeszcze nie")+'</strong></div>'+
-      '<div class="voice-pill"><small>overstay</small><strong class="'+(overstay>0?"no":"ok")+'">'+overstay.toFixed(0)+' s</strong></div>'+
-      '<div class="voice-pill"><small>kara w tym cyklu</small><strong class="'+(punished?"no":"")+'">'+(punished?Number(v.overstay_punish_amount||0).toFixed(2):"nie")+'</strong></div>'+
+      (onVoice?'<div class="voice-pill"><small>overstay</small><strong class="'+(overstay>0?"no":"ok")+'">'+overstay.toFixed(0)+' s</strong></div>':'')+
+      (onVoice?'<div class="voice-pill"><small>kara w tym cyklu</small><strong class="'+(punished?"no":"")+'">'+(punished?Number(v.overstay_punish_amount||0).toFixed(2):"nie")+'</strong></div>':'')+
       '<div class="voice-pill"><small>THREAT</small><strong class="'+(v.threat_active?"no":"ok")+'">'+(Number(v.threat_level||0)*100).toFixed(0)+'%</strong></div>'+
       '<div class="voice-pill"><small>CHASE</small><strong class="'+(v.chaser_active?"no":"ok")+'">'+(v.chaser_active?"ACTIVE ":"idle ")+Number(v.chaser_remaining||0).toFixed(1)+' s</strong></div>'+
       '<div class="voice-pill"><small>chaser id</small><strong>'+esc(v.chaser_id||"—")+'</strong></div>'+
@@ -1973,7 +1980,8 @@ function renderVoiceDebug(items){
       '<div class="voice-pill"><small>escape target</small><strong>'+esc(v.escape_target||"—")+'</strong></div>'+
     '</div>'+
     '<div class="reason"><b>'+esc(v.decision||"—")+'</b> — '+esc(v.reason||"—")+
-      (neural?'<br><b>Connectome candidates:</b> '+Object.entries(bd.candidates||{}).map(([k,x])=>esc(k)+' '+Number(x).toFixed(3)).join(' • '):'')+'</div>'+
+      (neural?'<br><b>Connectome candidates:</b> '+Object.entries(bd.candidates||{}).map(([k,x])=>esc(k)+' '+Number(x).toFixed(3)).join(' • '):'')+
+      (bd.tie_break?'<br><b>Tie-break:</b> '+esc(bd.tie_break)+' • '+esc(tieSummary):'')+'</div>'+
     '<table><thead><tr><th>Kanał</th><th>Ludzie</th><th>View</th><th>Connect</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table>';
   }).join('<div style="height:14px"></div>');
 }
