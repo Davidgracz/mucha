@@ -92,7 +92,10 @@ const groups=[
   ["connectome_word_control_enabled","Connectome steruje doborem słów","bool",0,0,0,"Pozwala stanowi connectomu zmieniać szanse kandydatów słów."],
   ["connectome_word_control_min_vocab","Próg słownika dla connectome","number",50,8,100000,"Od ilu unikalnych słów włącza się sterowanie connectomu."],
   ["connectome_word_control_strength","Siła wpływu connectome","number",0.05,0,2,"0 = brak wpływu, wyższe wartości mocniej zmieniają wybór słów."],
-  ["connectome_word_control_candidates","Kandydaci oceniani przez connectome","number",1,4,96,"Ile najlepszych kandydatów słów connectome ocenia na krok."]
+  ["connectome_word_control_candidates","Kandydaci oceniani przez connectome","number",1,4,96,"Ile najlepszych kandydatów słów connectome ocenia na krok."],
+  ["connectome_word_feedback_enabled","Rekurencyjny feedback słów","bool",0,0,0,"Po wyborze każdego słowa przepuszcza jego ślad z powrotem przez connectome przed wyborem następnego."],
+  ["connectome_word_feedback_steps","Ticki mózgu na słowo","number",1,1,8,"Ile kroków connectomu wykonuje Mucha po każdym wybranym słowie."],
+  ["connectome_word_feedback_magnitude","Siła feedbacku słowa","number",0.01,0,1,"Jak mocno wybrane słowo zmienia stan connectomu przed wyborem kolejnego."]
  ]},
  {id:"behavior",title:"Zachowanie",desc:"Progi mówienia, reakcji i podstawowe parametry uczenia społecznego.",section:"behavior",open:true,fields:[
   ["speak_threshold","Próg mówienia","number",0.01,0,1,"Niżej = Mucha łatwiej decyduje się mówić."],
@@ -862,7 +865,7 @@ function render(s,v){
  $("replacements").textContent=nfmt(v.replacements||0);
  const vocab=Number(ld.word_vocab||0),min=Number(ld.connectome_word_control_min_vocab||1),ready=!!ld.connectome_word_control_ready,pct=clamp(vocab/min*100,0,100);
  $("word-vocab").textContent=nfmt(vocab)+" / "+nfmt(min);$("word-progress").style.width=pct.toFixed(1)+"%";$("word-badge").textContent=ready?"AKTYWNY":"UCZY SŁOWNIK";$("word-badge").className="badge "+(ready?"on":"wait");
- $("word-eval").textContent=nfmt(cw.evaluated||0);$("word-detail").textContent="Siła wpływu: "+Number(ld.connectome_word_control_strength||0).toFixed(2)+" • średni ostatni score: "+Number(cw.mean_score||.5).toFixed(3)+" • generator: "+(ld.last_generator||"—");
+ $("word-eval").textContent=nfmt(cw.evaluated||0);$("word-detail").textContent="Siła wpływu: "+Number(ld.connectome_word_control_strength||0).toFixed(2)+" • średni ostatni score: "+Number(cw.mean_score||.5).toFixed(3)+" • feedback słów: "+nfmt(cw.feedback_words||0)+" • generator: "+(ld.last_generator||"—");
  const nodes=(v.nodes||[]).slice().sort((a,b)=>Math.abs(Number(b.activation))-Math.abs(Number(a.activation))).slice(0,12);
  $("node-table").innerHTML=nodes.map(n=>'<tr><td>'+n.id+'</td><td>'+n.role+'</td><td class="'+(Number(n.activation)>=0?"plus":"minus")+'">'+(Number(n.activation)>=0?"+":"")+Number(n.activation).toFixed(4)+'</td><td>'+Number(n.bias||0).toFixed(5)+'</td></tr>').join("")||'<tr><td colspan="4">Brak danych.</td></tr>';
  $("signal").textContent="MODE  "+(followActivity?"FOLLOW ACTIVITY":"STABLE WINDOW")+"\nINPUT  "+(s.last_event||"—")+"\nCONNECTOME  mean |a| "+Number(d.mean_abs||0).toFixed(5)+" / max "+Number(d.max_abs||0).toFixed(5)+"\nREADOUT  speak "+Number((s.scores||{}).speak||0).toFixed(3)+" / explore "+Number((s.scores||{}).explore||0).toFixed(3)+"\nOUTPUT  "+(s.last_action||"—");
