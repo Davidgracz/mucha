@@ -59,6 +59,15 @@ def main():
         p=[0.55, 0.20, 0.20, 0.05],
     )
     primary_type = np.full(n, "demo-neuron", dtype="<U32")
+    # Synthetic labels exercise the biological action-readout path in tests.
+    # They are still explicitly marked as demo metadata in the manifest.
+    typed = output[: min(len(output), 96)]
+    demo_types = (
+        "pIP10", "pMP2", "DNa01", "DNa02", "DNg13", "DNp09",
+        "MDN", "DNp06", "aDN1", "aDN2", "DNp07", "DNp10",
+    )
+    for pos, idx in enumerate(typed):
+        primary_type[int(idx)] = demo_types[pos % len(demo_types)]
     demo_neuropils = np.where(
         x < -0.25,
         "DEMO_L",
