@@ -6426,13 +6426,32 @@ class MuchaClient(discord.Client):
                     self._voice_debug[guild.id] = debug
                     return
 
-        if scores["voice_leave"] >= self.cfg.voice.leave_threshold:
+        should_leave = (
+            bool(
+                connectome_voice_control
+                and brain_decision is not None
+                and brain_decision["action"] == "voice_leave"
+            )
+            or bool(
+                not connectome_voice_control
+                and scores["voice_leave"]
+                >= self.cfg.voice.leave_threshold
+            )
+        )
+        if should_leave:
             old_name = getattr(current, "name", "voice")
             debug["decision"] = f"LEAVE ← {old_name}"
-            debug["reason"] = (
-                f"voice_leave {scores['voice_leave']:.3f} ≥ "
-                f"{self.cfg.voice.leave_threshold:.3f}"
-            )
+            if connectome_voice_control and brain_decision is not None:
+                debug["reason"] = (
+                    "CONNECTOME WINNER voice_leave "
+                    f"{scores['voice_leave']:.3f}; "
+                    f"margin {brain_decision['margin']:.3f}"
+                )
+            else:
+                debug["reason"] = (
+                    f"voice_leave {scores['voice_leave']:.3f} ≥ "
+                    f"{self.cfg.voice.leave_threshold:.3f}"
+                )
             try:
                 await vc.disconnect(force=False)
                 self.voice_arrived[guild.id] = now
@@ -6441,8 +6460,39 @@ class MuchaClient(discord.Client):
                 self._voice_arrival_learning.pop(guild.id, None)
                 self._last_overstay_punish.pop(guild.id, None)
                 self._last_brain_action = f"VOICE LEAVE ← {old_name}"
-                async with self._brain_lock:
-                    learning_trace = self.brain.capture_learning_trace()
+                if connectome_voice_control and decision_trace is not None:
+                    learning_trace = decision_trace
+                else:
+                    async with self._brain_lock:
+                        learning_trace = self.brain.capture_learning_trace()
+                if (
+                    connectome_voice_control
+                    and threat_active
+                    and learning_trace is not None
+                ):
+                    escape_reward = max(
+                        0.0,
+                        min(
+                            1.0,
+                            float(
+                                self.cfg.voice.threat_escape_reward
+                            ),
+                        ),
+                    )
+                    if escape_reward > 0.0:
+                        async with self._brain_lock:
+                            self.brain.reward(
+                                escape_reward,
+                                action="voice_leave",
+                                trace=learning_trace,
+                            )
+                            self.brain.step(1)
+                        self._record_reward(
+                            escape_reward,
+                            "voice_leave",
+                            "connectome threat leave",
+                            guild,
+                        )
                 self._set_reinforceable(
                     guild,
                     "voice_leave",
@@ -6460,7 +6510,11 @@ class MuchaClient(discord.Client):
 
         # If threat is active but there is no successful escape yet, do not let
         # the current channel win simply because it has the highest affinity.
-        if threat_active and alternatives:
+        if (
+            threat_active
+            and alternatives
+            and not connectome_voice_control
+        ):
             debug["decision"] = "ZAGROŻONA • SZUKA UCIECZKI"
             debug["reason"] = (
                 f"threat {threat_level:.2f}; move "
