@@ -303,6 +303,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;padding:8px;border-bottom:1px solid rgba(35,49,67,.6)}th{color:var(--muted);font-weight:600}.plus{color:var(--good);font-weight:800}.minus{color:var(--bad);font-weight:800}.warn{color:var(--warn)}
 .reason{padding:10px 12px;background:var(--panel2);border:1px solid #1d2a39;border-radius:11px;color:#b9c6d3;font-size:12px;line-height:1.5}
 .phrases{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.phrase{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;background:var(--panel2);border:1px solid #1d2a39;border-radius:9px;padding:8px;font-size:12px}
+.memory-note{margin-bottom:10px}.memory-bar{height:7px;background:#071019;border:1px solid #1d2a39;border-radius:999px;overflow:hidden;min-width:86px}.memory-bar>i{display:block;height:100%;background:linear-gradient(90deg,#6da8ff,var(--a))}.path{font:10px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;color:#8298aa;max-width:360px;word-break:break-all}.neural{color:#6da8ff;font-weight:800}.effective{color:var(--a);font-weight:850}
 @media(max-width:900px){.grid{grid-template-columns:1fr}.span2{grid-column:auto}.kpis{grid-template-columns:1fr 1fr}.phrases{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 </style></head><body><main>
 <div class="top"><div><h1>🤝 Affinity / Zasady relacji</h1><div class="sub">Live podgląd tego, co zwiększa i obniża stosunek Muchy do użytkowników.</div></div>
@@ -338,7 +339,13 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 
   <div class="card span2">
     <h2>👥 Aktualne relacje</h2>
-    <table><thead><tr><th>Użytkownik</th><th>Affinity</th><th>Negative streak</th><th>👍 reakcje</th><th>👎 reakcje</th><th>Status</th></tr></thead><tbody id="users"></tbody></table>
+    <table><thead><tr><th>Użytkownik</th><th>Affinity używane</th><th>Negative streak</th><th>👍 reakcje</th><th>👎 reakcje</th><th>Status</th></tr></thead><tbody id="users"></tbody></table>
+  </div>
+
+  <div class="card span2">
+    <h2>🧠 Social Neural Memory</h2>
+    <div class="reason memory-note" id="neural-memory-note">Ładowanie pamięci connectomu…</div>
+    <table><thead><tr><th>Użytkownik</th><th>Neural</th><th>Legacy</th><th>Używane</th><th>Dojrzałość</th><th>Assembly</th><th>Uczone synapsy</th><th>Aktywność</th><th>Najsilniejsza ścieżka Δ</th></tr></thead><tbody id="neural-users"></tbody></table>
   </div>
 
   <div class="card span2">
@@ -369,15 +376,40 @@ function render(d){
     '<div class="phrase"><span>'+esc(x.phrase)+'</span><span class="warn">sev '+num(x.severity).toFixed(2)+'</span><span class="minus">'+signed(x.delta)+'</span></div>'
   ).join("")||'<div class="reason">Brak fraz.</div>';
 
-  $("users").innerHTML=(d.user_affinities||[]).map(u=>{
+  const users=d.user_affinities||[];
+  $("users").innerHTML=users.map(u=>{
     const a=num(u.affinity),status=a<=num(t.avoid)?"OMIJA":a>=num(t.liked)?"LUBI":a>=num(t.familiar)?"ZNAJOMY":"NEUTRAL";
     const cls=a<0?"minus":a>0?"plus":"";
     const streak=num(u.negative_streak),mult=num(u.negative_multiplier||1);
-    return '<tr><td>'+esc(u.display_name||u.user_id)+'</td><td class="'+cls+'">'+signed(a)+'</td><td class="'+(streak?"minus":"")+'">'+Math.round(streak)+(streak?" ×"+mult.toFixed(2):"")+'</td><td>'+num(u.positive_reactions)+'</td><td>'+num(u.negative_reactions)+'</td><td class="'+cls+'">'+status+'</td></tr>';
+    return '<tr><td>'+esc(u.display_name||u.user_id)+'</td><td class="effective">'+signed(a)+'</td><td class="'+(streak?"minus":"")+'">'+Math.round(streak)+(streak?" ×"+mult.toFixed(2):"")+'</td><td>'+num(u.positive_reactions)+'</td><td>'+num(u.negative_reactions)+'</td><td class="'+cls+'">'+status+'</td></tr>';
   }).join("")||'<tr><td colspan="6">Brak relacji.</td></tr>';
 
+  const settings=d.social_settings||{},maxWeight=num(settings.neural_affinity_weight);
+  $("neural-memory-note").innerHTML=settings.neural_social_memory_enabled
+    ? '<b>AKTYWNA.</b> Używane affinity = legacy + neural memory. Maksymalny udział connectomu: <b>'+Math.round(maxWeight*100)+'%</b>; udział rośnie wraz z dojrzałością assembly. Reward/punish zapisuje bias neuronów i prawdziwe learned synapses.'
+    : '<b>WYŁĄCZONA.</b> Zachowanie korzysta wyłącznie z legacy affinity.';
+  $("neural-users").innerHTML=users.filter(u=>u.neural_memory).slice(0,20).map(u=>{
+    const m=u.neural_memory||{},neural=num(u.neural_affinity),legacy=num(u.legacy_affinity),effective=num(u.effective_affinity??u.affinity),maturity=Math.max(0,Math.min(1,num(u.neural_maturity)));
+    const edge=(m.top_edges||[])[0];
+    const path=edge
+      ? '#'+esc(edge.source)+' → #'+esc(edge.target)+' '+signed(edge.delta)
+      : 'jeszcze brak learned edge';
+    const age=m.last_activation_age==null?'—':(num(m.last_activation_age)<60?num(m.last_activation_age).toFixed(0)+' s':(num(m.last_activation_age)/60).toFixed(1)+' min');
+    return '<tr>'+
+      '<td><b>'+esc(u.display_name||u.user_id)+'</b><br><small>'+esc(u.user_id)+'</small></td>'+
+      '<td class="neural">'+signed(neural)+'</td>'+
+      '<td>'+signed(legacy)+'</td>'+
+      '<td class="effective">'+signed(effective)+'</td>'+
+      '<td><div class="memory-bar"><i style="width:'+(maturity*100).toFixed(1)+'%"></i></div><small>'+(maturity*100).toFixed(1)+'% • w '+(num(u.neural_weight)*100).toFixed(1)+'%</small></td>'+
+      '<td>'+num(m.identity_neurons)+' ID → '+num(m.memory_neurons)+' mem</td>'+
+      '<td>'+num(m.learned_synapses)+'<br><small>mean |Δ| '+num(m.mean_abs_synaptic_delta).toExponential(2)+'</small></td>'+
+      '<td>'+num(m.memory_activity).toFixed(4)+'<br><small>ostatnio '+age+'</small></td>'+
+      '<td class="path">'+path+'</td>'+
+    '</tr>';
+  }).join("")||'<tr><td colspan="9">Pamięć neuronalna nie ma jeszcze użytkowników do pokazania.</td></tr>';
+
   const s=d.social_debug||{};
-  $("last-social").innerHTML='<b>'+esc(s.event||"—")+'</b> • '+esc(s.user_name||"—")+' • '+esc(s.detail||"—")+' • Δ '+signed(s.amount||0)+' • affinity '+signed(s.affinity||0);
+  $("last-social").innerHTML='<b>'+esc(s.event||"—")+'</b> • '+esc(s.user_name||"—")+' • '+esc(s.detail||"—")+' • Δ '+signed(s.amount||0)+' • używane '+signed(s.affinity||0)+' • neural '+signed(s.neural_affinity||0)+' • legacy '+signed(s.legacy_affinity||0)+' • maturity '+(num(s.neural_maturity)*100).toFixed(1)+'%';
 }
 async function update(){
   try{
