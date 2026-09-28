@@ -596,6 +596,146 @@ class FlyBrain:
         val_cpu = self.compute.to_cpu(self.eligibility[idx[:count]]).astype(np.float32, copy=False)
         return idx_cpu, val_cpu
 
+    def _reinforce_synapses(
+        self,
+        amount: float,
+        trace: tuple[np.ndarray, np.ndarray] | None,
+    ) -> dict:
+        """Reinforce real FAFB edges that participated in the recent trace.
+
+        The static connectome is never overwritten. Learning is stored as a
+        sparse overlay on existing edges, so positive reward strengthens the
+        original excitatory/inhibitory direction and punishment weakens it
+        without flipping the biological sign of the connection.
+        """
+        empty = {
+            "changed": 0,
+            "total": len(self._synaptic_delta_map),
+            "mean_delta": 0.0,
+            "max_delta": 0.0,
+        }
+        if (
+            not self.cfg.synaptic_plasticity_enabled
+            or abs(float(amount)) <= 1e-12
+            or self.cfg.synaptic_plasticity_lr <= 0.0
+        ):
+            return empty
+
+        trace_limit = max(
+            32,
+            min(
+                int(self.cfg.synaptic_plasticity_trace_neurons),
+                self.c.n_neurons,
+            ),
+        )
+        if trace is None or not len(trace[0]):
+            idx_cpu, elig_cpu = self.capture_learning_trace(trace_limit)
+        else:
+            idx_cpu = np.asarray(trace[0], dtype=np.int32)
+            elig_cpu = np.asarray(trace[1], dtype=np.float32)
+            if len(idx_cpu) > trace_limit:
+                order = np.argsort(np.abs(elig_cpu))[::-1][:trace_limit]
+                idx_cpu = idx_cpu[order]
+                elig_cpu = elig_cpu[order]
+
+        if len(idx_cpu) < 2:
+            return empty
+
+        sub = self.c.matrix[idx_cpu][:, idx_cpu].tocoo()
+        if sub.nnz == 0:
+            return empty
+
+        base = np.asarray(sub.data, dtype=np.float32)
+        post_elig = np.abs(elig_cpu[sub.row])
+        pre_elig = np.abs(elig_cpu[sub.col])
+        structural = np.sqrt(np.clip(np.abs(base), 0.0, 1.0))
+        edge_elig = np.sqrt(post_elig * pre_elig) * structural
+
+        nonzero = np.flatnonzero(edge_elig > 1e-7)
+        if not len(nonzero):
+            return empty
+
+        per_event_limit = min(4096, len(nonzero))
+        if len(nonzero) > per_event_limit:
+            values = edge_elig[nonzero]
+            top = np.argpartition(
+                values,
+                -per_event_limit,
+            )[-per_event_limit:]
+            chosen = nonzero[top]
+        else:
+            chosen = nonzero
+
+        lr = max(0.0, float(self.cfg.synaptic_plasticity_lr))
+        max_delta = max(
+            1e-6,
+            float(self.cfg.synaptic_plasticity_max_delta),
+        )
+        n = self.c.n_neurons
+        applied: list[float] = []
+
+        for pos in chosen:
+            post = int(idx_cpu[int(sub.row[pos])])
+            pre = int(idx_cpu[int(sub.col[pos])])
+            base_weight = float(base[pos])
+            if abs(base_weight) <= 1e-12:
+                continue
+
+            key = post * n + pre
+            old = float(self._synaptic_delta_map.get(key, 0.0))
+            step_delta = (
+                lr
+                * float(amount)
+                * float(edge_elig[pos])
+                * (1.0 if base_weight > 0.0 else -1.0)
+            )
+            new = old + step_delta
+
+            # Punishment may weaken an edge, but never reverse its biological
+            # excitatory/inhibitory sign.
+            if base_weight > 0.0:
+                new = min(
+                    max_delta,
+                    max(-0.90 * base_weight, new),
+                )
+            else:
+                new = max(
+                    -max_delta,
+                    min(0.90 * abs(base_weight), new),
+                )
+
+            if abs(new) <= 1e-9:
+                self._synaptic_delta_map.pop(key, None)
+            else:
+                self._synaptic_delta_map[key] = float(new)
+            applied.append(float(new - old))
+
+        max_edges = max(
+            0,
+            int(self.cfg.synaptic_plasticity_max_edges),
+        )
+        if max_edges and len(self._synaptic_delta_map) > max_edges:
+            strongest = sorted(
+                self._synaptic_delta_map.items(),
+                key=lambda item: abs(item[1]),
+                reverse=True,
+            )[:max_edges]
+            self._synaptic_delta_map = dict(strongest)
+
+        if applied:
+            self._rebuild_synaptic_matrix()
+
+        if not applied:
+            return empty
+
+        arr = np.asarray(applied, dtype=np.float32)
+        return {
+            "changed": int(np.count_nonzero(np.abs(arr) > 1e-12)),
+            "total": len(self._synaptic_delta_map),
+            "mean_delta": float(np.mean(arr)),
+            "max_delta": float(np.max(np.abs(arr))),
+        }
+
     def reward(
         self,
         amount: float,
