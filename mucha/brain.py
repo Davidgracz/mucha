@@ -418,7 +418,7 @@ class FlyBrain:
             plastic_bias=self.compute.to_cpu(self.plastic_bias).astype(np.float16),
             synaptic_post=syn_post,
             synaptic_pre=syn_pre,
-            synaptic_delta=syn_delta.astype(np.float16),
+            synaptic_delta=syn_delta.astype(np.float32, copy=False),
             reward_trace=np.float32(self.reward_trace),
             tick_count=np.int64(self.tick_count),
         )
