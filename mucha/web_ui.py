@@ -2117,6 +2117,7 @@ function renderVoiceDebug(items){
         '<div class="voice-technical-body">'+
           '<div class="voice-tech-grid">'+
             kpi("Prediction context",esc(v.prediction_context||"—"))+
+            kpi("neural tie-break",esc(bd.tie_break||"niepotrzebny"))+
             kpi("Tie evidence",esc(tieSummary||"—"))+
             kpi("Homeostasis paths",esc(guided))+
             kpi("Reward cue base",Number(v.reward_opportunity_strength||0).toFixed(2))+
