@@ -2774,13 +2774,14 @@ class FlyBrain:
         available_humans: int = 0,
         social_drive_level: float = 0.0,
         social_drive_magnitude: float = 1.0,
-    ) -> None:
+    ) -> dict:
         """Encode voice context as sensory input before motor competition.
 
         Operational constraints remain outside the brain, but ordinary reasons
         to stay/move/leave are represented as stimuli so reward can reshape the
         real paths from context to the action readouts.
         """
+        guided_social_drive = None
         self.inject(
             "voice:context:connected"
             if connected
@@ -2849,12 +2850,14 @@ class FlyBrain:
                     social_drive_magnitude
                     * social_drive_level
                 )
-                self.inject_action_guided_sensory(
-                    "voice_join",
-                    f"social-drive:{guild_id}",
-                    magnitude,
-                    width=224,
-                    hops=3,
+                guided_social_drive = (
+                    self.inject_action_guided_sensory(
+                        "voice_join",
+                        f"social-drive:{guild_id}",
+                        magnitude,
+                        width=224,
+                        hops=3,
+                    )
                 )
                 # Keep a weaker untargeted state cue so the network still gets
                 # context that this is prolonged isolation, not a direct motor
@@ -2904,6 +2907,11 @@ class FlyBrain:
             0.14 + 0.06 * min(alternatives, 8),
             56,
         )
+        return {
+            "social_drive": guided_social_drive,
+            "outside_seconds": outside_seconds,
+            "available_humans": available_humans,
+        }
 
     def voice_action_decision(
         self,
