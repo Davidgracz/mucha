@@ -328,10 +328,17 @@ class VoiceEpisodicMemory:
     ) -> dict:
         context = str(context)
         action = str(action)
-        normalized_users = tuple(
-            sorted(set(int(x) for x in user_ids))
+        names_in = [str(x) for x in user_names]
+        user_map: dict[int, str] = {}
+        for index, raw_user_id in enumerate(user_ids):
+            uid = int(raw_user_id)
+            name = names_in[index] if index < len(names_in) else ""
+            if uid not in user_map or (not user_map[uid] and name):
+                user_map[uid] = name
+        normalized_users = tuple(sorted(user_map))
+        normalized_names = tuple(
+            user_map[uid] for uid in normalized_users
         )
-        normalized_names = tuple(str(x) for x in user_names)
         scene_key = (
             self.make_scene_key(channel_id, normalized_users)
             if scene_key is None
@@ -494,6 +501,78 @@ class VoiceEpisodicMemory:
             self._episode_dict(row)
             for row in list(self._episodes)[-limit:]
         ]
+
+    def replay_candidates(
+        self,
+        *,
+        limit: int = 12,
+        max_age_seconds: float = 14 * 86400.0,
+        now: float | None = None,
+    ) -> list[dict]:
+        """Return significant recent episodes suitable for offline replay.
+
+        Ranking favors surprise (prediction error), reward magnitude and
+        recency. Selection/replay policy stays in the Discord runtime so this
+        class remains deterministic and testable.
+        """
+        now_value = float(time.time() if now is None else now)
+        max_age = max(1.0, float(max_age_seconds))
+        limit = max(1, min(256, int(limit)))
+
+        if self.db is not None:
+            rows = self.db.execute(
+                """
+                SELECT created_at, guild_id, channel_id, channel_name,
+                       user_ids_json, user_names_json, context,
+                       scene_key, action, predicted_reward,
+                       actual_reward, prediction_error, source
+                FROM voice_episodes
+                WHERE created_at >= ?
+                ORDER BY id DESC
+                LIMIT 512
+                """,
+                (now_value - max_age,),
+            ).fetchall()
+            episodes = [
+                self._episode_from_row(row)
+                for row in rows
+            ]
+        else:
+            episodes = [
+                row
+                for row in reversed(self._episodes)
+                if now_value - float(row.time) <= max_age
+            ]
+
+        ranked: list[tuple[float, VoiceEpisode]] = []
+        for episode in episodes:
+            age = max(0.0, now_value - float(episode.time))
+            recency = max(0.0, 1.0 - age / max_age)
+            surprise = min(1.0, abs(float(episode.prediction_error)))
+            reward = min(1.0, abs(float(episode.actual_reward)))
+            score = (
+                1.60 * surprise
+                + 1.00 * reward
+                + 0.35 * recency
+            )
+            if score <= 0.01:
+                continue
+            ranked.append((score, episode))
+
+        ranked.sort(
+            key=lambda item: (item[0], item[1].time),
+            reverse=True,
+        )
+        result: list[dict] = []
+        for score, episode in ranked[:limit]:
+            row = self._episode_dict(episode)
+            row["replay_score"] = float(score)
+            row["age_seconds"] = max(
+                0.0,
+                now_value - float(episode.time),
+            )
+            result.append(row)
+        return result
 
     def size(self) -> int:
         if self.db is None:
