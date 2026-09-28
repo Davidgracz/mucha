@@ -1489,14 +1489,29 @@ class FlyBrain:
 
     def signal_flow_snapshot(
         self,
-        history: int = 12,
+        history: int = 20,
     ) -> dict:
         history = max(1, min(24, int(history)))
         flows = list(self._signal_flow_history)[-history:]
         learning = list(self._signal_learning_history)[-history:]
+        compact_history = []
+        for row in flows:
+            item = dict(row)
+            item["edges"] = list(row.get("edges", []))[:64]
+            item["cues"] = list(row.get("cues", []))[:8]
+            item["output_indices"] = list(
+                row.get("output_indices", [])
+            )[:28]
+            item["output_nodes"] = list(
+                row.get("output_nodes", [])
+            )[:28]
+            item["output_points"] = list(
+                row.get("output_points", [])
+            )[:28]
+            compact_history.append(item)
         return {
             "latest": flows[-1] if flows else None,
-            "history": flows,
+            "history": compact_history,
             "learning": learning,
             "captured_frames": len(self._signal_flow_history),
             "learning_events": len(self._signal_learning_history),
@@ -2577,6 +2592,16 @@ class FlyBrain:
                     ),
                     "source_index": pre,
                     "target_index": post,
+                    "source_position": {
+                        "x": float(self._neuro_map_coords[pre, 0]),
+                        "y": float(self._neuro_map_coords[pre, 1]),
+                        "z": float(self._neuro_map_coords[pre, 2]),
+                    },
+                    "target_position": {
+                        "x": float(self._neuro_map_coords[post, 0]),
+                        "y": float(self._neuro_map_coords[post, 1]),
+                        "z": float(self._neuro_map_coords[post, 2]),
+                    },
                     "base_weight": base_weight,
                     "old_learned_delta": old,
                     "new_learned_delta": float(new),
