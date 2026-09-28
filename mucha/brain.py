@@ -27,6 +27,39 @@ class FlyBrain:
         "speak", "react", "voice_join", "voice_move", "voice_leave", "explore", "stay"
     )
 
+    # These are seed labels with published links to broad fly behaviors.
+    # Discord actions remain an adapter layer: "speak" is not literally a fly
+    # speech neuron, but its readout can be anchored to song-related descending
+    # neurons instead of a random output subset.
+    ACTION_BIOLOGICAL_SEEDS = {
+        "speak": (
+            "pip10", "pmp2", "song", "courtship",
+        ),
+        "react": (
+            "adn1", "adn2", "groom", "dnp07", "dnp10",
+            "landing", "jump", "giant fiber",
+        ),
+        "voice_join": (
+            "dnp09", "bdn2", "odn1", "forward", "walking",
+            "locomot",
+        ),
+        "voice_move": (
+            "dna01", "dna02", "dng13", "steer", "turn",
+            "walking", "locomot",
+        ),
+        "voice_leave": (
+            "mdn", "moonwalker", "dnp06", "escape", "evasive",
+            "backward", "takeoff", "giant fiber",
+        ),
+        "explore": (
+            "dna01", "dna02", "dng13", "walking", "steer",
+            "turn", "locomot", "navigation",
+        ),
+        "stay": (
+            "dnp09", "freeze", "freezing", "stop", "brake",
+        ),
+    }
+
     def __init__(self, connectome: Connectome, cfg: BrainConfig):
         self.c = connectome
         self.cfg = cfg
@@ -70,6 +103,7 @@ class FlyBrain:
         self._neuro_map_region_source = "cell_class"
         self._neuro_map_history = deque(maxlen=180)
         self._action_output_pools: dict[str, np.ndarray] = {}
+        self._action_output_info: dict[str, dict] = {}
         self._word_association_signature_cache: dict[
             str, tuple[np.ndarray, np.ndarray]
         ] = {}
@@ -251,14 +285,7 @@ class FlyBrain:
                 for name, count in counts.most_common(5)
             ]
 
-        self._action_output_pools = {
-            action: self._subset(
-                "output:action:" + action,
-                self.c.output,
-                128,
-            )
-            for action in self.ACTIONS
-        }
+        self._build_action_output_pools()
 
         # Fixed low-density point cloud gives the eye a stable outline of the
         # whole brain while only active neurons are drawn brightly.
@@ -302,6 +329,203 @@ class FlyBrain:
     @property
     def device_name(self) -> str:
         return self.compute.info.device_name
+
+    def _action_metadata_text(self) -> np.ndarray:
+        """Return one normalized searchable annotation string per neuron."""
+        n = self.c.n_neurons
+        meta = self.c.neuron_meta or {}
+        fields = (
+            "primary_type",
+            "cell_class",
+            "sub_class",
+            "super_class",
+            "flow",
+            "nerve",
+            "primary_neuropil",
+        )
+        text = np.full(n, "", dtype=object)
+        for key in fields:
+            arr = meta.get(key)
+            if arr is None or len(arr) != n:
+                continue
+            values = np.asarray(arr).astype(str, copy=False)
+            for i, value in enumerate(values):
+                value = str(value).strip().lower()
+                if value:
+                    text[i] = (str(text[i]) + " " + value).strip()
+        return np.asarray(text, dtype=str)
+
+    def _structural_action_fallback(
+        self,
+        action: str,
+        width: int,
+    ) -> np.ndarray:
+        """Pick a deterministic non-random output pool from graph structure."""
+        output = np.asarray(self.c.output, dtype=np.int32)
+        if not len(output):
+            output = np.arange(self.c.n_neurons, dtype=np.int32)
+        width = min(max(1, int(width)), len(output))
+
+        abs_matrix = self.c.matrix.copy()
+        abs_matrix.data = np.abs(abs_matrix.data)
+        incoming_all = np.asarray(
+            abs_matrix.sum(axis=1)
+        ).ravel().astype(np.float32)
+        outgoing_all = np.asarray(
+            abs_matrix.sum(axis=0)
+        ).ravel().astype(np.float32)
+        signed_out_all = np.asarray(
+            self.c.matrix.sum(axis=0)
+        ).ravel().astype(np.float32)
+
+        incoming = incoming_all[output]
+        outgoing = outgoing_all[output]
+        signed_out = signed_out_all[output]
+
+        def norm(values: np.ndarray) -> np.ndarray:
+            values = np.asarray(values, dtype=np.float32)
+            lo = float(np.min(values)) if len(values) else 0.0
+            hi = float(np.max(values)) if len(values) else 0.0
+            if hi - lo <= 1e-9:
+                return np.zeros_like(values)
+            return (values - lo) / (hi - lo)
+
+        inc = norm(incoming)
+        out = norm(outgoing)
+        signed = norm(signed_out)
+        balanced = 1.0 - np.abs(inc - out)
+
+        weights = {
+            "speak": (0.20, 0.65, 0.15, 0.10),
+            "react": (0.65, 0.20, 0.15, 0.05),
+            "voice_join": (0.30, 0.45, 0.25, 0.10),
+            "voice_move": (0.25, 0.35, 0.15, 0.40),
+            "voice_leave": (0.20, 0.50, 0.30, 0.05),
+            "explore": (0.35, 0.30, 0.10, 0.35),
+            "stay": (0.50, 0.10, 0.10, 0.25),
+        }
+        wi, wo, ws, wb = weights.get(
+            action,
+            (0.25, 0.45, 0.15, 0.15),
+        )
+        score = wi * inc + wo * out + ws * signed + wb * balanced
+
+        # Different actions use opposite tails where that better matches the
+        # adapter semantics, but every choice still comes from graph features.
+        if action == "stay":
+            order = np.argsort(score)
+        else:
+            order = np.argsort(score)[::-1]
+        return output[order[:width]].astype(np.int32, copy=False)
+
+    def _expand_action_seed_pool(
+        self,
+        seeds: np.ndarray,
+        width: int,
+    ) -> np.ndarray:
+        """Expand typed seeds through their real one-hop FAFB connectivity."""
+        seeds = np.unique(
+            np.asarray(seeds, dtype=np.int32)
+        )
+        output = np.asarray(self.c.output, dtype=np.int32)
+        if not len(output):
+            output = np.arange(self.c.n_neurons, dtype=np.int32)
+        width = min(max(1, int(width)), len(output))
+        if not len(seeds):
+            return np.empty(0, dtype=np.int32)
+
+        if len(seeds) >= width:
+            return seeds[:width].astype(np.int32, copy=False)
+
+        outgoing = abs(self.c.matrix[output][:, seeds])
+        incoming = abs(self.c.matrix[seeds][:, output])
+        score = (
+            np.asarray(outgoing.sum(axis=1)).ravel()
+            + 0.55
+            * np.asarray(incoming.sum(axis=0)).ravel()
+        ).astype(np.float32, copy=False)
+
+        seed_set = set(int(i) for i in seeds.tolist())
+        order = np.argsort(score)[::-1]
+        expanded = list(int(i) for i in seeds.tolist())
+        for pos in order:
+            idx = int(output[int(pos)])
+            if idx in seed_set or float(score[int(pos)]) <= 0.0:
+                continue
+            expanded.append(idx)
+            seed_set.add(idx)
+            if len(expanded) >= width:
+                break
+        return np.asarray(expanded[:width], dtype=np.int32)
+
+    def _build_action_output_pools(self, width: int = 128) -> None:
+        """Build action readouts from annotated DNs and real connectivity.
+
+        Seed labels are only anchors. Once a known type is found, the pool is
+        expanded through the actual FAFB graph. If annotations are unavailable,
+        a deterministic structural fallback is used instead of hash-random
+        output neurons.
+        """
+        annotations = self._action_metadata_text()
+        output = np.asarray(self.c.output, dtype=np.int32)
+        if not len(output):
+            output = np.arange(self.c.n_neurons, dtype=np.int32)
+
+        self._action_output_pools = {}
+        self._action_output_info = {}
+
+        for action in self.ACTIONS:
+            terms = self.ACTION_BIOLOGICAL_SEEDS.get(action, ())
+            matches: list[int] = []
+            matched_labels: list[str] = []
+            for idx in output:
+                label = str(annotations[int(idx)]).lower()
+                if not label:
+                    continue
+                if any(term in label for term in terms):
+                    matches.append(int(idx))
+                    if len(matched_labels) < 8:
+                        matched_labels.append(label)
+
+            seeds = np.asarray(matches, dtype=np.int32)
+            if len(seeds):
+                pool = self._expand_action_seed_pool(
+                    seeds,
+                    width,
+                )
+                mode = (
+                    "annotated+connectome"
+                    if len(pool) > len(seeds)
+                    else "annotated"
+                )
+            else:
+                pool = self._structural_action_fallback(
+                    action,
+                    width,
+                )
+                mode = "structural-fallback"
+
+            self._action_output_pools[action] = pool
+            self._action_output_info[action] = {
+                "mode": mode,
+                "seed_count": int(len(seeds)),
+                "pool_size": int(len(pool)),
+                "seed_terms": list(terms),
+                "matched_labels": matched_labels,
+            }
+
+    def action_pool_diagnostics(self) -> dict[str, dict]:
+        return {
+            action: {
+                key: (
+                    list(value)
+                    if isinstance(value, tuple)
+                    else value
+                )
+                for key, value in info.items()
+            }
+            for action, info in self._action_output_info.items()
+        }
 
     def _rebuild_synaptic_matrix(self) -> None:
         n = self.c.n_neurons
@@ -771,7 +995,9 @@ class FlyBrain:
         # Action-specific reinforcement. This makes feedback about "speak" or
         # "react" preferentially change the corresponding output population.
         if action in self.ACTIONS:
-            out_cpu = self._subset("output:action:" + action, self.c.output, 128)
+            out_cpu = self._action_output_pools.get(action)
+            if out_cpu is None or not len(out_cpu):
+                out_cpu = self._structural_action_fallback(action, 128)
             out = self._backend_indices(out_cpu)
             action_delta = np.float32(self.cfg.plasticity_lr * amount * 8.0)
             self.plastic_bias[out] += action_delta
@@ -1228,7 +1454,20 @@ class FlyBrain:
         }
 
     def action_scores(self) -> dict[str, float]:
-        return {name: self.readout("action:" + name, 128) for name in self.ACTIONS}
+        scores: dict[str, float] = {}
+        for name in self.ACTIONS:
+            idx_cpu = self._action_output_pools.get(name)
+            if idx_cpu is None or not len(idx_cpu):
+                scores[name] = self.readout("action:" + name, 128)
+                continue
+            idx = self._backend_indices(idx_cpu)
+            raw = self.compute.scalar(
+                self.xp.mean(self.state[idx])
+            )
+            scores[name] = _sigmoid(
+                3.2 * raw + 0.08 * self.reward_trace
+            )
+        return scores
 
     def channel_affinity(self, guild_id: int, channel_id: int) -> float:
         return self.readout(f"voice-affinity:{guild_id}:{channel_id}", 96)
@@ -2017,4 +2256,5 @@ class FlyBrain:
             "learned_synapses": len(self._synaptic_delta_map),
             "synaptic_mean_abs": synaptic_mean_abs,
             "synaptic_max_abs": synaptic_max_abs,
+            "action_pools": self.action_pool_diagnostics(),
         }
