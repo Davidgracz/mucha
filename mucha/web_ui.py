@@ -2562,6 +2562,26 @@ function draw(){
   };
   plot("mean","#55d3c3");plot("max","#6ea8fe");
 }
+function initDetailsLayout(){
+  const collapsedByDefault=new Set(["Learning Since Startup","Action History","Server Learning Context","Audio Debug","Voice Recognition / STT","Najbardziej aktywne neurony"]);
+  document.querySelectorAll(".card").forEach(card=>{
+    const h=card.querySelector(":scope > h2");
+    if(!h||!collapsedByDefault.has(h.textContent.trim()))return;
+    card.classList.add("is-collapsible","collapsed");
+    h.setAttribute("role","button");
+    h.setAttribute("tabindex","0");
+    h.setAttribute("aria-expanded","false");
+    const toggle=()=>{
+      card.classList.toggle("collapsed");
+      h.setAttribute("aria-expanded",String(!card.classList.contains("collapsed")));
+    };
+    h.addEventListener("click",toggle);
+    h.addEventListener("keydown",e=>{
+      if(e.key==="Enter"||e.key===" "){e.preventDefault();toggle();}
+    });
+  });
+}
+initDetailsLayout();
 async function update(){
   try{
     const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);
