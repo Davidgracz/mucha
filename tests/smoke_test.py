@@ -126,7 +126,10 @@ def main():
             "voice_join",
         }
 
-        b.inject_voice_decision_context(
+        state_before_homeostasis = b.compute.to_cpu(
+            b.state
+        ).copy()
+        homeostasis_diag = b.inject_voice_decision_context(
             999,
             12345,
             connected=True,
@@ -135,7 +138,29 @@ def main():
             human_count=3,
             disliked_strength=0.6,
             alternatives=2,
+            social_fatigue_level=0.8,
+            social_fatigue_magnitude=1.1,
+            habituation_level=0.7,
+            habituation_change_magnitude=0.9,
+            exploration_drive_level=0.9,
+            exploration_drive_magnitude=1.0,
         )
+        assert homeostasis_diag["social_fatigue_level"] == 0.8
+        assert homeostasis_diag["habituation_level"] == 0.7
+        assert homeostasis_diag["exploration_drive_level"] == 0.9
+        assert homeostasis_diag["social_fatigue_move"] is not None
+        assert homeostasis_diag["social_fatigue_leave"] is not None
+        assert homeostasis_diag["habituation"] is not None
+        assert homeostasis_diag["exploration_drive"] is not None
+        state_after_homeostasis = b.compute.to_cpu(
+            b.state
+        )
+        assert np.max(
+            np.abs(
+                state_after_homeostasis
+                - state_before_homeostasis
+            )
+        ) > 0.10
         b.step(2)
         voice_in = b.voice_action_decision(
             connected=True,
@@ -301,6 +326,12 @@ def main():
         assert "reward_opportunity_stay_punish" in CONFIG_HTML
         assert "reward_opportunity_stay_punish_interval_seconds" in CONFIG_HTML
         assert "motivation_propagation_steps" in CONFIG_HTML
+        assert "homeostasis_enabled" in CONFIG_HTML
+        assert "social_fatigue_start_seconds" in CONFIG_HTML
+        assert "habituation_half_life_seconds" in CONFIG_HTML
+        assert "habituation_max_suppression" in CONFIG_HTML
+        assert "exploration_drive_enabled" in CONFIG_HTML
+        assert "exploration_drive_max_magnitude" in CONFIG_HTML
         assert "neural tie-break" in HTML
         assert "overstay_punish_amount" in CONFIG_HTML
         assert "overstay_punish_interval_seconds" in CONFIG_HTML
@@ -334,6 +365,10 @@ def main():
         assert "ignored neural reward opportunity" in bot_source
         assert "_last_reward_opportunity_stay_punish" in bot_source
         assert "motivation_propagation_steps" in bot_source
+        assert "_voice_homeostasis_levels" in bot_source
+        assert "habituation_suppression" in bot_source
+        assert "social_fatigue_level" in bot_source
+        assert "exploration_drive_level" in bot_source
         assert "preferred_channel_id" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
