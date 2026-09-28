@@ -171,6 +171,8 @@ const groups=[
   ["reward_opportunity_max_strength","Możliwość nagrody: max sygnału","number",0.05,0,4,"Górna amplituda sensorycznego reward-opportunity cue."],
   ["reward_opportunity_success_chance","Szansa realnej nagrody","number",0.01,0,1,"Po sprawdzeniu wskazanego kanału nagroda nie jest pewna; ta wartość określa prawdopodobieństwo."],
   ["reward_opportunity_reward","Wartość znalezionej nagrody","number",0.01,0,1,"Reward dla ścieżki voice_join, gdy potencjalna nagroda okaże się prawdziwa."],
+  ["reward_opportunity_stay_punish","Kara za zignorowaną możliwość","number",0.005,0,0.5,"Gdy connectome widzi reward opportunity, ale wybiera STAY, kara trafia do śladu STAY zamiast sztucznie podbijać JOIN."],
+  ["reward_opportunity_stay_punish_interval_seconds","Interwał kary za ignorowanie","number",5,5,3600,"Minimalny odstęp między kolejnymi karami STAY przy aktywnej możliwości nagrody."],
   ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
   ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie rośnie presja na zmianę kanału."],
   ["move_threshold","Próg move","number",0.01,0,1,"Próg decyzji o zmianie kanału."],
