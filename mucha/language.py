@@ -902,6 +902,7 @@ class OnlineLanguage:
         context: str,
         arousal: float,
         brain_word_score: Callable[[str], float] | None = None,
+        brain_word_feedback: Callable[[str, str | None], None] | None = None,
     ) -> str | None:
         if not self.hybrid_word_enabled:
             return None
@@ -925,6 +926,10 @@ class OnlineLanguage:
         )
         brain_score_cache: dict[str, float] = {}
         brain_scores_used: list[float] = []
+        brain_feedback_active = bool(
+            brain_active and brain_word_feedback is not None
+        )
+        brain_feedback_words = 0
         self._brain_word_control_last = {
             "active": brain_active,
             "ready": brain_ready,
@@ -932,6 +937,8 @@ class OnlineLanguage:
             "min_vocab": self.connectome_word_control_min_vocab,
             "evaluated": 0,
             "mean_score": 0.5,
+            "recurrent_feedback": brain_feedback_active,
+            "feedback_words": 0,
         }
 
         def get_brain_score(token: str) -> float:
@@ -958,6 +965,34 @@ class OnlineLanguage:
         out: list[str] = []
         state: tuple[str, str] | None = None
         punctuation = {".", "!", "?", ",", ";", ":"}
+
+        def previous_lexical_token() -> str | None:
+            for item in reversed(out):
+                if item not in punctuation and item != WORD_END:
+                    return item
+            for item in reversed(ctx):
+                if item not in punctuation and item != WORD_END:
+                    return item
+            return None
+
+        def feed_selected_word(token: str) -> None:
+            nonlocal brain_feedback_words
+            if (
+                not brain_feedback_active
+                or brain_word_feedback is None
+                or token in punctuation
+                or token == WORD_END
+            ):
+                return
+            previous = previous_lexical_token()
+            try:
+                brain_word_feedback(token, previous)
+                brain_feedback_words += 1
+                # The connectome state just changed, so candidate scores cached
+                # for the previous word are no longer valid.
+                brain_score_cache.clear()
+            except Exception:
+                return
 
         def choose_mixed(
             sources: list[tuple[float, list[tuple]]],
@@ -1057,7 +1092,10 @@ class OnlineLanguage:
                         break
                 combined = adjusted
 
-            return self._weighted_choice(list(combined.items()))
+            selected = self._weighted_choice(list(combined.items()))
+            if selected is not None:
+                feed_selected_word(selected)
+            return selected
 
         def source_weights(
             trigram_rows: list[tuple],
@@ -1141,25 +1179,38 @@ class OnlineLanguage:
                 "ORDER BY n DESC LIMIT 250"
             ).fetchall()
             weighted: list[tuple[str, float]] = []
-            for a, b, n, last_seen in rows:
+            for row_index, (a, b, n, last_seen) in enumerate(rows):
                 if a in punctuation:
                     continue
                 packed = str(a) + "\u0000" + str(b)
-                weighted.append(
-                    (
-                        packed,
-                        (max(1.0, float(n)) ** 0.78)
-                        * self._recent_multiplier(float(last_seen)),
-                    )
+                weight = (
+                    (max(1.0, float(n)) ** 0.78)
+                    * self._recent_multiplier(float(last_seen))
                 )
+                if (
+                    brain_active
+                    and row_index < self.connectome_word_control_candidates
+                ):
+                    scores = [get_brain_score(str(a))]
+                    if b != WORD_END and b not in punctuation:
+                        scores.append(get_brain_score(str(b)))
+                    centered = ((sum(scores) / len(scores)) - 0.5) * 2.0
+                    weight *= math.exp(
+                        self.connectome_word_control_strength * centered
+                    )
+                weighted.append((packed, weight))
             packed = self._weighted_choice(weighted)
             if packed:
                 a, b = packed.split("\u0000", 1)
                 if b == WORD_END:
+                    feed_selected_word(a)
                     out.append(a)
                     state = (WORD_START_B, a)
                 else:
-                    out.extend([a, b])
+                    feed_selected_word(a)
+                    out.append(a)
+                    feed_selected_word(b)
+                    out.append(b)
                     state = (a, b)
 
         if state is None:
@@ -1235,12 +1286,15 @@ class OnlineLanguage:
 
         if brain_active:
             self._brain_word_control_last["evaluated"] = len(
-                brain_score_cache
+                brain_scores_used
             )
             self._brain_word_control_last["mean_score"] = (
                 sum(brain_scores_used) / len(brain_scores_used)
                 if brain_scores_used
                 else 0.5
+            )
+            self._brain_word_control_last["feedback_words"] = (
+                brain_feedback_words
             )
 
         return text
@@ -1287,6 +1341,7 @@ class OnlineLanguage:
         context: str = "",
         arousal: float = 0.5,
         brain_word_score: Callable[[str], float] | None = None,
+        brain_word_feedback: Callable[[str, str | None], None] | None = None,
     ) -> tuple[str | None, list[tuple[str, str, str]]]:
         if not self.ready():
             self._last_generator = "not-ready"
@@ -1302,6 +1357,7 @@ class OnlineLanguage:
                     context,
                     arousal,
                     brain_word_score=brain_word_score,
+                    brain_word_feedback=brain_word_feedback,
                 )
                 if not candidate:
                     continue
