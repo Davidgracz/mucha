@@ -347,6 +347,9 @@ class MuchaClient(discord.Client):
             "reaction_threshold",
             "reaction_cooldown_seconds",
             "social_learning_enabled",
+            "neural_social_memory_enabled",
+            "neural_affinity_weight",
+            "neural_social_learning_scale",
             "social_window_seconds",
             "word_reuse_reward",
             "phrase_reuse_reward",
@@ -548,6 +551,15 @@ class MuchaClient(discord.Client):
             ("behavior", "reaction_threshold"): (float, 0.0, 1.0),
             ("behavior", "reaction_cooldown_seconds"): (int, 0, 3600),
             ("behavior", "social_learning_enabled"): (bool, None, None),
+            ("behavior", "neural_social_memory_enabled"): (
+                bool, None, None
+            ),
+            ("behavior", "neural_affinity_weight"): (
+                float, 0.0, 1.0
+            ),
+            ("behavior", "neural_social_learning_scale"): (
+                float, 0.0, 3.0
+            ),
             ("behavior", "social_window_seconds"): (int, 30, 86400),
             ("behavior", "word_reuse_reward"): (float, 0.0, 1.0),
             ("behavior", "phrase_reuse_reward"): (float, 0.0, 1.0),
