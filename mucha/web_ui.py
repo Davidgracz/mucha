@@ -94,6 +94,16 @@ const groups=[
   ["octopamine_arousal_gain","Octopamina → pobudzenie","number",0.05,0,1.5,"Zwiększa propagation gain i szum przy aktywności octopaminowej."],
   ["neuromodulator_smoothing","Bezwładność neuromodulatorów","number",0.01,0,0.999,"Wyżej = poziomy zmieniają się wolniej i utrzymują się dłużej."]
  ]},
+ {id:"internal-states",title:"Internal states / attractors",desc:"SOCIAL NEED, CURIOSITY, STRESS, SATIETY i AROUSAL są odczytywane z aktywności zespołów neuronów. Bodziec wchodzi przez sensory, a podtrzymanie używa wyłącznie istniejących rekurencyjnych krawędzi FAFB.",section:"brain",open:true,fields:[
+  ["internal_states_enabled","Neural internal states","bool",0,0,0,"Włącza wewnętrzne attractory. Nie dodaje bezpośrednich bonusów do action score."],
+  ["internal_state_pool_size","Neurony na attractor","number",8,24,1024,"Rozmiar zespołu neuronów wewnętrznych dla każdego stanu."],
+  ["internal_state_entry_width","Sensory entry neurons","number",8,16,1024,"Ile neuronów sensorycznych może pobudzać każdy attractor na podstawie realnego reachability."],
+  ["internal_state_recurrent_gain","Recurrent FAFB gain","number",0.01,0,2,"Dodatkowe wzmocnienie tylko istniejących krawędzi rekurencyjnych wewnątrz attractoru."],
+  ["internal_state_level_gain","Czułość odczytu stanu","number",0.1,0.1,20,"Przelicza dodatnią aktywność neuronalną attractoru na poziom 0–1."],
+  ["internal_state_arousal_gain","AROUSAL → propagation","number",0.01,0,1.5,"Jak mocno neuronalny AROUSAL zwiększa propagation gain."],
+  ["internal_state_stress_gain","STRESS → propagation","number",0.01,0,1.5,"Jak mocno neuronalny STRESS zwiększa propagation gain i pobudzenie."],
+  ["internal_state_satiety_stability_gain","SATIETY → stabilność","number",0.01,0,0.5,"Jak mocno neuronalny SATIETY zwiększa leak/stabilność stanu sieci."]
+ ]},
  {id:"language-main",title:"Język i odpowiedzi",desc:"Kiedy Mucha może mówić i jak długie odpowiedzi generuje.",section:"language",open:true,fields:[
   ["min_chars_before_speaking","Minimum danych przed mówieniem","number",50,100,1000000,"Ile poznanych znaków musi mieć model zanim zacznie odpowiadać."],
   ["min_unique_chars_before_speaking","Minimum unikalnych znaków","number",1,5,500,"Chroni przed startem na bardzo ubogim materiale."],
@@ -1228,7 +1238,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 <div class="toolbar">
  <div class="toolgroup"><span>Projekcja</span><button class="btn proj on" data-proj="xy">XY</button><button class="btn proj" data-proj="xz">XZ</button><button class="btn proj" data-proj="yz">YZ</button></div>
  <div class="toolgroup"><span>Warstwa</span><button class="btn role on" data-role="all">ALL</button><button class="btn role" data-role="sensory">SENSORY</button><button class="btn role" data-role="internal">INTERNAL</button><button class="btn role" data-role="modulatory">MODULATORY</button><button class="btn role" data-role="output">OUTPUT</button></div>
- <div class="toolgroup"><span>Widok</span><button class="btn on" id="regions-btn">REGION HEAT</button><button class="btn on" id="trail-btn">ACTIVITY TRAIL</button><button class="btn on" id="flow-btn">SIGNAL FLOW</button><button class="btn on" id="learned-btn">LEARNED SYNAPSES</button><button class="btn on" id="follow-btn">FOLLOW DECISION</button><span class="badge" id="region-source">REGIONS</span><span class="badge" id="coord-badge">COORDINATES</span></div>
+ <div class="toolgroup"><span>Widok</span><button class="btn on" id="regions-btn">REGION HEAT</button><button class="btn on" id="trail-btn">ACTIVITY TRAIL</button><button class="btn on" id="flow-btn">SIGNAL FLOW</button><button class="btn on" id="learned-btn">LEARNED SYNAPSES</button><button class="btn on" id="attractor-btn">ATTRACTORS</button><button class="btn on" id="follow-btn">FOLLOW DECISION</button><span class="badge" id="region-source">REGIONS</span><span class="badge" id="coord-badge">COORDINATES</span></div>
 </div>
 
 <section class="grid">
@@ -1248,6 +1258,8 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
    <div class="actions" id="actions" style="margin-top:10px"></div>
   </div>
 
+  <div class="card"><div class="card-head"><h2>🧠 Internal attractors</h2><span class="badge" id="attractor-dominant">czekam</span></div><div id="internal-states" class="empty">Brak odczytu attractorów.</div></div>
+
   <div class="card"><div class="card-head"><h2>⚡ Live signal flow</h2><div class="flow-head-actions"><button class="btn on" id="flow-live-btn">LIVE</button><span class="badge" id="flow-winner">czekam</span></div></div><div id="signal-flow" class="empty">Pierwsza klatka pojawi się po następnym bodźcu i propagacji connectomu.</div></div>
 
   <div class="card"><div class="card-head"><h2>Najaktywniejsze neuropile / rejony</h2><span class="badge" id="region-filter">ALL</span></div><div class="regions" id="regions"></div><div class="note" id="region-note">—</div></div>
@@ -1263,7 +1275,8 @@ const $=id=>document.getElementById(id);
 const canvas=$("brain"),ctx=canvas.getContext("2d"),wrap=$("map-wrap"),tip=$("tip");
 const colors={sensory:"#55ead0",internal:"#6ba6ff",modulatory:"#b68bff",output:"#ff77b7"};
 const actionColors={speak:"#b68bff",react:"#ff9f6b",voice_join:"#55ead0",voice_move:"#6ba6ff",voice_leave:"#ff77b7",explore:"#7fd1ff",stay:"#ffd166"};
-let projection="xy",roleFilter="all",showRegions=true,showTrail=true,showFlow=true,showLearned=true,followDecision=true,flowReplayTick=null,data=null,hover=null,selected=null,selectedRegion="",lastFetch=0;
+const stateColors={social_need:"#55ead0",curiosity:"#6ba6ff",stress:"#ff77b7",satiety:"#ffd166",arousal:"#b68bff"};
+let projection="xy",roleFilter="all",showRegions=true,showTrail=true,showFlow=true,showLearned=true,showAttractors=true,followDecision=true,flowReplayTick=null,data=null,hover=null,selected=null,selectedRegion="",lastFetch=0;
 const trail=new Map(),mouse={x:0,y:0,inside:false};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),nfmt=n=>Number(n||0).toLocaleString("pl-PL");
 const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
@@ -1307,6 +1320,21 @@ function flowNodeSet(){
  for(const id of (f.output_nodes||[]))ids.add(String(id));
  for(const cue of (f.cues||[]))for(const id of (cue.root_ids||[]))ids.add(String(id));
  return ids
+}
+function drawAttractors(w,h){
+ if(!data||!showAttractors)return;const diag=data.internal_states||{},states=diag.states||{};
+ ctx.save();ctx.globalCompositeOperation="lighter";
+ for(const n of (data.nodes||[])){const memberships=n.internal_states||[];if(!memberships.length)continue;const p=point(n,w,h,26);
+  memberships.slice(0,3).forEach((name,i)=>{const level=clamp(Number((states[name]||{}).level||0),0,1),tone=stateColors[name]||"#fff";ctx.strokeStyle=tone;ctx.globalAlpha=.16+level*.66;ctx.lineWidth=1+level*1.8;ctx.beginPath();ctx.arc(p.x,p.y,8+i*3+level*5,0,Math.PI*2);ctx.stroke()})
+ }
+ ctx.globalAlpha=1;ctx.restore()
+}
+function renderInternalStates(){
+ const root=$("internal-states"),diag=data&&data.internal_states?data.internal_states:{},states=diag.states||{},order=["social_need","curiosity","stress","satiety","arousal"];
+ const dominant=diag.dominant||"—";$("attractor-dominant").textContent=String(dominant).toUpperCase()+" "+(Number(diag.dominant_level||0)*100).toFixed(0)+"%";
+ if(!Object.keys(states).length){root.className="empty";root.textContent=diag.enabled===false?"Internal states wyłączone.":"Brak zbudowanych attractorów.";return}
+ const labels={social_need:"SOCIAL NEED",curiosity:"CURIOSITY",stress:"STRESS",satiety:"SATIETY",arousal:"AROUSAL"};
+ root.className="";root.innerHTML=order.filter(name=>states[name]).map(name=>{const s=states[name],level=clamp(Number(s.level||0),0,1),tone=stateColors[name]||"#fff";return '<div class="signal-row"><b style="color:'+tone+'">'+esc(labels[name]||name)+'</b><span><div class="track"><div class="fill" style="width:'+(level*100).toFixed(1)+'%"></div></div>'+nfmt(s.neurons||0)+' n • '+nfmt(s.recurrent_edges||0)+' recurrent • → '+esc((s.target_actions||[]).join(", "))+'</span><em style="color:'+tone+'">'+(level*100).toFixed(0)+'%</em></div>'}).join("")+'<div class="flow-note">'+esc(diag.method||"")+' • recurrent gain '+Number(diag.recurrent_gain||0).toFixed(2)+'</div>'
 }
 function drawLearnedSynapses(w,h){
  if(!data||!showLearned)return;const learned=data.learned_synapses||{},rows=learned.edges||[];if(!rows.length)return;
@@ -1374,7 +1402,7 @@ function drawNodes(w,h){
 function draw(){
  requestAnimationFrame(draw);const r=wrap.getBoundingClientRect(),w=r.width,h=r.height;ctx.clearRect(0,0,w,h);
  const grad=ctx.createRadialGradient(w*.5,h*.5,20,w*.5,h*.5,Math.max(w,h)*.55);grad.addColorStop(0,"rgba(34,67,91,.07)");grad.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
- drawReference(w,h);drawRegions(w,h);drawLearnedSynapses(w,h);drawSignalFlow(w,h);drawNodes(w,h)
+ drawReference(w,h);drawRegions(w,h);drawAttractors(w,h);drawLearnedSynapses(w,h);drawSignalFlow(w,h);drawNodes(w,h)
 }
 function renderActions(scores){
  const order=["speak","explore","react","voice_join","voice_move","voice_leave","stay"];
@@ -1425,7 +1453,8 @@ function inspect(n){
  '<div><small>class</small><b>'+esc(n0.cell_class||"—")+'</b></div><div><small>sub_class</small><b>'+esc(n0.sub_class||"—")+'</b></div>'+
  '<div><small>super_class</small><b>'+esc(n0.super_class||"—")+'</b></div><div><small>side / flow</small><b>'+esc((n0.side||"—")+" / "+(n0.flow||"—"))+'</b></div>'+
  '<div><small>neurotransmitter</small><b>'+esc(n0.nt_type||"—")+'</b></div><div><small>primary neuropil</small><b>'+esc(n0.primary_neuropil||"—")+'</b></div>'+
- '<div><small>static in / out</small><b>'+nfmt(n0.incoming_edges||0)+' / '+nfmt(n0.outgoing_edges||0)+'</b></div><div><small>live flow in / out</small><b>'+Number(n0.live_flow_in||0).toFixed(4)+' / '+Number(n0.live_flow_out||0).toFixed(4)+'</b></div></div>'+
+ '<div><small>static in / out</small><b>'+nfmt(n0.incoming_edges||0)+' / '+nfmt(n0.outgoing_edges||0)+'</b></div><div><small>live flow in / out</small><b>'+Number(n0.live_flow_in||0).toFixed(4)+' / '+Number(n0.live_flow_out||0).toFixed(4)+'</b></div>'+
+ '<div><small>internal attractor</small><b>'+esc((n0.internal_states||[]).join(", ")||"—")+'</b></div></div>'+
  '<div class="effects"><small>Live incoming / outgoing — ostatnia klatka</small>'+liveFlowRows(n0)+'</div>'+
  '<div class="effects"><small>Top neuropile wg incident synapse mass</small>'+neuropilRows(n0)+'</div>'+
  '<div class="effects"><small>Wpływ na systemowe readouty Muchy</small>'+effectRows(n0)+'</div>'+
@@ -1441,6 +1470,7 @@ $("regions-btn").onclick=()=>{showRegions=!showRegions;$("regions-btn").classLis
 $("trail-btn").onclick=()=>{showTrail=!showTrail;$("trail-btn").classList.toggle("on",showTrail);if(!showTrail)trail.clear()};
 $("flow-btn").onclick=()=>{showFlow=!showFlow;$("flow-btn").classList.toggle("on",showFlow)};
 $("learned-btn").onclick=()=>{showLearned=!showLearned;$("learned-btn").classList.toggle("on",showLearned)};
+$("attractor-btn").onclick=()=>{showAttractors=!showAttractors;$("attractor-btn").classList.toggle("on",showAttractors)};
 $("follow-btn").onclick=()=>{followDecision=!followDecision;$("follow-btn").classList.toggle("on",followDecision)};
 $("flow-live-btn").onclick=()=>{flowReplayTick=null;renderSignalFlow()};
 
@@ -1452,7 +1482,7 @@ function render(payload){
  const top=(m.regions||[])[0];$("top-region").textContent=top?top.name:"—";$("top-region-detail").textContent=top?(nfmt(top.active_count)+" active • mean "+Number(top.mean_abs||0).toFixed(3)):"brak adnotacji";
  const badge=$("coord-badge"),mode=m.coordinate_mode||"synthetic";badge.textContent=mode==="real"?"REAL FAFB COORDS":mode==="hybrid"?"HYBRID COORDS":"FALLBACK LAYOUT";badge.className="badge "+mode;
  const rs=$("region-source");rs.textContent=m.region_source==="neuropil"?"NAMED NEUROPILS":"CLASS FALLBACK";rs.className="badge "+(m.region_source==="neuropil"?"neuropil":"fallback");$("region-note").textContent=m.region_source_detail||"—";
- $("event").textContent=payload.last_event||"—";$("last-action").textContent=payload.last_action||"—";$("source").textContent=(payload.source||"runtime").includes("FlyWire")?"FAFB v783":"runtime";renderActions(scores);renderSignalFlow();renderRegions();regionInspector();
+ $("event").textContent=payload.last_event||"—";$("last-action").textContent=payload.last_action||"—";$("source").textContent=(payload.source||"runtime").includes("FlyWire")?"FAFB v783":"runtime";renderActions(scores);renderInternalStates();renderSignalFlow();renderRegions();regionInspector();
  if(selected){const fresh=(m.nodes||[]).find(n=>n.id===selected.id);if(fresh){selected=fresh;inspect(fresh)}}
  $("live").textContent="LIVE";lastFetch=Date.now()
 }
