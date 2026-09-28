@@ -21,6 +21,12 @@ class BrainConfig:
     synaptic_plasticity_max_delta: float = 0.08
     synaptic_plasticity_trace_neurons: int = 256
     synaptic_plasticity_max_edges: int = 40000
+    neuromodulation_enabled: bool = True
+    neuromodulatory_direct_residual: float = 0.12
+    dopamine_plasticity_gain: float = 1.60
+    serotonin_stability_gain: float = 0.10
+    octopamine_arousal_gain: float = 0.35
+    neuromodulator_smoothing: float = 0.90
     steps_per_event: int = 3
     idle_steps: int = 1
     backend: str = "auto"
