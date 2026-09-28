@@ -204,11 +204,11 @@ function renderSections(){
 }
 function renderChannels(){
  const text=state.channels?.text||[],voice=state.channels?.voice||[],guilds=state.guilds||[];
- $("blocked-text-list").innerHTML=text.map(ch=>channelRow("text",ch.id,ch.name,ch.guild,ch.blocked)).join("")||'<div class="hint">Brak kanałów tekstowych.</div>';
+ $("blocked-text-list").innerHTML=text.map(ch=>channelRow("text",ch.id,ch.name,ch.guild,ch.blocked,ch.hard_blocked)).join("")||'<div class="hint">Brak kanałów tekstowych.</div>';
  $("blocked-voice-list").innerHTML=voice.map(ch=>channelRow("voice",ch.id,ch.name,ch.guild,ch.blocked)).join("")||'<div class="hint">Brak kanałów voice.</div>';
  $("blocked-guild-list").innerHTML=guilds.map(g=>channelRow("voice-guild",g.id,g.name,"Całkowity zakaz VC",g.voice_blocked)).join("")||'<div class="hint">Brak serwerów.</div>';
 }
-function channelRow(kind,id,name,sub,checked){return '<label class="channel"><input type="checkbox" data-'+kind+'="'+id+'" '+(checked?'checked':'')+'><div><b>'+esc(name)+'</b><br><small>'+esc(sub)+'</small></div><small>'+id+'</small></label>'}
+function channelRow(kind,id,name,sub,checked,hardBlocked=false){const locked=kind==="text"&&hardBlocked;return '<label class="channel"><input type="checkbox" data-'+kind+'="'+id+'" '+(checked?'checked':'')+' '+(locked?'disabled':'')+'><div><b>'+esc(name)+(locked?' <span style="color:#ffb36b">• NA SZTYWNO</span>':'')+'</b><br><small>'+esc(sub)+'</small></div><small>'+id+'</small></label>'}
 function bindInputs(){document.querySelectorAll("input").forEach(el=>{if(el.id==="search")return;el.addEventListener("input",markDirty);el.addEventListener("change",markDirty)})}
 function collect(){
  const out={brain:{},language:{},behavior:{},voice:{}};
