@@ -1155,7 +1155,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 .tooltip{position:absolute;z-index:5;display:none;pointer-events:none;min-width:230px;max-width:320px;padding:10px 11px;border-radius:11px;background:rgba(4,9,14,.96);border:1px solid #2b4760;box-shadow:0 16px 45px rgba(0,0,0,.45);font-size:10px;line-height:1.5}.tooltip b{font-size:11px}.tooltip .mut{color:#7890a4}.tooltip .acc{color:var(--cyan)}
 .side{display:flex;flex-direction:column;gap:12px}.now{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{padding:10px;border:1px solid #172636;background:#071019;border-radius:11px}.mini small{display:block;color:#71889c;font-size:9px;text-transform:uppercase;letter-spacing:.1em}.mini strong{display:block;margin-top:4px;font-size:12px;word-break:break-word}
 .actions{display:flex;flex-direction:column;gap:7px}.act{display:grid;grid-template-columns:86px 1fr 40px;gap:8px;align-items:center;font-size:10px}.track{height:7px;background:#050b11;border:1px solid #172637;border-radius:999px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));border-radius:999px;box-shadow:0 0 12px rgba(85,234,208,.2)}
-.signal-list{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto}.signal-row{display:grid;grid-template-columns:54px 1fr 62px;gap:7px;align-items:center;padding:7px;border:1px solid #172637;background:#071019;border-radius:9px;font-size:9px}.signal-row b{font-size:9px}.signal-row span{color:#8298aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.signal-row em{text-align:right;font-style:normal;font-variant-numeric:tabular-nums}.signal-row.pos em{color:var(--cyan)}.signal-row.neg em{color:var(--pink)}.signal-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:8px}.signal-summary div{padding:8px;border:1px solid #172637;background:#071019;border-radius:9px}.signal-summary small{display:block;color:#6f879b;font-size:8px;text-transform:uppercase;letter-spacing:.08em}.signal-summary b{display:block;margin-top:4px;font-size:11px}.flow-cue{display:inline-flex;gap:4px;align-items:center;margin:3px 4px 0 0;padding:4px 6px;border:1px solid #244057;border-radius:999px;background:#07131d;color:#9db2c4;font-size:8px}.learn-row{padding:7px;border:1px solid rgba(255,119,183,.18);background:rgba(255,119,183,.04);border-radius:9px;margin-top:6px;font-size:9px;color:#9fb1c1}.flow-note{color:#71879a;font-size:9px;line-height:1.5;margin-top:7px}.regions{display:flex;flex-direction:column;gap:6px;max-height:310px;overflow:auto}.region{display:grid;grid-template-columns:1fr 72px 44px;gap:8px;align-items:center;padding:8px;border:1px solid #172637;background:#071019;border-radius:10px;cursor:pointer}.region:hover,.region.on{border-color:#34536c;background:#091722}.region b{font-size:10px}.region small{color:#70879b;font-size:9px}.rtrack{height:6px;background:#050b11;border:1px solid #162536;border-radius:999px;overflow:hidden}.rfill{height:100%;background:linear-gradient(90deg,var(--violet),var(--pink));border-radius:999px}
+.signal-list{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto}.signal-row{display:grid;grid-template-columns:54px 1fr 62px;gap:7px;align-items:center;padding:7px;border:1px solid #172637;background:#071019;border-radius:9px;font-size:9px}.signal-row b{font-size:9px}.signal-row span{color:#8298aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.signal-row em{text-align:right;font-style:normal;font-variant-numeric:tabular-nums}.signal-row.pos em{color:var(--cyan)}.signal-row.neg em{color:var(--pink)}.signal-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:8px}.signal-summary div{padding:8px;border:1px solid #172637;background:#071019;border-radius:9px}.signal-summary small{display:block;color:#6f879b;font-size:8px;text-transform:uppercase;letter-spacing:.08em}.signal-summary b{display:block;margin-top:4px;font-size:11px}.flow-cue{display:inline-flex;gap:4px;align-items:center;margin:3px 4px 0 0;padding:4px 6px;border:1px solid #244057;border-radius:999px;background:#07131d;color:#9db2c4;font-size:8px}.learn-row{padding:7px;border:1px solid rgba(255,119,183,.18);background:rgba(255,119,183,.04);border-radius:9px;margin-top:6px;font-size:9px;color:#9fb1c1}.flow-note{color:#71879a;font-size:9px;line-height:1.5;margin-top:7px}.flow-history{cursor:pointer}.flow-history:hover,.flow-history.on{border-color:#3f6985;background:#0a1924}.flow-head-actions{display:flex;gap:6px;align-items:center}.flow-head-actions .btn{padding:5px 8px;font-size:8px}.regions{display:flex;flex-direction:column;gap:6px;max-height:310px;overflow:auto}.region{display:grid;grid-template-columns:1fr 72px 44px;gap:8px;align-items:center;padding:8px;border:1px solid #172637;background:#071019;border-radius:10px;cursor:pointer}.region:hover,.region.on{border-color:#34536c;background:#091722}.region b{font-size:10px}.region small{color:#70879b;font-size:9px}.rtrack{height:6px;background:#050b11;border:1px solid #162536;border-radius:999px;overflow:hidden}.rfill{height:100%;background:linear-gradient(90deg,var(--violet),var(--pink));border-radius:999px}
 .inspector{min-height:230px}.empty{color:#71879a;font-size:11px;line-height:1.55;padding:10px 0}.ins-title{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ins-title strong{font-size:14px;word-break:break-all}.role{padding:4px 7px;border-radius:999px;font-size:8px;font-weight:850;letter-spacing:.08em;border:1px solid #274056;color:#a8bac9}
 .meta{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.meta div{padding:8px;background:#071019;border:1px solid #172637;border-radius:9px}.meta small{display:block;color:#6f879b;font-size:8px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:3px}.meta b{font-size:10px;word-break:break-word}
 .effects{margin-top:9px;padding:9px;background:#061019;border:1px solid #172637;border-radius:10px}.effects small{display:block;color:#71899e;font-size:8px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px}.effect{display:grid;grid-template-columns:80px 1fr auto;gap:7px;align-items:center;font-size:9px;margin-top:5px}.effect .efill{height:6px;background:#08141f;border-radius:999px;overflow:hidden}.effect .efill i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan))}
@@ -1203,7 +1203,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
    <div class="actions" id="actions" style="margin-top:10px"></div>
   </div>
 
-  <div class="card"><div class="card-head"><h2>⚡ Live signal flow</h2><span class="badge" id="flow-winner">czekam</span></div><div id="signal-flow" class="empty">Pierwsza klatka pojawi się po następnym bodźcu i propagacji connectomu.</div></div>
+  <div class="card"><div class="card-head"><h2>⚡ Live signal flow</h2><div class="flow-head-actions"><button class="btn on" id="flow-live-btn">LIVE</button><span class="badge" id="flow-winner">czekam</span></div></div><div id="signal-flow" class="empty">Pierwsza klatka pojawi się po następnym bodźcu i propagacji connectomu.</div></div>
 
   <div class="card"><div class="card-head"><h2>Najaktywniejsze neuropile / rejony</h2><span class="badge" id="region-filter">ALL</span></div><div class="regions" id="regions"></div><div class="note" id="region-note">—</div></div>
 
@@ -1218,7 +1218,7 @@ const $=id=>document.getElementById(id);
 const canvas=$("brain"),ctx=canvas.getContext("2d"),wrap=$("map-wrap"),tip=$("tip");
 const colors={sensory:"#55ead0",internal:"#6ba6ff",modulatory:"#b68bff",output:"#ff77b7"};
 const actionColors={speak:"#b68bff",react:"#ff9f6b",voice_join:"#55ead0",voice_move:"#6ba6ff",voice_leave:"#ff77b7",explore:"#7fd1ff",stay:"#ffd166"};
-let projection="xy",roleFilter="all",showRegions=true,showTrail=true,showFlow=true,followDecision=true,data=null,hover=null,selected=null,selectedRegion="",lastFetch=0;
+let projection="xy",roleFilter="all",showRegions=true,showTrail=true,showFlow=true,followDecision=true,flowReplayTick=null,data=null,hover=null,selected=null,selectedRegion="",lastFetch=0;
 const trail=new Map(),mouse={x:0,y:0,inside:false};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),nfmt=n=>Number(n||0).toLocaleString("pl-PL");
 const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
@@ -1247,7 +1247,14 @@ function updateTrail(){
  for(const [id,v] of trail){if(!seen.has(id)){const nv=v*.90;if(nv<.015)trail.delete(id);else trail.set(id,nv)}}
 }
 function currentFlow(){
- return data&&data.signal_flow?(data.signal_flow.latest||null):null
+ if(!data||!data.signal_flow)return null;
+ const snap=data.signal_flow;
+ if(flowReplayTick!==null){
+  const old=(snap.history||[]).find(x=>Number(x.tick)===Number(flowReplayTick));
+  if(old)return old;
+  flowReplayTick=null
+ }
+ return snap.latest||null
 }
 function flowNodeSet(){
  const f=currentFlow(),ids=new Set();if(!f)return ids;
@@ -1258,13 +1265,20 @@ function flowNodeSet(){
 }
 function drawSignalFlow(w,h){
  if(!data||!showFlow)return;const f=currentFlow();if(!f||!(f.edges||[]).length)return;
- const nodes=new Map((data.nodes||[]).map(n=>[String(n.id),n])),edges=(f.edges||[]).filter(e=>nodes.has(String(e.source))&&nodes.has(String(e.target)));
- if(!edges.length)return;const maxC=Math.max(.000001,...edges.map(e=>Math.abs(Number(e.contribution||0)))),tone=actionColors[f.winner]||"#55ead0",phase=(performance.now()%1100)/1100;
+ const nodes=new Map((data.nodes||[]).map(n=>[String(n.id),n]));
+ const edges=(f.edges||[]).map(e=>({
+  e,
+  a:nodes.get(String(e.source))||e.source_position,
+  b:nodes.get(String(e.target))||e.target_position
+ })).filter(x=>x.a&&x.b);
+ if(!edges.length)return;const maxC=Math.max(.000001,...edges.map(x=>Math.abs(Number(x.e.contribution||0)))),tone=actionColors[f.winner]||"#55ead0",phase=(performance.now()%1100)/1100;
  ctx.save();ctx.globalCompositeOperation="lighter";
- edges.slice(0,140).forEach((e,i)=>{const a=nodes.get(String(e.source)),b=nodes.get(String(e.target)),p1=point(a,w,h,26),p2=point(b,w,h,26),q=clamp(Math.abs(Number(e.contribution||0))/maxC,0,1),neg=Number(e.contribution||0)<0;
+ edges.slice(0,140).forEach((row,i)=>{const e=row.e,p1=point(row.a,w,h,26),p2=point(row.b,w,h,26),q=clamp(Math.abs(Number(e.contribution||0))/maxC,0,1),neg=Number(e.contribution||0)<0;
   ctx.strokeStyle=tone;ctx.globalAlpha=.08+q*.48;ctx.lineWidth=.45+q*2.0;ctx.setLineDash(neg?[4,4]:[]);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();ctx.setLineDash([]);
   const t=(phase+i*.071)%1,x=p1.x+(p2.x-p1.x)*t,y=p1.y+(p2.y-p1.y)*t;ctx.fillStyle=neg?"#ff77b7":tone;ctx.globalAlpha=.40+q*.60;ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=5+q*9;ctx.beginPath();ctx.arc(x,y,1.2+q*2.1,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0
  });
+ ctx.setLineDash([]);ctx.globalAlpha=.9;ctx.strokeStyle=tone;ctx.lineWidth=1.35;
+ for(const out of (f.output_points||[]).slice(0,28)){const p=point(out,w,h,26);ctx.beginPath();ctx.arc(p.x,p.y,8.5,0,Math.PI*2);ctx.stroke()}
  ctx.globalAlpha=1;ctx.restore()
 }
 function liveFlowRows(n){
@@ -1272,15 +1286,18 @@ function liveFlowRows(n){
  return rows.map(x=>'<div class="signal-row '+(Number(x.contribution||0)>=0?"pos":"neg")+'"><b>'+esc(x.direction==="in"?"IN":"OUT")+'</b><span>'+esc(x.peer||"—")+'</span><em>'+(Number(x.contribution||0)>=0?"+":"")+Number(x.contribution||0).toFixed(4)+'</em></div>').join("")
 }
 function renderSignalFlow(){
- const root=$("signal-flow"),snap=data&&data.signal_flow?data.signal_flow:{},f=snap.latest||null,learning=(snap.learning||[]).slice(-1)[0]||null;
+ const root=$("signal-flow"),snap=data&&data.signal_flow?data.signal_flow:{},f=currentFlow(),learning=(snap.learning||[]).slice(-1)[0]||null;
  if(!f){$("flow-winner").textContent="BRAK";$("flow-edge-count").textContent="0";$("flow-frame").textContent="brak klatki";root.className="empty";root.textContent="Pierwsza klatka pojawi się po następnym bodźcu i propagacji connectomu.";return}
- const edges=f.edges||[],cues=f.cues||[],top=edges.slice(0,7),history=(snap.history||[]).slice(-8).reverse();
- $("flow-winner").textContent=String(f.winner||"—").toUpperCase();$("flow-edge-count").textContent=nfmt(edges.length);$("flow-frame").textContent="tick "+nfmt(f.tick)+" • "+nfmt(f.frame)+"/"+nfmt(f.frames);
+ const edges=f.edges||[],cues=f.cues||[],top=edges.slice(0,7),history=(snap.history||[]).slice(-20).reverse();
+ $("flow-live-btn").classList.toggle("on",flowReplayTick===null);
+ $("flow-live-btn").textContent=flowReplayTick===null?"LIVE":"WRÓĆ LIVE";
+ $("flow-winner").textContent=String(f.winner||"—").toUpperCase();$("flow-edge-count").textContent=nfmt(edges.length);$("flow-frame").textContent=(flowReplayTick===null?"LIVE • ":"REPLAY • ")+"tick "+nfmt(f.tick)+" • "+nfmt(f.frame)+"/"+nfmt(f.frames);
  const cueHtml=cues.slice(0,8).map(x=>'<span class="flow-cue">'+esc(x.action?x.action+" • ":"")+esc(x.key||x.kind||"cue")+' ×'+nfmt(x.neurons||0)+'</span>').join("")||'<span class="flow-cue">brak jawnego cue</span>';
  const edgeHtml=top.map(e=>'<div class="signal-row '+(Number(e.contribution||0)>=0?"pos":"neg")+'"><b>'+esc(String(e.source).slice(-6))+'</b><span>→ '+esc(String(e.target).slice(-6))+(Math.abs(Number(e.learned_delta||0))>1e-9?' • learned '+Number(e.learned_delta).toExponential(1):'')+'</span><em>'+(Number(e.contribution||0)>=0?"+":"")+Number(e.contribution||0).toFixed(4)+'</em></div>').join("")||'<div class="note">Brak silnych krawędzi w tej klatce.</div>';
- const histHtml=history.map(x=>'<div class="signal-row"><b>#'+nfmt(x.tick)+'</b><span>'+esc((x.cues&&x.cues[0]?x.cues[0].key:"propagation"))+'</span><em>'+esc(x.winner||"—")+'</em></div>').join("");
+ const histHtml=history.map(x=>'<div class="signal-row flow-history '+(Number(x.tick)===Number(flowReplayTick)?"on":"")+'" data-flow-tick="'+Number(x.tick)+'"><b>▶ #'+nfmt(x.tick)+'</b><span>'+esc((x.cues&&x.cues[0]?x.cues[0].key:"propagation"))+'</span><em>'+esc(x.winner||"—")+'</em></div>').join("");
  const learnHtml=learning?'<div class="learn-row"><b>Ostatnia plastyczność:</b> reward '+(Number(learning.amount||0)>=0?"+":"")+Number(learning.amount||0).toFixed(3)+' • '+nfmt(learning.changed_neurons)+' neuronów • '+nfmt(learning.changed_synapses)+' synaps'+((learning.top_synapses||[]).length?' • top Δ '+Number(learning.top_synapses[0].change||0).toExponential(2):'')+'</div>':'<div class="learn-row">Brak reward/punish od startu tej sesji.</div>';
- root.className="";root.innerHTML='<div class="signal-summary"><div><small>readout</small><b style="color:'+(actionColors[f.winner]||"#fff")+'">'+esc(f.winner||"—")+'</b></div><div><small>gain</small><b>'+Number(f.propagation_gain||0).toFixed(3)+'</b></div><div><small>edges</small><b>'+nfmt(edges.length)+'</b></div></div><div>'+cueHtml+'</div><div class="flow-note">'+esc(snap.method||"")+'</div><div class="signal-list" style="margin-top:8px">'+edgeHtml+'</div>'+learnHtml+'<div class="effects"><small>Ostatnie klatki flow</small><div class="signal-list">'+histHtml+'</div></div>'
+ root.className="";root.innerHTML='<div class="signal-summary"><div><small>readout</small><b style="color:'+(actionColors[f.winner]||"#fff")+'">'+esc(f.winner||"—")+'</b></div><div><small>gain</small><b>'+Number(f.propagation_gain||0).toFixed(3)+'</b></div><div><small>edges</small><b>'+nfmt(edges.length)+'</b></div></div><div>'+cueHtml+'</div><div class="flow-note">'+esc(snap.method||"")+'</div><div class="signal-list" style="margin-top:8px">'+edgeHtml+'</div>'+learnHtml+'<div class="effects"><small>Historia — kliknij, aby odtworzyć przepływ</small><div class="signal-list">'+histHtml+'</div></div>';
+ root.querySelectorAll("[data-flow-tick]").forEach(el=>el.onclick=()=>{flowReplayTick=Number(el.dataset.flowTick);renderSignalFlow()})
 }
 function drawNodes(w,h){
  if(!data)return;hover=null;const nodes=(data.nodes||[]);let maxA=.0001;for(const n of nodes)maxA=Math.max(maxA,Math.abs(Number(n.activation||0)));
@@ -1362,6 +1379,7 @@ $("regions-btn").onclick=()=>{showRegions=!showRegions;$("regions-btn").classLis
 $("trail-btn").onclick=()=>{showTrail=!showTrail;$("trail-btn").classList.toggle("on",showTrail);if(!showTrail)trail.clear()};
 $("flow-btn").onclick=()=>{showFlow=!showFlow;$("flow-btn").classList.toggle("on",showFlow)};
 $("follow-btn").onclick=()=>{followDecision=!followDecision;$("follow-btn").classList.toggle("on",followDecision)};
+$("flow-live-btn").onclick=()=>{flowReplayTick=null;renderSignalFlow()};
 
 function render(payload){
  const m=payload.brain_map||{};data=m;updateTrail();const scores=payload.scores||{};
