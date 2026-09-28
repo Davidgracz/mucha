@@ -74,6 +74,12 @@ class VoiceConfig:
     social_drive_stay_punish: float = 0.035
     social_drive_learning_interval_seconds: int = 45
     social_join_reward: float = 0.12
+    reward_opportunity_enabled: bool = True
+    reward_opportunity_ttl_seconds: int = 90
+    reward_opportunity_min_strength: float = 0.65
+    reward_opportunity_max_strength: float = 1.35
+    reward_opportunity_success_chance: float = 0.55
+    reward_opportunity_reward: float = 0.18
     minimum_dwell_seconds: int = 60
     maximum_dwell_seconds: int = 300
     overstay_punish_amount: float = 0.5
