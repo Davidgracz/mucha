@@ -14,7 +14,7 @@ from mucha.config import BrainConfig
 from mucha.connectome import Connectome
 from mucha.brain import FlyBrain
 from mucha.language import OnlineLanguage
-from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, PUBLIC_OVERVIEW_HTML
+from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, DETAILS_HTML, NEUROMAP_HTML, PUBLIC_OVERVIEW_HTML
 
 
 def main():
@@ -95,6 +95,10 @@ def main():
         assert voice_out["action"] in {"voice_join", "stay"}
         assert set(voice_out["candidates"]) == {"voice_join", "stay"}
         assert voice_out["margin"] >= 0.0
+        assert "tie_break" in voice_out
+        assert "tie_evidence" in voice_out
+        assert "tie_evidence_margin" in voice_out
+        assert "raw_winner_margin" in voice_out
 
         b.inject_voice_decision_context(
             999,
