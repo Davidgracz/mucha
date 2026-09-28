@@ -1376,6 +1376,44 @@ class FlyBrain:
         before = self.action_scores()
         self.reward_trace = max(-2.0, min(2.0, self.reward_trace + amount))
 
+        if self.cfg.neuromodulation_enabled:
+            # Reward valence still comes from signed reward_trace. Monoamine
+            # pools control learning/arousal globally; this is an engineering
+            # adapter over biological transmitter classes, not a claim that a
+            # single fly monoamine universally encodes one valence.
+            magnitude = np.float32(0.35 * abs(amount))
+            da_pool = self._modulator_pools["dopamine"]
+            if len(da_pool):
+                da = self._backend_indices(da_pool)
+                self.state[da] += magnitude
+            if amount < 0.0:
+                oct_pool = self._modulator_pools["octopamine"]
+                if len(oct_pool):
+                    oct_idx = self._backend_indices(oct_pool)
+                    self.state[oct_idx] += np.float32(
+                        0.25 * abs(amount)
+                    )
+            ser_pool = self._modulator_pools["serotonin"]
+            if len(ser_pool):
+                ser = self._backend_indices(ser_pool)
+                self.state[ser] += np.float32(
+                    0.08 * abs(amount)
+                )
+            # Update the slow global state before applying this reward so
+            # dopamine can modulate the same learning episode.
+            self._update_neuromodulator_state()
+            self._neuromodulator_effects["plasticity_gain"] = (
+                self._plasticity_gain()
+            )
+        elif len(self.c.modulatory):
+            idx_cpu = self._subset(
+                "reward:modulatory",
+                self.c.modulatory,
+                min(128, len(self.c.modulatory)),
+            )
+            idx = self._backend_indices(idx_cpu)
+            self.state[idx] += np.float32(0.35 * amount)
+
         changed_idx_cpu: np.ndarray
         changed_delta_cpu: np.ndarray
 
@@ -1434,38 +1472,6 @@ class FlyBrain:
             self.cfg.max_bias,
             out=self.plastic_bias,
         )
-
-        if self.cfg.neuromodulation_enabled:
-            # Reward valence still comes from signed reward_trace. Monoamine
-            # pools control learning/arousal globally; this is an engineering
-            # adapter over biological transmitter classes, not a claim that a
-            # single fly monoamine universally encodes one valence.
-            magnitude = np.float32(0.35 * abs(amount))
-            da_pool = self._modulator_pools["dopamine"]
-            if len(da_pool):
-                da = self._backend_indices(da_pool)
-                self.state[da] += magnitude
-            if amount < 0.0:
-                oct_pool = self._modulator_pools["octopamine"]
-                if len(oct_pool):
-                    oct_idx = self._backend_indices(oct_pool)
-                    self.state[oct_idx] += np.float32(
-                        0.25 * abs(amount)
-                    )
-            ser_pool = self._modulator_pools["serotonin"]
-            if len(ser_pool):
-                ser = self._backend_indices(ser_pool)
-                self.state[ser] += np.float32(
-                    0.08 * abs(amount)
-                )
-        elif len(self.c.modulatory):
-            idx_cpu = self._subset(
-                "reward:modulatory",
-                self.c.modulatory,
-                min(128, len(self.c.modulatory)),
-            )
-            idx = self._backend_indices(idx_cpu)
-            self.state[idx] += np.float32(0.35 * amount)
 
         synaptic_learning = self._reinforce_synapses(
             amount,
