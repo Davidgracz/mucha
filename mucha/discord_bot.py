@@ -317,6 +317,9 @@ class MuchaClient(discord.Client):
             "connectome_word_control_min_vocab",
             "connectome_word_control_strength",
             "connectome_word_control_candidates",
+            "connectome_word_feedback_enabled",
+            "connectome_word_feedback_steps",
+            "connectome_word_feedback_magnitude",
         ]
         behavior_fields = [
             "speak_threshold",
@@ -466,6 +469,15 @@ class MuchaClient(discord.Client):
             ),
             ("language", "connectome_word_control_candidates"): (
                 int, 4, 96
+            ),
+            ("language", "connectome_word_feedback_enabled"): (
+                bool, None, None
+            ),
+            ("language", "connectome_word_feedback_steps"): (
+                int, 1, 8
+            ),
+            ("language", "connectome_word_feedback_magnitude"): (
+                float, 0.0, 1.0
             ),
             ("behavior", "speak_threshold"): (float, 0.0, 1.0),
             ("behavior", "reaction_threshold"): (float, 0.0, 1.0),
@@ -3085,6 +3097,22 @@ class MuchaClient(discord.Client):
             )
             self.last_reply[message.guild.id] = now
 
+    def _brain_word_feedback(
+        self,
+        token: str,
+        previous_token: str | None,
+    ) -> None:
+        if not self.cfg.language.connectome_word_feedback_enabled:
+            return
+        self.brain.advance_language_word(
+            token,
+            previous_token,
+            magnitude=float(
+                self.cfg.language.connectome_word_feedback_magnitude
+            ),
+            steps=int(self.cfg.language.connectome_word_feedback_steps),
+        )
+
     async def _send_learned(
         self,
         channel: discord.abc.Messageable,
@@ -3094,17 +3122,21 @@ class MuchaClient(discord.Client):
     ):
         if self._is_text_channel_blocked(channel):
             return
-        text, trigrams = self.language.generate(
-            context=context,
-            arousal=arousal,
-            brain_word_score=self.brain.language_word_score,
-        )
-        if not text:
-            return
-        try:
-            async with self._brain_lock:
+        async with self._brain_lock:
+            text, trigrams = self.language.generate(
+                context=context,
+                arousal=arousal,
+                brain_word_score=self.brain.language_word_score,
+                brain_word_feedback=self._brain_word_feedback,
+            )
+            if text:
                 self.brain.mark_language_output(text)
                 learning_trace = self.brain.capture_learning_trace()
+            else:
+                learning_trace = None
+        if not text or learning_trace is None:
+            return
+        try:
             sent = await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
             guild = getattr(channel, "guild", None)
             self.sent[sent.id] = SentTrace(
@@ -4904,6 +4936,7 @@ class MuchaClient(discord.Client):
         ):
             return
 
+        context = self.last_text_context.get(guild.id, "")
         async with self._brain_lock:
             self.brain.inject(
                 f"voice:tts-opportunity:guild:{guild.id}",
@@ -4912,22 +4945,26 @@ class MuchaClient(discord.Client):
             )
             self.brain.step(1)
             scores = self.brain.action_scores()
-            learning_trace = self.brain.capture_learning_trace()
+            if scores["speak"] < self.cfg.behavior.speak_threshold:
+                return
 
-        if scores["speak"] < self.cfg.behavior.speak_threshold:
-            return
+            text_out, trigrams = self.language.generate(
+                context=context,
+                arousal=scores["explore"],
+                brain_word_score=self.brain.language_word_score,
+                brain_word_feedback=self._brain_word_feedback,
+            )
+            if text_out:
+                text_out = text_out[
+                    : max(8, int(self.cfg.voice.tts_max_chars))
+                ].strip()
+            if text_out:
+                self.brain.mark_language_output(text_out)
+                learning_trace = self.brain.capture_learning_trace()
+            else:
+                learning_trace = None
 
-        context = self.last_text_context.get(guild.id, "")
-        text_out, trigrams = self.language.generate(
-            context=context,
-            arousal=scores["explore"],
-            brain_word_score=self.brain.language_word_score,
-        )
-        if not text_out:
-            return
-
-        text_out = text_out[: max(8, int(self.cfg.voice.tts_max_chars))].strip()
-        if not text_out:
+        if not text_out or learning_trace is None:
             return
 
         wav_path = Path("state") / "tts" / f"{guild.id}.wav"
