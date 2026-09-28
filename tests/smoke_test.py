@@ -73,6 +73,10 @@ def main():
             "connectome-guided"
         )
         assert opportunity_diag["reach_max"] > 0.0
+        assert opportunity_diag["mode"] in {
+            "connectome-guided-excitatory-sensory",
+            "connectome-guided-structural-sensory",
+        }
         state_after_opportunity = b.compute.to_cpu(
             b.state
         )
@@ -266,6 +270,7 @@ def main():
         assert "reward_opportunity_reward" in CONFIG_HTML
         assert "reward_opportunity_stay_punish" in CONFIG_HTML
         assert "reward_opportunity_stay_punish_interval_seconds" in CONFIG_HTML
+        assert "motivation_propagation_steps" in CONFIG_HTML
         assert "Social Neural Memory" in AFFINITY_HTML
         assert "neural-users" in AFFINITY_HTML
         assert 'const out={brain:{},language:{},behavior:{},voice:{}};' in CONFIG_HTML
@@ -291,6 +296,7 @@ def main():
         assert "random voice reward opportunity" in bot_source
         assert "ignored neural reward opportunity" in bot_source
         assert "_last_reward_opportunity_stay_punish" in bot_source
+        assert "motivation_propagation_steps" in bot_source
         assert "preferred_channel_id" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
