@@ -4077,9 +4077,23 @@ class MuchaClient(discord.Client):
         if self._is_text_channel_blocked(channel):
             return
         async with self._brain_lock:
+            internal = self.brain.internal_state_diagnostics()
+            neural_arousal = float(
+                internal.get("states", {})
+                .get("arousal", {})
+                .get("level", 0.0)
+            )
+            effective_arousal = max(
+                0.0,
+                min(
+                    1.0,
+                    0.75 * neural_arousal
+                    + 0.25 * float(arousal),
+                ),
+            )
             text, trigrams = self.language.generate(
                 context=context,
-                arousal=arousal,
+                arousal=effective_arousal,
                 brain_word_score=self.brain.language_word_score,
                 brain_word_feedback=self._brain_word_feedback,
             )
@@ -6276,9 +6290,22 @@ class MuchaClient(discord.Client):
             if scores["speak"] < self.cfg.behavior.speak_threshold:
                 return
 
+            internal = self.brain.internal_state_diagnostics()
+            neural_arousal = float(
+                internal.get("states", {})
+                .get("arousal", {})
+                .get("level", 0.0)
+            )
             text_out, trigrams = self.language.generate(
                 context=context,
-                arousal=scores["explore"],
+                arousal=max(
+                    0.0,
+                    min(
+                        1.0,
+                        0.80 * neural_arousal
+                        + 0.20 * float(scores["explore"]),
+                    ),
+                ),
                 brain_word_score=self.brain.language_word_score,
                 brain_word_feedback=self._brain_word_feedback,
             )
@@ -7247,6 +7274,30 @@ class MuchaClient(discord.Client):
                     }
 
             if connectome_voice_control:
+                if chaser_active:
+                    panic_scale = max(
+                        0.0,
+                        min(
+                            1.0,
+                            chaser_remaining
+                            / max(
+                                1.0,
+                                float(
+                                    self.cfg.voice.chaser_panic_seconds
+                                ),
+                            ),
+                        ),
+                    )
+                    self.brain.inject_internal_state_cue(
+                        "stress",
+                        0.85 + 0.75 * panic_scale,
+                        key=f"internal-state:stress:chaser:{guild.id}",
+                    )
+                    self.brain.inject_internal_state_cue(
+                        "arousal",
+                        0.45 + 0.45 * panic_scale,
+                        key=f"internal-state:arousal:chaser:{guild.id}",
+                    )
                 voice_context_diag = (
                     self.brain.inject_voice_decision_context(
                     guild.id,
