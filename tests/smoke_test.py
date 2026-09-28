@@ -106,12 +106,33 @@ def main():
         diag = lang.diagnostics()
         assert diag["word_vocab"] >= 6
         assert diag["word_bigrams"] >= 4
+        feedback_words = []
+        ticks_before_language = b.tick_count
+
+        def brain_word_feedback(token, previous):
+            feedback_words.append((token, previous))
+            b.advance_language_word(
+                token,
+                previous,
+                magnitude=0.12,
+                steps=1,
+            )
+
         text, tri = lang.generate(
             "siema",
             brain_word_score=b.language_word_score,
+            brain_word_feedback=brain_word_feedback,
         )
         assert text
+        assert feedback_words
+        assert b.tick_count > ticks_before_language
         assert lang.diagnostics()["last_generator"] == "words"
+        assert lang.diagnostics()["connectome_word_control_last"][
+            "recurrent_feedback"
+        ]
+        assert lang.diagnostics()["connectome_word_control_last"][
+            "feedback_words"
+        ] > 0
 
         # The word generator should recombine learned transitions instead of
         # walking one memorized sentence path every time.
