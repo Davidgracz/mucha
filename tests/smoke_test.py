@@ -14,7 +14,7 @@ from mucha.config import BrainConfig
 from mucha.connectome import Connectome
 from mucha.brain import FlyBrain
 from mucha.language import OnlineLanguage
-from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, OVERVIEW_HTML, PUBLIC_OVERVIEW_HTML
+from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, HTML, OVERVIEW_HTML, PUBLIC_OVERVIEW_HTML
 
 
 def main():
@@ -301,7 +301,11 @@ def main():
         assert "reward_opportunity_stay_punish" in CONFIG_HTML
         assert "reward_opportunity_stay_punish_interval_seconds" in CONFIG_HTML
         assert "motivation_propagation_steps" in CONFIG_HTML
-        assert "neural tie-break" in OVERVIEW_HTML
+        assert "neural tie-break" in HTML
+        assert "overstay_punish_amount" in CONFIG_HTML
+        assert "overstay_punish_interval_seconds" in CONFIG_HTML
+        assert "threat_ramp_seconds" in CONFIG_HTML
+        assert "threat_magnitude" in CONFIG_HTML
         assert "Social Neural Memory" in AFFINITY_HTML
         assert "neural-users" in AFFINITY_HTML
         assert 'const out={brain:{},language:{},behavior:{},voice:{}};' in CONFIG_HTML
