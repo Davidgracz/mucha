@@ -5376,6 +5376,7 @@ class FlyBrain:
             ),
             "history_samples": len(history),
             "signal_flow": flow_snapshot,
+            "learned_synapses": self.learned_synapses_snapshot(160),
         }
 
     def learning_since_start_diagnostics(self) -> dict:
@@ -5511,6 +5512,23 @@ class FlyBrain:
             "learned_synapses": len(self._synaptic_delta_map),
             "synaptic_mean_abs": synaptic_mean_abs,
             "synaptic_max_abs": synaptic_max_abs,
+            "synaptic_consolidated": int(
+                sum(
+                    1
+                    for key in self._synaptic_delta_map
+                    if self._synapse_memory_status(key)
+                    == "consolidated"
+                )
+            ),
+            "synaptic_fading": int(
+                sum(
+                    1
+                    for key in self._synaptic_delta_map
+                    if self._synapse_memory_status(key)
+                    == "fading"
+                )
+            ),
+            "forgetting": dict(self._last_forgetting_diag),
             "action_pools": self.action_pool_diagnostics(),
             "neuromodulation": self.neuromodulator_diagnostics(),
         }
