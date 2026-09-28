@@ -1621,6 +1621,39 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .voice-summary{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:9px;margin-bottom:12px}
 .voice-pill{background:#0c131b;border:1px solid #1d2936;border-radius:12px;padding:10px}
 .voice-pill small{display:block;color:var(--muted);margin-bottom:5px}.voice-pill strong{font-size:14px}
+.voice-shell{display:flex;flex-direction:column;gap:12px}
+.voice-hero{display:grid;grid-template-columns:minmax(260px,1.5fr) repeat(3,minmax(120px,.65fr));gap:10px}
+.voice-hero-main,.voice-box{background:#0c131b;border:1px solid #1d2936;border-radius:14px;padding:13px;min-width:0}
+.voice-hero-main{background:linear-gradient(135deg,rgba(85,211,195,.08),rgba(110,168,254,.04));border-color:#294153}
+.voice-eyebrow{color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:5px}
+.voice-hero-title{font-size:20px;font-weight:800;line-height:1.25;word-break:break-word}
+.voice-hero-sub{margin-top:5px;color:var(--muted);font-size:11px;line-height:1.45}
+.voice-hero-stat{display:flex;flex-direction:column;justify-content:center}
+.voice-hero-stat strong{font-size:18px;font-variant-numeric:tabular-nums}.voice-hero-stat small{color:var(--muted);margin-top:5px}
+.voice-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.voice-box h3{margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#a9b8c8}
+.voice-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
+.voice-kpi{background:#0a1118;border:1px solid #192735;border-radius:10px;padding:9px;min-width:0}
+.voice-kpi small{display:block;color:var(--muted);font-size:10px;margin-bottom:5px}.voice-kpi strong{font-size:13px;word-break:break-word}
+.voice-score{display:grid;grid-template-columns:92px 1fr 48px;gap:8px;align-items:center;margin:7px 0;font-size:11px}
+.voice-score .track{height:7px}.voice-score .val{font-size:11px}
+.drive-row{display:grid;grid-template-columns:112px 1fr 48px;gap:8px;align-items:center;margin:8px 0}
+.drive-row label{color:#b7c5d2;font-size:11px}.drive-row output{text-align:right;font-size:11px;font-variant-numeric:tabular-nums}
+.drive-track{height:8px;background:#071019;border:1px solid #1d2b39;border-radius:999px;overflow:hidden}
+.drive-fill{height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent));border-radius:999px}
+.drive-fill.warn-fill{background:linear-gradient(90deg,#d79e32,var(--warn))}
+.drive-fill.bad-fill{background:linear-gradient(90deg,#d75252,var(--bad))}
+.voice-note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:8px}
+.voice-decision{padding:11px 12px;border-radius:12px;background:#0a1118;border:1px solid #1d2936;font-size:12px;line-height:1.55}
+.voice-decision b{color:var(--accent)}
+.voice-technical{border:1px solid #1d2936;border-radius:12px;background:#0a1118;overflow:hidden}
+.voice-technical summary{cursor:pointer;padding:10px 12px;color:#a9b8c8;font-size:11px;font-weight:700}
+.voice-technical-body{padding:0 12px 12px}
+.voice-tech-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
+.voice-table-wrap{overflow-x:auto;border:1px solid #1d2936;border-radius:12px}
+.voice-table-wrap table{min-width:820px}.voice-table-wrap th{background:#0a1118;position:sticky;top:0}
+.voice-server-sep{height:1px;background:linear-gradient(90deg,transparent,#294153,transparent);margin:2px 0}
+
 .reason{padding:11px 12px;border-radius:12px;background:#0c131b;border:1px solid #1d2936;margin-bottom:12px}
 .reason b{color:var(--accent)}
 .ok{color:var(--good)}.no{color:var(--bad)}.warn{color:var(--warn)}
@@ -1940,27 +1973,51 @@ function renderVoiceDebug(items){
     root.innerHTML='<div class="reason">Brak danych. Jeśli voice jest wyłączony w configu, pętla diagnostyczna nie wystartuje.</div>';
     return;
   }
+
+  const pct=v=>Math.max(0,Math.min(100,Number(v||0)*100));
+  const drive=(label,value,tone="")=>
+    '<div class="drive-row"><label>'+esc(label)+'</label>'+
+    '<div class="drive-track"><div class="drive-fill '+tone+'" style="width:'+pct(value).toFixed(1)+'%"></div></div>'+
+    '<output>'+pct(value).toFixed(0)+'%</output></div>';
+  const score=(label,value,active=false)=>
+    '<div class="voice-score"><span class="'+(active?'dominant':'')+'">'+(active?'▶ ':'')+esc(label)+'</span>'+
+    '<div class="track"><div class="fill" style="width:'+pct(value).toFixed(1)+'%"></div></div>'+
+    '<span class="val">'+Number(value||0).toFixed(3)+'</span></div>';
+  const kpi=(label,value,cls="")=>
+    '<div class="voice-kpi"><small>'+esc(label)+'</small><strong class="'+cls+'">'+value+'</strong></div>';
+
   root.innerHTML=items.map(v=>{
     const s=v.scores||{},bd=v.brain_decision||{},neural=!!v.connectome_voice_control;
+    const winner=String(bd.action||"—");
     const tie=bd.tie_evidence||{};
     const tieSummary=Object.entries(tie).map(([name,row])=>
-      esc(name)+" "+Number((row||{}).support||0).toFixed(4)
+      name+" "+Number((row||{}).support||0).toFixed(4)
     ).join(" • ");
     const onVoice=!!v.current;
+    const overstay=Number(v.overstay_seconds||0);
+    const punished=Boolean(v.overstay_punished);
+    const expected=Object.entries(v.prediction_expected||{}).map(([k,x])=>
+      k+" "+Number(x||0).toFixed(2)
+    ).join(" • ")||"—";
+    const guided=Object.entries(v.homeostasis_guided||{}).map(([k,x])=>
+      k+" "+Number((x||{}).reach_max||0).toFixed(3)
+    ).join(" • ")||"—";
+    const predErr=v.prediction_error==null?null:Number(v.prediction_error);
+    const predClass=predErr==null?"":predErr>0?"ok":predErr<0?"no":"";
+    const currentTime=onVoice
+      ? Number(v.dwell_elapsed||0).toFixed(0)+" / "+Number(v.maximum_dwell_seconds||0).toFixed(0)+" s"
+      : Number(v.outside_seconds||0).toFixed(0)+" s poza VC";
+
     const channels=(v.channels||[]).map(ch=>{
       const aff=ch.affinity==null?"—":Number(ch.affinity).toFixed(3);
       const explore=ch.exploration_score==null?"—":Number(ch.exploration_score).toFixed(3);
       const novelty=ch.novelty==null?"—":(Number(ch.novelty)*100).toFixed(0)+"%";
       const visitAge=ch.visit_age==null?"never":Number(ch.visit_age).toFixed(0)+"s";
-      const status=ch.eligible
-        ?(ch.reward_opportunity?"🎯 REWARD?":"OK")
-        :ch.status;
+      const status=ch.eligible?(ch.reward_opportunity?"🎯 REWARD?":"OK"):ch.status;
       const cls=ch.eligible?"ok":(ch.status==="AFK"?"warn":"no");
       return '<tr>'+
         '<td>'+(ch.current?"▶ ":"")+esc(ch.name)+'</td>'+
         '<td>'+Number(ch.humans||0)+'</td>'+
-        '<td class="'+(ch.view?"ok":"no")+'">'+(ch.view?"YES":"NO")+'</td>'+
-        '<td class="'+(ch.connect?"ok":"no")+'">'+(ch.connect?"YES":"NO")+'</td>'+
         '<td>'+aff+'</td>'+
         '<td>'+explore+'</td>'+
         '<td>'+novelty+'</td>'+
@@ -1968,60 +2025,116 @@ function renderVoiceDebug(items){
         '<td class="'+cls+'">'+esc(status)+'</td>'+
       '</tr>';
     }).join("");
-    const overstay=Number(v.overstay_seconds||0);
-    const punished=Boolean(v.overstay_punished);
-    return '<div class="voice-summary">'+
-      '<div class="voice-pill"><small>serwer / kanał</small><strong>'+esc(v.guild)+' / '+esc(v.current||"poza voice")+'</strong></div>'+
-      '<div class="voice-pill"><small>VOICE POLICY</small><strong class="'+(neural?"ok":"warn")+'">'+(neural?"CONNECTOME":"LEGACY")+'</strong></div>'+
-      '<div class="voice-pill"><small>winner / margin</small><strong>'+esc(bd.action||"—")+' / '+(bd.margin==null?"—":Number(bd.margin).toFixed(3))+'</strong></div>'+
-      '<div class="voice-pill"><small>runner-up</small><strong>'+esc(bd.runner_up||"—")+' '+(bd.runner_up_score==null?"":Number(bd.runner_up_score).toFixed(3))+'</strong></div>'+
-      '<div class="voice-pill"><small>neural tie-break</small><strong class="'+(bd.tie_break?"ok":"")+'">'+esc(bd.tie_break||"niepotrzebny")+'</strong></div>'+
-      '<div class="voice-pill"><small>tie evidence</small><strong>'+esc(tieSummary||"—")+'</strong></div>'+
-      '<div class="voice-pill"><small>voice_join</small><strong>'+Number(s.voice_join??0).toFixed(3)+(neural?"":" / "+Number(v.join_threshold??0).toFixed(3))+'</strong></div>'+
-      '<div class="voice-pill"><small>voice_move</small><strong>'+Number(s.voice_move??0).toFixed(3)+(neural?"":" / "+Number(v.move_threshold??0).toFixed(3))+'</strong></div>'+
-      '<div class="voice-pill"><small>voice_leave</small><strong>'+Number(s.voice_leave??0).toFixed(3)+(neural?"":" / "+Number(v.leave_threshold??0).toFixed(3))+'</strong></div>'+
-      '<div class="voice-pill"><small>stay</small><strong>'+Number(s.stay??0).toFixed(3)+'</strong></div>'+
-      (onVoice?'<div class="voice-pill"><small>czas na kanale / limit</small><strong>'+Number(v.dwell_elapsed??0).toFixed(0)+' / '+Number(v.maximum_dwell_seconds??0).toFixed(0)+' s</strong></div>':'')+
-      (onVoice?'<div class="voice-pill"><small>minimum dwell</small><strong>'+Number(v.dwell_remaining??0).toFixed(1)+' s</strong></div>':'')+
-      '<div class="voice-pill"><small>poza voice</small><strong>'+Number(v.outside_seconds??0).toFixed(0)+' s</strong></div>'+
-      '<div class="voice-pill"><small>ludzie dostępni</small><strong>'+Number(v.available_humans||0)+'</strong></div>'+
-      '<div class="voice-pill"><small>social need</small><strong class="'+(Number(v.social_drive_level||0)>0?"ok":"")+'">'+(Number(v.social_drive_level||0)*100).toFixed(1)+'%</strong></div>'+
-      '<div class="voice-pill"><small>social fatigue</small><strong class="'+(Number(v.social_fatigue_level||0)>0?"warn":"")+'">'+(Number(v.social_fatigue_level||0)*100).toFixed(1)+'%</strong></div>'+
-      '<div class="voice-pill"><small>habituation</small><strong>'+((Number(v.habituation_level||0)*100).toFixed(1))+'% / tłumienie '+((Number(v.habituation_suppression||0)*100).toFixed(1))+'%</strong></div>'+
-      '<div class="voice-pill"><small>exploration drive</small><strong class="'+(Number(v.exploration_drive_level||0)>0?"ok":"")+'">'+(Number(v.exploration_drive_level||0)*100).toFixed(1)+'%</strong></div>'+
-      '<div class="voice-pill"><small>wiek sceny</small><strong>'+Number(v.voice_scene_age||0).toFixed(0)+' s</strong></div>'+
-      '<div class="voice-pill"><small>homeostasis paths</small><strong>'+esc(Object.entries(v.homeostasis_guided||{}).map(([k,x])=>k+' '+Number((x||{}).reach_max||0).toFixed(3)).join(' • ')||"—")+'</strong></div>'+
-      '<div class="voice-pill"><small>prediction context</small><strong>'+esc(v.prediction_context||"—")+'</strong></div>'+
-      '<div class="voice-pill"><small>predicted reward</small><strong>'+Number(v.predicted_reward||0).toFixed(3)+'</strong></div>'+
-      '<div class="voice-pill"><small>prediction error</small><strong class="'+(Number(v.prediction_error||0)>0?"ok":Number(v.prediction_error||0)<0?"no":"")+'">'+(v.prediction_error==null?"—":Number(v.prediction_error).toFixed(3))+'</strong></div>'+
-      '<div class="voice-pill"><small>prediction correction</small><strong>'+Number(v.prediction_correction_applied||0).toFixed(3)+'</strong></div>'+
-      '<div class="voice-pill"><small>episodic memory</small><strong>'+Number(v.episodic_memory_size||0)+' ep.</strong></div>'+
-      '<div class="voice-pill"><small>expected by action</small><strong>'+esc(Object.entries(v.prediction_expected||{}).map(([k,x])=>k+' '+Number(x||0).toFixed(2)).join(' • ')||"—")+'</strong></div>'+
-      '<div class="voice-pill"><small>STAY punish</small><strong class="'+(v.social_drive_stay_punished?"no":"")+'">'+(v.social_drive_stay_punished?Number(v.social_drive_stay_punish_amount||0).toFixed(3):"nie")+'</strong></div>'+
-      '<div class="voice-pill"><small>JOIN reward</small><strong class="'+(Number(v.social_join_reward||0)>0?"ok":"")+'">'+Number(v.social_join_reward||0).toFixed(3)+'</strong></div>'+
-      '<div class="voice-pill"><small>reward opportunity</small><strong class="'+(v.reward_opportunity_channel?"ok":"")+'">'+esc(v.reward_opportunity_channel||"—")+'</strong></div>'+
-      '<div class="voice-pill"><small>cue base / effective / TTL</small><strong>'+Number(v.reward_opportunity_strength||0).toFixed(2)+' / '+Number(v.reward_opportunity_effective_strength||0).toFixed(2)+' / '+Number(v.reward_opportunity_remaining||0).toFixed(0)+' s</strong></div>'+
-      '<div class="voice-pill"><small>guided → JOIN</small><strong class="'+(String(v.reward_opportunity_guided_mode||"").startsWith("connectome-guided")?"ok":"warn")+'">'+esc(v.reward_opportunity_guided_mode||"—")+' • '+Number(v.reward_opportunity_guided_neurons||0)+' n</strong></div>'+
-      '<div class="voice-pill"><small>guided reach</small><strong>'+Number(v.reward_opportunity_guided_reach_mean||0).toFixed(4)+' / '+Number(v.reward_opportunity_guided_reach_max||0).toFixed(4)+'</strong></div>'+
-      '<div class="voice-pill"><small>propagation ticks</small><strong>'+Number(v.motivation_propagation_steps||0)+'</strong></div>'+
-      '<div class="voice-pill"><small>ignored cue punish</small><strong class="'+(v.reward_opportunity_stay_punished?"no":"")+'">'+(v.reward_opportunity_stay_punished?Number(v.reward_opportunity_stay_punish_amount||0).toFixed(3):"nie")+'</strong></div>'+
-      '<div class="voice-pill"><small>social drive guided</small><strong class="'+(String(v.social_drive_guided_mode||"").startsWith("connectome-guided")?"ok":"warn")+'">'+esc(v.social_drive_guided_mode||"—")+' • '+Number(v.social_drive_guided_neurons||0)+' n</strong></div>'+
-      '<div class="voice-pill"><small>nagroda znaleziona?</small><strong class="'+(v.reward_opportunity_found?"ok":"")+'">'+(v.reward_opportunity_found?"TAK +"+Number(v.reward_opportunity_reward||0).toFixed(3):"nie / jeszcze nie")+'</strong></div>'+
-      (onVoice?'<div class="voice-pill"><small>overstay</small><strong class="'+(overstay>0?"no":"ok")+'">'+overstay.toFixed(0)+' s</strong></div>':'')+
-      (onVoice?'<div class="voice-pill"><small>kara w tym cyklu</small><strong class="'+(punished?"no":"")+'">'+(punished?Number(v.overstay_punish_amount||0).toFixed(2):"nie")+'</strong></div>':'')+
-      '<div class="voice-pill"><small>THREAT</small><strong class="'+(v.threat_active?"no":"ok")+'">'+(Number(v.threat_level||0)*100).toFixed(0)+'%</strong></div>'+
-      '<div class="voice-pill"><small>CHASE</small><strong class="'+(v.chaser_active?"no":"ok")+'">'+(v.chaser_active?"ACTIVE ":"idle ")+Number(v.chaser_remaining||0).toFixed(1)+' s</strong></div>'+
-      '<div class="voice-pill"><small>chaser id</small><strong>'+esc(v.chaser_id||"—")+'</strong></div>'+
-      '<div class="voice-pill"><small>threat magnitude</small><strong>'+Number(v.threat_magnitude||0).toFixed(3)+'</strong></div>'+
-      '<div class="voice-pill"><small>effective move</small><strong>'+((v.effective_move_score==null)?"—":Number(v.effective_move_score).toFixed(3))+'</strong></div>'+
-      '<div class="voice-pill"><small>effective margin</small><strong>'+((v.effective_move_margin==null)?"—":Number(v.effective_move_margin).toFixed(3))+'</strong></div>'+
-      '<div class="voice-pill"><small>escape target</small><strong>'+esc(v.escape_target||"—")+'</strong></div>'+
-    '</div>'+
-    '<div class="reason"><b>'+esc(v.decision||"—")+'</b> — '+esc(v.reason||"—")+
-      (neural?'<br><b>Connectome candidates:</b> '+Object.entries(bd.candidates||{}).map(([k,x])=>esc(k)+' '+Number(x).toFixed(3)).join(' • '):'')+
-      (bd.tie_break?'<br><b>Tie-break:</b> '+esc(bd.tie_break)+' • '+esc(tieSummary):'')+'</div>'+
-    '<table><thead><tr><th>Kanał</th><th>Ludzie</th><th>View</th><th>Connect</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table>';
-  }).join('<div style="height:14px"></div>');
+
+    const actionScores=["voice_join","voice_move","voice_leave","stay"]
+      .map(name=>score(name,Number(s[name]??0),winner===name)).join("");
+
+    const rewardMode=String(v.reward_opportunity_guided_mode||"");
+    const socialMode=String(v.social_drive_guided_mode||"");
+
+    return '<div class="voice-shell">'+
+      '<div class="voice-hero">'+
+        '<div class="voice-hero-main">'+
+          '<div class="voice-eyebrow">'+esc(v.guild||"serwer")+' • '+(neural?'CONNECTOME':'LEGACY')+'</div>'+
+          '<div class="voice-hero-title">'+(onVoice?'🔊 '+esc(v.current):'🌙 Poza voice')+'</div>'+
+          '<div class="voice-hero-sub">'+esc(v.decision||"ANALIZA")+' — '+esc(v.reason||"oczekiwanie na wynik")+'</div>'+
+        '</div>'+
+        '<div class="voice-box voice-hero-stat"><div class="voice-eyebrow">Decyzja</div><strong class="'+(winner==="stay"?"warn":"ok")+'">'+esc(winner)+'</strong><small>margin '+(bd.margin==null?"—":Number(bd.margin).toFixed(3))+'</small></div>'+
+        '<div class="voice-box voice-hero-stat"><div class="voice-eyebrow">Czas</div><strong>'+esc(currentTime)+'</strong><small>scena '+Number(v.voice_scene_age||0).toFixed(0)+' s</small></div>'+
+        '<div class="voice-box voice-hero-stat"><div class="voice-eyebrow">Ludzie</div><strong>'+Number(v.available_humans||0)+'</strong><small>dostępnych na VC</small></div>'+
+      '</div>'+
+
+      '<div class="voice-groups">'+
+        '<div class="voice-box">'+
+          '<h3>🧠 Decyzja connectomu</h3>'+
+          actionScores+
+          '<div class="voice-note">Runner-up: <b>'+esc(bd.runner_up||"—")+'</b> '+(bd.runner_up_score==null?"":Number(bd.runner_up_score).toFixed(3))+
+          (bd.tie_break?' • tie-break: '+esc(bd.tie_break):'')+'</div>'+
+        '</div>'+
+
+        '<div class="voice-box">'+
+          '<h3>🫀 Homeostaza</h3>'+
+          drive("Social need",v.social_drive_level,"")+
+          drive("Social fatigue",v.social_fatigue_level,"warn-fill")+
+          drive("Habituation",v.habituation_level,"warn-fill")+
+          drive("Exploration",v.exploration_drive_level,"")+
+          '<div class="voice-note">Wygaszenie aktualnej sceny: <b>'+pct(v.habituation_suppression).toFixed(0)+'%</b>. Te stany są bodźcami dla connectomu, nie bezpośrednimi komendami.</div>'+
+        '</div>'+
+
+        '<div class="voice-box">'+
+          '<h3>🧪 Prediction / pamięć epizodyczna</h3>'+
+          '<div class="voice-kpis">'+
+            kpi("Przewidywany reward",Number(v.predicted_reward||0).toFixed(3))+
+            kpi("Prediction error",predErr==null?"—":predErr.toFixed(3),predClass)+
+            kpi("Korekta connectomu",Number(v.prediction_correction_applied||0).toFixed(3))+
+            kpi("Epizody",String(Number(v.episodic_memory_size||0)))+
+          '</div>'+
+          '<div class="voice-note"><b>Expected:</b> '+esc(expected)+'</div>'+
+        '</div>'+
+
+        '<div class="voice-box">'+
+          '<h3>🎯 Social / reward</h3>'+
+          '<div class="voice-kpis">'+
+            kpi("Reward opportunity",v.reward_opportunity_channel?esc(v.reward_opportunity_channel):"—",v.reward_opportunity_channel?"ok":"")+
+            kpi("Cue effective",Number(v.reward_opportunity_effective_strength||0).toFixed(2))+
+            kpi("JOIN reward",Number(v.social_join_reward||0).toFixed(3),Number(v.social_join_reward||0)>0?"ok":"")+
+            kpi("STAY punish",v.social_drive_stay_punished?Number(v.social_drive_stay_punish_amount||0).toFixed(3):"nie",v.social_drive_stay_punished?"no":"")+
+          '</div>'+
+          '<div class="voice-note">Reward znaleziony: <b class="'+(v.reward_opportunity_found?"ok":"")+'">'+(v.reward_opportunity_found?"TAK +"+Number(v.reward_opportunity_reward||0).toFixed(3):"nie")+'</b> • TTL '+Number(v.reward_opportunity_remaining||0).toFixed(0)+' s</div>'+
+        '</div>'+
+
+        '<div class="voice-box">'+
+          '<h3>⚠ Threat / chaser</h3>'+
+          '<div class="voice-kpis">'+
+            kpi("Threat",(Number(v.threat_level||0)*100).toFixed(0)+"%",v.threat_active?"no":"ok")+
+            kpi("Overstay",onVoice?overstay.toFixed(0)+" s":"—",overstay>0?"no":"")+
+            kpi("Chaser",v.chaser_active?"ACTIVE":"idle",v.chaser_active?"no":"ok")+
+            kpi("Escape target",esc(v.escape_target||"—"))+
+          '</div>'+
+          '<div class="voice-note">threat magnitude '+Number(v.threat_magnitude||0).toFixed(3)+
+          (punished?' • overstay punish '+Number(v.overstay_punish_amount||0).toFixed(2):'')+
+          (v.chaser_active?' • panic '+Number(v.chaser_remaining||0).toFixed(1)+' s':'')+'</div>'+
+        '</div>'+
+
+        '<div class="voice-box">'+
+          '<h3>🔬 Co faktycznie dochodzi do readoutów</h3>'+
+          '<div class="voice-kpis">'+
+            kpi("Propagation",Number(v.motivation_propagation_steps||0)+" tick")+
+            kpi("Social guided",socialMode.startsWith("connectome-guided")?"OK":"—",socialMode.startsWith("connectome-guided")?"ok":"")+
+            kpi("Reward guided",rewardMode.startsWith("connectome-guided")?"OK":"—",rewardMode.startsWith("connectome-guided")?"ok":"")+
+            kpi("Tie evidence",tieSummary?"jest":"—",tieSummary?"ok":"")+
+          '</div>'+
+          '<div class="voice-note"><b>Homeostasis reach:</b> '+esc(guided)+'</div>'+
+        '</div>'+
+      '</div>'+
+
+      '<div class="voice-decision"><b>'+esc(v.decision||"—")+'</b> — '+esc(v.reason||"—")+
+        (neural?'<br><span style="color:var(--muted)">Connectome candidates:</span> '+Object.entries(bd.candidates||{}).map(([k,x])=>esc(k)+' '+Number(x).toFixed(3)).join(' • '):'')+
+      '</div>'+
+
+      '<details class="voice-technical">'+
+        '<summary>▸ Szczegóły techniczne</summary>'+
+        '<div class="voice-technical-body">'+
+          '<div class="voice-tech-grid">'+
+            kpi("Prediction context",esc(v.prediction_context||"—"))+
+            kpi("Tie evidence",esc(tieSummary||"—"))+
+            kpi("Homeostasis paths",esc(guided))+
+            kpi("Reward cue base",Number(v.reward_opportunity_strength||0).toFixed(2))+
+            kpi("Guided JOIN",esc(rewardMode||"—")+" • "+Number(v.reward_opportunity_guided_neurons||0)+" n")+
+            kpi("Guided reach",Number(v.reward_opportunity_guided_reach_mean||0).toFixed(4)+" / "+Number(v.reward_opportunity_guided_reach_max||0).toFixed(4))+
+            kpi("Social guided",esc(socialMode||"—")+" • "+Number(v.social_drive_guided_neurons||0)+" n")+
+            kpi("Ignored cue punish",v.reward_opportunity_stay_punished?Number(v.reward_opportunity_stay_punish_amount||0).toFixed(3):"nie",v.reward_opportunity_stay_punished?"no":"")+
+            kpi("Minimum dwell",onVoice?Number(v.dwell_remaining||0).toFixed(1)+" s":"—")+
+            kpi("Effective move",v.effective_move_score==null?"—":Number(v.effective_move_score).toFixed(3))+
+            kpi("Effective margin",v.effective_move_margin==null?"—":Number(v.effective_move_margin).toFixed(3))+
+            kpi("Chaser ID",esc(v.chaser_id||"—"))+
+          '</div>'+
+        '</div>'+
+      '</details>'+
+
+      '<div class="voice-table-wrap"><table><thead><tr><th>Kanał</th><th>Ludzie</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table></div>'+
+    '</div>';
+  }).join('<div class="voice-server-sep"></div>');
 }
 function sessionDuration(seconds){
   seconds=Math.max(0,Number(seconds||0));
