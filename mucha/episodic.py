@@ -759,6 +759,13 @@ class VoiceEpisodicMemory:
             source=str(source),
         )
         self._episodes.append(episode)
+        memory_entry = self._touch_memory_event(
+            scene_key=episode.scene_key,
+            action=episode.action,
+            actual_reward=episode.actual_reward,
+            prediction_error=episode.prediction_error,
+            now=episode.time,
+        )
 
         if self.db is not None:
             self.db.execute(
@@ -824,6 +831,18 @@ class VoiceEpisodicMemory:
             "scene_prediction": scene_updated,
             "observations": generic_count,
             "scene_observations": scene_count,
+            "memory_strength": float(
+                memory_entry["strength"]
+            ),
+            "memory_status": (
+                "consolidated"
+                if float(memory_entry["strength"])
+                >= self.consolidated_threshold
+                else "forming"
+            ),
+            "memory_replays": int(
+                memory_entry["replay_count"]
+            ),
             "source": episode.source,
         }
 
@@ -910,32 +929,67 @@ class VoiceEpisodicMemory:
                 if now_value - float(row.time) <= max_age
             ]
 
-        ranked: list[tuple[float, VoiceEpisode]] = []
+        ranked: list[tuple[float, VoiceEpisode, dict]] = []
         for episode in episodes:
             age = max(0.0, now_value - float(episode.time))
             recency = max(0.0, 1.0 - age / max_age)
             surprise = min(1.0, abs(float(episode.prediction_error)))
             reward = min(1.0, abs(float(episode.actual_reward)))
+            memory = dict(
+                self._memory_entry(
+                    episode.scene_key,
+                    episode.action,
+                )
+            )
+            strength = max(
+                0.0,
+                min(1.0, float(memory["strength"])),
+            )
+            repetitions = min(
+                1.0,
+                (
+                    int(memory["event_count"])
+                    + 2 * int(memory["replay_count"])
+                )
+                / 12.0,
+            )
             score = (
                 1.60 * surprise
                 + 1.00 * reward
                 + 0.35 * recency
+                + 1.10 * strength
+                + 0.25 * repetitions
             )
             if score <= 0.01:
                 continue
-            ranked.append((score, episode))
+            ranked.append((score, episode, memory))
 
         ranked.sort(
             key=lambda item: (item[0], item[1].time),
             reverse=True,
         )
         result: list[dict] = []
-        for score, episode in ranked[:limit]:
+        for score, episode, memory in ranked[:limit]:
             row = self._episode_dict(episode)
             row["replay_score"] = float(score)
             row["age_seconds"] = max(
                 0.0,
                 now_value - float(episode.time),
+            )
+            row["memory_strength"] = float(
+                memory["strength"]
+            )
+            row["memory_replays"] = int(
+                memory["replay_count"]
+            )
+            row["memory_events"] = int(
+                memory["event_count"]
+            )
+            row["memory_status"] = (
+                "consolidated"
+                if float(memory["strength"])
+                >= self.consolidated_threshold
+                else "forming"
             )
             result.append(row)
         return result
@@ -952,12 +1006,25 @@ class VoiceEpisodicMemory:
         return len(self._values)
 
     def diagnostics(self) -> dict:
+        consolidated = sum(
+            1
+            for entry in self._consolidation.values()
+            if float(entry["strength"])
+            >= self.consolidated_threshold
+        )
         return {
             "persistent": self.db is not None,
             "database": str(self.path) if self.path else None,
             "episodes": self.size(),
             "cached_episodes": len(self._episodes),
             "predictions": self.prediction_count(),
+            "memory_scenes": len(self._consolidation),
+            "consolidated_scenes": int(consolidated),
+            "consolidated_threshold": float(
+                self.consolidated_threshold
+            ),
+            "forgetting": dict(self._last_forgetting_diag),
+            "top_memories": self.consolidation_summary(12),
             "recent": self.recent(12),
         }
 
