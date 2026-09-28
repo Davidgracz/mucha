@@ -174,7 +174,10 @@ class MuchaClient(discord.Client):
         self._language_start_diag = self.language.diagnostics()
         self._stt_transcripts_since_start = 0
         self.random = random.Random(cfg.brain.seed + 1)
-        episodic_path = Path(cfg.voice.episodic_database)
+        episodic_path = Path(
+            cfg.voice.episodic_database
+            or "state/voice_episodes.sqlite3"
+        )
         if not episodic_path.is_absolute():
             episodic_path = (
                 Path(__file__).resolve().parents[1]
