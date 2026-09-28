@@ -3169,6 +3169,7 @@ class FlyBrain:
 
         tie_band = 0.0025
         tie_break = None
+        tie_evidence_margin = 0.0
         tie_evidence: dict[str, dict] = {}
         close_actions = tuple(
             name
@@ -3197,6 +3198,7 @@ class FlyBrain:
                 float(tie_evidence[best]["support"])
                 - float(tie_evidence[second]["support"])
             )
+            tie_evidence_margin = float(evidence_margin)
             if abs(evidence_margin) > 1e-9:
                 winner = best
                 runner_name = second
@@ -3243,12 +3245,20 @@ class FlyBrain:
             "score": float(winner_score),
             "runner_up": runner_name,
             "runner_up_score": float(runner_score),
-            "margin": float(winner_score - runner_score),
+            "margin": float(
+                0.0
+                if tie_break
+                else winner_score - runner_score
+            ),
+            "raw_winner_margin": float(
+                winner_score - runner_score
+            ),
             "candidates": candidates,
             "scores": scores,
             "source": "connectome-readout-competition",
             "tie_band": tie_band,
             "tie_break": tie_break,
+            "tie_evidence_margin": tie_evidence_margin,
             "tie_evidence": tie_evidence,
         }
 
