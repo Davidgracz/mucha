@@ -2185,6 +2185,30 @@ class MuchaClient(discord.Client):
             return 0.0
         return remaining
 
+    def _current_voice_channel(
+        self,
+        guild: discord.Guild,
+    ) -> discord.VoiceChannel | discord.StageChannel | None:
+        """Return Mucha's current voice channel, preferring gateway state.
+
+        During VoiceRecvClient reconnects, VoiceClient.channel can briefly lag
+        behind Discord's guild member voice state. Chaser logic needs the
+        gateway state first so a catch is not missed after an escape.
+        """
+        me = guild.me
+        gateway_channel = (
+            getattr(getattr(me, "voice", None), "channel", None)
+            if me is not None
+            else None
+        )
+        if gateway_channel is not None:
+            return gateway_channel
+
+        vc = guild.voice_client
+        if vc is not None and vc.is_connected():
+            return vc.channel
+        return None
+
     def _chaser_is_named(self, member: discord.Member) -> bool:
         configured = int(self.cfg.voice.chaser_bot_id)
         if configured > 0 and member.id == configured:
@@ -2304,17 +2328,16 @@ class MuchaClient(discord.Client):
             me = guild.me
             if me is None:
                 return
+            current = self._current_voice_channel(guild)
             if (
                 vc is None
                 or not vc.is_connected()
-                or vc.channel is None
+                or current is None
             ):
                 # Voice transport can disappear briefly during a Discord move
                 # or reconnect. Do not kill the chase task in that window.
                 await asyncio.sleep(0.15)
                 continue
-
-            current = vc.channel
             predator = guild.get_member(predator_id)
             predator_channel = (
                 getattr(getattr(predator, "voice", None), "channel", None)
@@ -3319,11 +3342,7 @@ class MuchaClient(discord.Client):
         chaser_hits = 0
         now = time.monotonic()
         vc = member.guild.voice_client
-        my_channel = (
-            vc.channel
-            if vc and vc.is_connected() and vc.channel is not None
-            else None
-        )
+        my_channel = self._current_voice_channel(member.guild)
         changed_channel = getattr(before.channel, "id", None) != getattr(
             after.channel,
             "id",
@@ -5360,6 +5379,11 @@ class MuchaClient(discord.Client):
                 f"Chaser {chaser_id} jest na obecnym kanale; "
                 f"panic {chaser_remaining:.1f}s"
             )
+            # Panic has absolute priority over dwell/stay/normal voice logic.
+            # Once the chaser catches Mucha, only the chase task may decide
+            # what happens next.
+            self._voice_debug[guild.id] = debug
+            return
 
         current_disliked = (
             self._disliked_members(
