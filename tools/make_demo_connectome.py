@@ -75,15 +75,6 @@ def main():
     )
     for pos, idx in enumerate(typed):
         primary_type[int(idx)] = demo_types[pos % len(demo_types)]
-    # Keep the communication/song seed intentionally outside the broad output
-    # pool so the smoke test proves full-connectome seed discovery works.
-    external_speak_idx = min(
-        n - 1,
-        max(0, int(sensory[-1]) + 5) if len(sensory) else 5,
-    )
-    if external_speak_idx in set(int(i) for i in output.tolist()):
-        external_speak_idx = max(0, int(output[0]) - 1)
-    primary_type[int(external_speak_idx)] = "pIP10"
     demo_neuropils = np.where(
         x < -0.25,
         "DEMO_L",
