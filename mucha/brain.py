@@ -67,7 +67,21 @@ class FlyBrain:
         self.cfg = cfg
         self.compute = ComputeBackend(cfg.backend, cfg.gpu_device)
         self.xp = self.compute.xp
-        self.matrix = self.compute.sparse_from_scipy(self.c.matrix)
+        self._modulator_pools = self._build_modulator_pools()
+        self._neuromodulator_state = {
+            "dopamine": 0.0,
+            "serotonin": 0.0,
+            "octopamine": 0.0,
+        }
+        runtime_matrix = self._build_runtime_connectome_matrix()
+        self.matrix = self.compute.sparse_from_scipy(runtime_matrix)
+        self._runtime_matrix_cpu = runtime_matrix
+        self._neuromodulator_effects = {
+            "effective_leak": float(cfg.leak),
+            "effective_gain": float(cfg.propagation_gain),
+            "effective_noise": float(cfg.noise),
+            "plasticity_gain": 1.0,
+        }
 
         # CPU RNG is only used for stable index selection. Dynamic noise lives
         # on the active backend and therefore stays on the GPU in CUDA mode.
@@ -148,6 +162,180 @@ class FlyBrain:
             self.c.n_neurons,
             dtype=np.float32,
         )
+
+    def _build_modulator_pools(self) -> dict[str, np.ndarray]:
+        """Split annotated modulatory neurons by predicted transmitter."""
+        n = self.c.n_neurons
+        meta = self.c.neuron_meta or {}
+        nt = meta.get("nt_type")
+        pools = {
+            "dopamine": [],
+            "serotonin": [],
+            "octopamine": [],
+        }
+        aliases = {
+            "dopamine": {"da", "dopamine"},
+            "serotonin": {"ser", "5ht", "5-ht", "serotonin"},
+            "octopamine": {"oct", "oa", "octopamine"},
+        }
+        if nt is not None and len(nt) == n:
+            values = np.asarray(nt).astype(str, copy=False)
+            for idx, raw in enumerate(values):
+                value = str(raw).strip().lower()
+                for name, names in aliases.items():
+                    if value in names:
+                        pools[name].append(idx)
+                        break
+        return {
+            name: np.asarray(indices, dtype=np.int32)
+            for name, indices in pools.items()
+        }
+
+    def _build_runtime_connectome_matrix(self) -> scipy_sparse.csr_matrix:
+        """Reduce direct monoamine columns when global modulation is enabled."""
+        matrix = self.c.matrix.tocsr().astype(np.float32, copy=True)
+        if (
+            not self.cfg.neuromodulation_enabled
+            or not len(self.c.modulatory)
+        ):
+            return matrix
+
+        residual = max(
+            0.0,
+            min(
+                1.0,
+                float(self.cfg.neuromodulatory_direct_residual),
+            ),
+        )
+        scale = np.ones(self.c.n_neurons, dtype=np.float32)
+        scale[np.asarray(self.c.modulatory, dtype=np.int32)] = np.float32(
+            residual
+        )
+        return matrix.dot(
+            scipy_sparse.diags(scale, dtype=np.float32)
+        ).tocsr().astype(np.float32)
+
+    def _update_neuromodulator_state(self) -> None:
+        if not self.cfg.neuromodulation_enabled:
+            for key in self._neuromodulator_state:
+                self._neuromodulator_state[key] = 0.0
+            return
+
+        smoothing = max(
+            0.0,
+            min(0.999, float(self.cfg.neuromodulator_smoothing)),
+        )
+        for name, pool in self._modulator_pools.items():
+            target = 0.0
+            if len(pool):
+                idx = self._backend_indices(pool)
+                target = self.compute.scalar(
+                    self.xp.mean(self.xp.abs(self.state[idx]))
+                )
+                target = max(0.0, min(1.0, float(target)))
+            previous = float(
+                self._neuromodulator_state.get(name, 0.0)
+            )
+            self._neuromodulator_state[name] = (
+                smoothing * previous
+                + (1.0 - smoothing) * target
+            )
+
+    def _plasticity_gain(self) -> float:
+        if not self.cfg.neuromodulation_enabled:
+            return 1.0
+        dopamine = float(
+            self._neuromodulator_state.get("dopamine", 0.0)
+        )
+        return max(
+            0.25,
+            min(
+                4.0,
+                1.0
+                + float(self.cfg.dopamine_plasticity_gain)
+                * dopamine,
+            ),
+        )
+
+    def _neuromodulation_tick_effects(
+        self,
+    ) -> tuple[float, float, float]:
+        self._update_neuromodulator_state()
+        if not self.cfg.neuromodulation_enabled:
+            leak = float(self.cfg.leak)
+            gain = float(self.cfg.propagation_gain)
+            noise = float(self.cfg.noise)
+        else:
+            serotonin = float(
+                self._neuromodulator_state.get("serotonin", 0.0)
+            )
+            octopamine = float(
+                self._neuromodulator_state.get("octopamine", 0.0)
+            )
+            leak = min(
+                0.995,
+                max(
+                    0.0,
+                    float(self.cfg.leak)
+                    + float(self.cfg.serotonin_stability_gain)
+                    * serotonin,
+                ),
+            )
+            gain = max(
+                0.0,
+                float(self.cfg.propagation_gain)
+                * (
+                    1.0
+                    + float(self.cfg.octopamine_arousal_gain)
+                    * octopamine
+                ),
+            )
+            noise = max(
+                0.0,
+                float(self.cfg.noise)
+                * (1.0 + 0.70 * octopamine)
+                * max(0.40, 1.0 - 0.35 * serotonin),
+            )
+        self._neuromodulator_effects = {
+            "effective_leak": leak,
+            "effective_gain": gain,
+            "effective_noise": noise,
+            "plasticity_gain": self._plasticity_gain(),
+        }
+        return leak, gain, noise
+
+    def neuromodulator_diagnostics(self) -> dict:
+        return {
+            "enabled": bool(self.cfg.neuromodulation_enabled),
+            "direct_residual": float(
+                self.cfg.neuromodulatory_direct_residual
+            ),
+            "dopamine": {
+                "neurons": int(
+                    len(self._modulator_pools["dopamine"])
+                ),
+                "level": float(
+                    self._neuromodulator_state["dopamine"]
+                ),
+            },
+            "serotonin": {
+                "neurons": int(
+                    len(self._modulator_pools["serotonin"])
+                ),
+                "level": float(
+                    self._neuromodulator_state["serotonin"]
+                ),
+            },
+            "octopamine": {
+                "neurons": int(
+                    len(self._modulator_pools["octopamine"])
+                ),
+                "level": float(
+                    self._neuromodulator_state["octopamine"]
+                ),
+            },
+            **self._neuromodulator_effects,
+        }
 
     def _init_neuro_map_metadata(self) -> None:
         """Prepare compact spatial/annotation caches for the web neuro-map."""
