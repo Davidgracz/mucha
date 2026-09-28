@@ -5737,6 +5737,33 @@ class FlyBrain:
             add_important(edge.get("source_index", -1))
             add_important(edge.get("target_index", -1))
 
+        # Keep the currently strongest neurons from every internal attractor
+        # visible even when they are not globally top-active.
+        for state_name in self.INTERNAL_STATE_TARGET_ACTIONS:
+            pool = np.asarray(
+                self._internal_state_pools.get(
+                    state_name,
+                    np.empty(0, dtype=np.int32),
+                ),
+                dtype=np.int32,
+            )
+            if not len(pool):
+                continue
+            values = abs_state[pool]
+            keep = min(12, len(pool))
+            if keep >= len(pool):
+                order = np.argsort(values)[::-1]
+            else:
+                part = np.argpartition(
+                    values,
+                    -keep,
+                )[-keep:]
+                order = part[
+                    np.argsort(values[part])[::-1]
+                ]
+            for pos in order[:keep]:
+                add_important(int(pool[int(pos)]))
+
         remaining = max(0, count - len(important))
         if remaining:
             active_order = np.argsort(abs_state)[::-1]
