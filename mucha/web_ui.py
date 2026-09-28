@@ -1194,7 +1194,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
    <div class="map-title" id="map-title">XY PROJECTION</div>
    <div class="tooltip" id="tip"></div>
   </div>
-  <div class="legend"><span><i class="sens"></i> sensory</span><span><i class="internal"></i> internal</span><span><i class="mod"></i> modulatory</span><span><i class="out"></i> output</span><span>• animowana kropka = kierunek realnego wkładu sygnału • przerywana linia = wkład ujemny • pierścień = output wygrywającego readoutu</span></div>
+  <div class="legend"><span><i class="sens"></i> sensory</span><span><i class="internal"></i> internal</span><span><i class="mod"></i> modulatory</span><span><i class="out"></i> output</span><span>• animowana kropka = kierunek realnego wkładu sygnału • przerywana linia flow = wkład ujemny • żółta/różowa krótko-kreskowana = synapsa zmieniona przez reward/punish • pierścień = output wygrywającego readoutu</span></div>
  </div>
 
  <div class="side">
@@ -1279,7 +1279,12 @@ function drawSignalFlow(w,h){
  });
  ctx.setLineDash([]);ctx.globalAlpha=.9;ctx.strokeStyle=tone;ctx.lineWidth=1.35;
  for(const out of (f.output_points||[]).slice(0,28)){const p=point(out,w,h,26);ctx.beginPath();ctx.arc(p.x,p.y,8.5,0,Math.PI*2);ctx.stroke()}
- ctx.globalAlpha=1;ctx.restore()
+ const learning=(data.signal_flow&&data.signal_flow.learning||[]).slice(-1)[0]||null;
+ if(learning){
+  ctx.globalCompositeOperation="source-over";
+  for(const e of (learning.top_synapses||[]).slice(0,20)){const a=nodes.get(String(e.source))||e.source_position,b=nodes.get(String(e.target))||e.target_position;if(!a||!b)continue;const p1=point(a,w,h,26),p2=point(b,w,h,26),chg=Number(e.change||0);ctx.strokeStyle=chg>=0?"#ffd166":"#ff77b7";ctx.globalAlpha=.60;ctx.lineWidth=1.6;ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke()}
+ }
+ ctx.setLineDash([]);ctx.globalAlpha=1;ctx.restore()
 }
 function liveFlowRows(n){
  const rows=n.live_flow_edges||[];if(!rows.length)return '<div class="note">Ten neuron nie uczestniczy w najmocniejszych krawędziach ostatniej klatki.</div>';
