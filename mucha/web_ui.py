@@ -721,7 +721,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
  <div class="arrow">→</div>
  <div class="flowbox"><small>2 • PROPAGATION</small><strong>139k neuronów + 3.7M połączeń</strong><p>Aktywność rozchodzi się po prawdziwej topologii FlyWire i miesza z pamięcią/plastycznością.</p></div>
  <div class="arrow">→</div>
- <div class="flowbox"><small>3 • READOUT</small><strong>speak / explore / voice / react</strong><p>Populacje wyjściowe zamieniają stan mózgu na decyzje.</p></div>
+ <div class="flowbox"><small>3 • READOUT</small><strong>typed DNs + connectome</strong><p>Znane typy neuronów zstępujących kotwiczą akcje, a prawdziwe połączenia FAFB rozszerzają ich pule.</p></div>
  <div class="arrow">→</div>
  <div class="flowbox"><small>4 • LANGUAGE / ACTION</small><strong>generator + connectome</strong><p>Po rozbudowie słownika connectome może również zmieniać szanse konkretnych słów.</p></div>
 </section>
@@ -745,7 +745,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
  </div>
 
  <div class="side">
-  <div class="card"><div class="card-head"><h2>Action readouts</h2><span class="muted">0 → 1</span></div><div class="actions" id="actions"></div></div>
+  <div class="card"><div class="card-head"><h2>Action readouts</h2><span class="muted">0 → 1</span></div><div class="actions" id="actions"></div><div class="muted" id="action-pool-detail" style="margin-top:10px">—</div></div>
   <div class="card"><div class="card-head"><h2>Connectome → słowa</h2><span id="word-badge" class="badge wait">UCZY SŁOWNIK</span></div>
    <div class="lang-status">
     <div class="lang-top"><div><strong id="word-vocab">—</strong><div class="muted">unikalnych słów</div></div><div style="text-align:right"><strong id="word-eval">—</strong><div class="muted">ostatnio ocenionych kandydatów</div></div></div>
@@ -869,6 +869,7 @@ function render(s,v){
  const d=s.diag||{},ld=s.language_diag||{},cw=ld.connectome_word_control_last||{};
  $("k-neurons").textContent=nfmt(d.neurons);$("k-connections").textContent=nfmt(d.connections);$("k-active").textContent=nfmt(d.active_abs_gt_0_1);$("k-mean").textContent=Number(d.mean_abs||0).toFixed(5);$("k-reward").textContent=Number(d.reward_trace||0).toFixed(3);$("k-backend").textContent=(d.backend||"—")+" • "+(d.device||"");$("k-tick").textContent="tick "+nfmt(d.ticks);$("k-synapses").textContent=nfmt(d.learned_synapses||0);$("k-synapse-delta").textContent="max |Δ| "+Number(d.synaptic_max_abs||0).toFixed(5);
  $("selected").textContent=nfmt(v.selected_neurons);$("edges").textContent=nfmt(v.selected_edges);$("event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";renderActions(s.scores||{});
+ const pools=d.action_pools||{};const poolOrder=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];$("action-pool-detail").textContent=poolOrder.map(k=>{const p=pools[k]||{};return k+": "+(p.mode||"—")+" • seeds "+nfmt(p.seed_count||0)+" • pool "+nfmt(p.pool_size||0)}).join("  |  ");
  $("stable-age").textContent=followActivity?"FOLLOW":Math.round(Number(v.stable_age_seconds||0))+" s / "+Math.round(Number(v.stable_window_seconds||45))+" s";
  $("replacements").textContent=nfmt(v.replacements||0);
  const vocab=Number(ld.word_vocab||0),min=Number(ld.connectome_word_control_min_vocab||1),ready=!!ld.connectome_word_control_ready,pct=clamp(vocab/min*100,0,100);
