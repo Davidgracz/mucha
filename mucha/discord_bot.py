@@ -5703,9 +5703,21 @@ class MuchaClient(discord.Client):
             "move_margin": self.cfg.voice.move_margin,
             "minimum_dwell_seconds": self.cfg.voice.minimum_dwell_seconds,
             "maximum_dwell_seconds": self.cfg.voice.maximum_dwell_seconds,
-            "dwell_elapsed": dwell_elapsed,
-            "dwell_remaining": dwell_remaining,
-            "overstay_seconds": overstay_seconds,
+            "dwell_elapsed": (
+                dwell_elapsed
+                if current is not None
+                else 0.0
+            ),
+            "dwell_remaining": (
+                dwell_remaining
+                if current is not None
+                else 0.0
+            ),
+            "overstay_seconds": (
+                overstay_seconds
+                if current is not None
+                else 0.0
+            ),
             "overstay_punished": False,
             "outside_seconds": (
                 dwell_elapsed
@@ -6363,6 +6375,18 @@ class MuchaClient(discord.Client):
                 "candidates": dict(
                     brain_decision["candidates"]
                 ),
+                "tie_band": float(
+                    brain_decision.get("tie_band", 0.0)
+                ),
+                "tie_break": brain_decision.get(
+                    "tie_break"
+                ),
+                "tie_evidence": dict(
+                    brain_decision.get(
+                        "tie_evidence",
+                        {}
+                    )
+                ),
             }
 
         debug["scores"] = {
@@ -6393,10 +6417,19 @@ class MuchaClient(discord.Client):
                     or brain_decision["action"] != "voice_join"
                 ):
                     debug["decision"] = "ZOSTAJĘ POZA VOICE"
+                    tie_note = ""
+                    if brain_decision is not None and brain_decision.get(
+                        "tie_break"
+                    ):
+                        tie_note = (
+                            " • tie-break "
+                            f"{brain_decision['tie_break']}"
+                        )
                     debug["reason"] = (
                         "connectome winner "
                         f"{(brain_decision or {}).get('action', 'stay')} • "
                         f"join {join:.3f}"
+                        f"{tie_note}"
                     )
                     self._voice_debug[guild.id] = debug
                     return
@@ -6438,9 +6471,15 @@ class MuchaClient(discord.Client):
             target_aff = affinities[target.id]
             debug["decision"] = f"JOIN → {target.name}"
             if connectome_voice_control and brain_decision is not None:
+                tie_note = (
+                    f"; tie-break {brain_decision['tie_break']}"
+                    if brain_decision.get("tie_break")
+                    else ""
+                )
                 debug["reason"] = (
                     f"CONNECTOME WINNER voice_join {join:.3f}; "
-                    f"margin {brain_decision['margin']:.3f}; "
+                    f"margin {brain_decision['margin']:.3f}"
+                    f"{tie_note}; "
                     f"target neural affinity {target_aff:.3f}"
                 )
             else:
