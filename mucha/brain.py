@@ -194,9 +194,21 @@ class FlyBrain:
     def _build_runtime_connectome_matrix(self) -> scipy_sparse.csr_matrix:
         """Reduce direct monoamine columns when global modulation is enabled."""
         matrix = self.c.matrix.tocsr().astype(np.float32, copy=True)
+        typed_modulators = np.unique(
+            np.concatenate(
+                [
+                    pool
+                    for pool in self._modulator_pools.values()
+                    if len(pool)
+                ]
+            )
+        ) if any(
+            len(pool)
+            for pool in self._modulator_pools.values()
+        ) else np.empty(0, dtype=np.int32)
         if (
             not self.cfg.neuromodulation_enabled
-            or not len(self.c.modulatory)
+            or not len(typed_modulators)
         ):
             return matrix
 
@@ -208,9 +220,7 @@ class FlyBrain:
             ),
         )
         scale = np.ones(self.c.n_neurons, dtype=np.float32)
-        scale[np.asarray(self.c.modulatory, dtype=np.int32)] = np.float32(
-            residual
-        )
+        scale[typed_modulators] = np.float32(residual)
         return matrix.dot(
             scipy_sparse.diags(scale, dtype=np.float32)
         ).tocsr().astype(np.float32)
