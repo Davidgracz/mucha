@@ -618,7 +618,12 @@ class FlyBrain:
         return _sigmoid(3.2 * raw + 0.08 * self.reward_trace)
 
     def language_word_score(self, token: str, width: int = 32) -> float:
-        """Return a connectome-state preference score for one learned word."""
+        """Return the live connectome preference for one learned word.
+
+        Current neuronal activity remains the main signal. Learned plastic bias
+        is included as a smaller term so reward can immediately alter future
+        word choice instead of waiting for many unrelated ticks.
+        """
         token = str(token).strip().lower()
         if not token:
             return 0.5
@@ -643,8 +648,80 @@ class FlyBrain:
         output_raw = self.compute.scalar(
             self.xp.mean(self.state[output])
         )
-        raw = 0.35 * sensory_raw + 0.65 * output_raw
-        return _sigmoid(3.0 * raw + 0.06 * self.reward_trace)
+        sensory_bias = self.compute.scalar(
+            self.xp.mean(self.plastic_bias[sensory])
+        )
+        output_bias = self.compute.scalar(
+            self.xp.mean(self.plastic_bias[output])
+        )
+        activity_raw = 0.35 * sensory_raw + 0.65 * output_raw
+        learned_raw = 0.35 * sensory_bias + 0.65 * output_bias
+        return _sigmoid(
+            3.0 * activity_raw
+            + 2.0 * learned_raw
+            + 0.06 * self.reward_trace
+        )
+
+    def advance_language_word(
+        self,
+        token: str,
+        previous_token: str | None = None,
+        magnitude: float = 0.18,
+        steps: int = 2,
+    ) -> None:
+        """Feed one chosen word back through the live connectome.
+
+        The selected output population becomes an efference copy, then the
+        actual FAFB connection matrix is stepped before the next word is
+        scored. This makes sentence generation recurrent: every chosen word
+        changes the brain state used to choose the following word.
+        """
+        token = str(token or "").strip().lower()
+        if not token:
+            return
+
+        magnitude = max(0.0, min(1.0, float(magnitude)))
+        steps = max(1, min(8, int(steps)))
+        output_cpu = self._subset(
+            "output:language:word:" + token,
+            self.c.output,
+            32,
+        )
+        sensory_cpu = self._subset(
+            "sensory:text:word:" + token,
+            self.c.sensory,
+            24,
+        )
+        output = self._backend_indices(output_cpu)
+        sensory = self._backend_indices(sensory_cpu)
+
+        self.state[output] += np.float32(magnitude)
+        self.state[sensory] += np.float32(magnitude * 0.30)
+        self.eligibility[output] = self.xp.maximum(
+            self.eligibility[output],
+            np.float32(0.62),
+        )
+        self.eligibility[sensory] = self.xp.maximum(
+            self.eligibility[sensory],
+            np.float32(0.36),
+        )
+
+        previous = str(previous_token or "").strip().lower()
+        if previous:
+            pair_cpu = self._subset(
+                f"sensory:text:pair:{previous}|{token}",
+                self.c.sensory,
+                24,
+            )
+            pair = self._backend_indices(pair_cpu)
+            self.state[pair] += np.float32(magnitude * 0.45)
+            self.eligibility[pair] = self.xp.maximum(
+                self.eligibility[pair],
+                np.float32(0.48),
+            )
+
+        self.xp.clip(self.state, -3.0, 3.0, out=self.state)
+        self.step(steps)
 
     def _word_association_signature(
         self,
