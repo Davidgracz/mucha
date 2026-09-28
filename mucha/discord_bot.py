@@ -6381,6 +6381,18 @@ class MuchaClient(discord.Client):
                 "tie_break": brain_decision.get(
                     "tie_break"
                 ),
+                "tie_evidence_margin": float(
+                    brain_decision.get(
+                        "tie_evidence_margin",
+                        0.0,
+                    )
+                ),
+                "raw_winner_margin": float(
+                    brain_decision.get(
+                        "raw_winner_margin",
+                        brain_decision.get("margin", 0.0),
+                    )
+                ),
                 "tie_evidence": dict(
                     brain_decision.get(
                         "tie_evidence",
