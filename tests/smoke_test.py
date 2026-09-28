@@ -61,12 +61,18 @@ def main():
         state_before_opportunity = b.compute.to_cpu(
             b.state
         ).copy()
-        b.inject_voice_reward_opportunity(
+        opportunity_diag = b.inject_voice_reward_opportunity(
             999,
             55555,
             human_count=3,
             strength=1.1,
         )
+        assert opportunity_diag["action"] == "voice_join"
+        assert opportunity_diag["neurons"] > 0
+        assert opportunity_diag["mode"].startswith(
+            "connectome-guided"
+        )
+        assert opportunity_diag["reach_max"] > 0.0
         state_after_opportunity = b.compute.to_cpu(
             b.state
         )
@@ -258,6 +264,8 @@ def main():
         assert "reward_opportunity_enabled" in CONFIG_HTML
         assert "reward_opportunity_success_chance" in CONFIG_HTML
         assert "reward_opportunity_reward" in CONFIG_HTML
+        assert "reward_opportunity_stay_punish" in CONFIG_HTML
+        assert "reward_opportunity_stay_punish_interval_seconds" in CONFIG_HTML
         assert "Social Neural Memory" in AFFINITY_HTML
         assert "neural-users" in AFFINITY_HTML
         assert 'const out={brain:{},language:{},behavior:{},voice:{}};' in CONFIG_HTML
@@ -281,6 +289,8 @@ def main():
         assert "neural social drive join" in bot_source
         assert "_voice_reward_opportunity_for" in bot_source
         assert "random voice reward opportunity" in bot_source
+        assert "ignored neural reward opportunity" in bot_source
+        assert "_last_reward_opportunity_stay_punish" in bot_source
         assert "preferred_channel_id" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
