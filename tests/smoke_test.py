@@ -45,6 +45,9 @@ def main():
         assert "target" in first_flow_edge
         assert "contribution" in first_flow_edge
         assert "effective_weight" in first_flow_edge
+        assert "source_position" in first_flow_edge
+        assert "target_position" in first_flow_edge
+        assert signal_flow["latest"]["output_points"]
         assert "live edge contribution" in signal_flow["method"]
 
         episodes = VoiceEpisodicMemory(
@@ -462,6 +465,9 @@ def main():
         assert "FOLLOW DECISION" in NEUROMAP_HTML
         assert "Live signal flow" in NEUROMAP_HTML
         assert "renderSignalFlow" in NEUROMAP_HTML
+        assert "flow-live-btn" in NEUROMAP_HTML
+        assert "Historia — kliknij, aby odtworzyć przepływ" in NEUROMAP_HTML
+        assert "flowReplayTick" in NEUROMAP_HTML
         assert "live flow in / out" in NEUROMAP_HTML
         assert "neural tie-break" in HTML
         assert "overstay_punish_amount" in CONFIG_HTML
