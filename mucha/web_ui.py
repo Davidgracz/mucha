@@ -2138,6 +2138,11 @@ function renderSttDebug(s){
 
 function renderVoiceDebug(items){
   const root=$("voice-debug");
+  const openDetailKeys=new Set(
+    [...root.querySelectorAll("details[open][data-detail-key]")]
+      .map(el=>el.dataset.detailKey)
+      .filter(Boolean)
+  );
   if(!Array.isArray(items)||!items.length){
     root.innerHTML='<div class="reason">Brak danych. Jeśli voice jest wyłączony w configu, pętla diagnostyczna nie wystartuje.</div>';
     return;
@@ -2281,8 +2286,8 @@ function renderVoiceDebug(items){
           '<div class="voice-note"><b>Expected:</b> '+esc(expected)+'</div>'+
           '<div class="voice-note"><b>Recall → connectome:</b> '+esc(recallSummary)+'</div>'+
           '<div class="voice-note"><b>MEMORY REPLAY:</b> '+esc(replaySummary)+'</div>'+
-          '<details class="mini-details"><summary>Najsilniejsze sceny • '+Number(v.episodic_consolidated_scenes||0)+' utrwalonych</summary><div class="memory-list">'+consolidatedRows+'</div></details>'+
-          '<details class="mini-details"><summary>Ostatnie epizody • pokaż 3 najnowsze</summary><div class="memory-list">'+memoryRows+'</div></details>'+
+          '<details class="mini-details" data-detail-key="memory-top-'+esc(v.guild||"server")+'"><summary>Najsilniejsze sceny • '+Number(v.episodic_consolidated_scenes||0)+' utrwalonych</summary><div class="memory-list">'+consolidatedRows+'</div></details>'+
+          '<details class="mini-details" data-detail-key="memory-recent-'+esc(v.guild||"server")+'"><summary>Ostatnie epizody • pokaż 3 najnowsze</summary><div class="memory-list">'+memoryRows+'</div></details>'+
         '</div>'+
 
         '<div class="voice-box">'+
@@ -2325,7 +2330,7 @@ function renderVoiceDebug(items){
         (neural?'<br><span style="color:var(--muted)">Connectome candidates:</span> '+Object.entries(bd.candidates||{}).map(([k,x])=>esc(k)+' '+Number(x).toFixed(3)).join(' • '):'')+
       '</div>'+
 
-      '<details class="voice-technical">'+
+      '<details class="voice-technical" data-detail-key="technical-'+esc(v.guild||"server")+'">'+
         '<summary>▸ Szczegóły techniczne</summary>'+
         '<div class="voice-technical-body">'+
           '<div class="voice-tech-grid">'+
@@ -2350,9 +2355,12 @@ function renderVoiceDebug(items){
         '</div>'+
       '</details>'+
 
-      '<details class="voice-technical"><summary>▸ Kanały głosowe ('+Number((v.channels||[]).length)+')</summary><div class="voice-technical-body"><div class="voice-table-wrap"><table><thead><tr><th>Kanał</th><th>Ludzie</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table></div></div></details>'+
+      '<details class="voice-technical" data-detail-key="channels-'+esc(v.guild||"server")+'"><summary>▸ Kanały głosowe ('+Number((v.channels||[]).length)+')</summary><div class="voice-technical-body"><div class="voice-table-wrap"><table><thead><tr><th>Kanał</th><th>Ludzie</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table></div></div></details>'+
     '</div>';
   }).join('<div class="voice-server-sep"></div>');
+  root.querySelectorAll("details[data-detail-key]").forEach(el=>{
+    if(openDetailKeys.has(el.dataset.detailKey)) el.open=true;
+  });
 }
 function sessionDuration(seconds){
   seconds=Math.max(0,Number(seconds||0));
