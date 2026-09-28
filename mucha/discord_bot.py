@@ -7962,6 +7962,10 @@ class MuchaClient(discord.Client):
             )
         try:
             await vc.move_to(target)
+            self._update_pending_voice_scene(
+                guild.id,
+                target,
+            )
             self.voice_arrived[guild.id] = now
             self._mark_voice_visit(guild.id, target.id, now)
             await self._mark_social_voice_arrival(
