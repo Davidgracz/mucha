@@ -392,6 +392,290 @@ class VoiceEpisodicMemory:
             )
         return updated, count
 
+    def _memory_entry(
+        self,
+        scene_key: str,
+        action: str,
+    ) -> dict:
+        key = (str(scene_key or ""), str(action))
+        current = self._consolidation.get(key)
+        if current is None:
+            current = {
+                "strength": 0.0,
+                "event_count": 0,
+                "replay_count": 0,
+                "positive_count": 0,
+                "negative_count": 0,
+                "last_reward": 0.0,
+                "last_replay": 0.0,
+                "updated_at": 0.0,
+            }
+            self._consolidation[key] = current
+        return current
+
+    def _persist_memory_entry(
+        self,
+        scene_key: str,
+        action: str,
+        entry: dict,
+    ) -> None:
+        if self.db is None:
+            return
+        self.db.execute(
+            """
+            INSERT INTO voice_memory_consolidation(
+                scene_key, action, strength, event_count,
+                replay_count, positive_count, negative_count,
+                last_reward, last_replay, updated_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(scene_key, action)
+            DO UPDATE SET
+                strength=excluded.strength,
+                event_count=excluded.event_count,
+                replay_count=excluded.replay_count,
+                positive_count=excluded.positive_count,
+                negative_count=excluded.negative_count,
+                last_reward=excluded.last_reward,
+                last_replay=excluded.last_replay,
+                updated_at=excluded.updated_at
+            """,
+            (
+                str(scene_key or ""),
+                str(action),
+                float(entry["strength"]),
+                int(entry["event_count"]),
+                int(entry["replay_count"]),
+                int(entry["positive_count"]),
+                int(entry["negative_count"]),
+                float(entry["last_reward"]),
+                float(entry["last_replay"]),
+                float(entry["updated_at"]),
+            ),
+        )
+
+    def _touch_memory_event(
+        self,
+        *,
+        scene_key: str,
+        action: str,
+        actual_reward: float,
+        prediction_error: float,
+        now: float,
+    ) -> dict:
+        entry = self._memory_entry(scene_key, action)
+        strength = max(
+            0.0,
+            min(1.0, float(entry["strength"])),
+        )
+        actual = float(actual_reward)
+        error = float(prediction_error)
+        previous = float(entry["last_reward"])
+        evidence = min(
+            1.0,
+            0.55 * abs(actual) + 0.45 * abs(error),
+        )
+        consistent = (
+            abs(previous) <= 1e-9
+            or abs(actual) <= 1e-9
+            or previous * actual >= 0.0
+        )
+        if consistent:
+            strength += (
+                self.consolidation_gain
+                * (0.15 + 0.85 * evidence)
+                * (1.0 - strength)
+            )
+        else:
+            strength *= (
+                1.0
+                - min(
+                    0.80,
+                    self.consolidation_gain
+                    * (0.70 + 0.80 * evidence),
+                )
+            )
+        entry["strength"] = max(0.0, min(1.0, strength))
+        entry["event_count"] = int(entry["event_count"]) + 1
+        if actual > 0.0:
+            entry["positive_count"] = (
+                int(entry["positive_count"]) + 1
+            )
+        elif actual < 0.0:
+            entry["negative_count"] = (
+                int(entry["negative_count"]) + 1
+            )
+        entry["last_reward"] = actual
+        entry["updated_at"] = float(now)
+        self._persist_memory_entry(scene_key, action, entry)
+        return dict(entry)
+
+    def consolidate_replay(
+        self,
+        episode: dict,
+        replay_reward: float,
+        *,
+        now: float | None = None,
+    ) -> dict:
+        now_value = float(time.time() if now is None else now)
+        scene_key = str(episode.get("scene_key") or "")
+        action = str(episode.get("action") or "stay")
+        entry = self._memory_entry(scene_key, action)
+        strength = max(
+            0.0,
+            min(1.0, float(entry["strength"])),
+        )
+        original = float(episode.get("actual_reward", 0.0))
+        replay_value = float(replay_reward)
+        consistent = (
+            abs(original) <= 1e-9
+            or abs(replay_value) <= 1e-9
+            or original * replay_value >= 0.0
+        )
+        evidence = min(
+            1.0,
+            0.50 * abs(original)
+            + 0.50 * abs(replay_value) * 4.0,
+        )
+        if consistent:
+            strength += (
+                self.consolidation_gain
+                * (0.35 + 0.65 * evidence)
+                * (1.0 - strength)
+            )
+        else:
+            strength *= (
+                1.0
+                - min(
+                    0.90,
+                    self.consolidation_gain
+                    * (0.80 + evidence),
+                )
+            )
+        entry["strength"] = max(0.0, min(1.0, strength))
+        entry["replay_count"] = int(entry["replay_count"]) + 1
+        entry["last_replay"] = now_value
+        entry["updated_at"] = now_value
+        self._persist_memory_entry(scene_key, action, entry)
+        if self.db is not None:
+            self.db.commit()
+        result = dict(entry)
+        result["scene_key"] = scene_key
+        result["action"] = action
+        result["status"] = (
+            "consolidated"
+            if float(entry["strength"]) >= self.consolidated_threshold
+            else "forming"
+        )
+        return result
+
+    def apply_forgetting(
+        self,
+        *,
+        now: float | None = None,
+        force: bool = False,
+    ) -> dict:
+        now_value = float(time.time() if now is None else now)
+        elapsed = max(
+            0.0,
+            now_value - float(self._last_forgetting_at),
+        )
+        if (
+            not force
+            and elapsed < float(self.forgetting_interval_seconds)
+        ):
+            diag = dict(self._last_forgetting_diag)
+            diag.update({
+                "ran": False,
+                "elapsed_seconds": elapsed,
+                "next_in_seconds": max(
+                    0.0,
+                    float(self.forgetting_interval_seconds) - elapsed,
+                ),
+            })
+            return diag
+        if elapsed <= 0.0:
+            return dict(self._last_forgetting_diag)
+
+        half_life = max(
+            1.0,
+            self.forgetting_half_life_days * 86400.0,
+        )
+        factor = 0.5 ** (elapsed / half_life)
+        for key in list(self._values):
+            self._values[key] = float(self._values[key]) * factor
+        for entry in self._consolidation.values():
+            entry["strength"] = max(
+                0.0,
+                min(
+                    1.0,
+                    float(entry["strength"]) * factor,
+                ),
+            )
+
+        if self.db is not None:
+            self.db.execute(
+                """
+                UPDATE voice_episode_predictions
+                SET expected_reward = expected_reward * ?
+                """,
+                (factor,),
+            )
+            self.db.execute(
+                """
+                UPDATE voice_memory_consolidation
+                SET strength = strength * ?
+                """,
+                (factor,),
+            )
+            self.db.commit()
+
+        self._last_forgetting_at = now_value
+        self._last_forgetting_diag = {
+            "ran": True,
+            "time": now_value,
+            "elapsed_seconds": elapsed,
+            "factor": float(factor),
+            "predictions": int(len(self._values)),
+            "memory_scenes": int(len(self._consolidation)),
+        }
+        return dict(self._last_forgetting_diag)
+
+    def consolidation_summary(
+        self,
+        limit: int = 12,
+    ) -> list[dict]:
+        limit = max(1, min(100, int(limit)))
+        rows = []
+        for (scene_key, action), entry in self._consolidation.items():
+            rows.append({
+                "scene_key": scene_key,
+                "action": action,
+                "strength": float(entry["strength"]),
+                "event_count": int(entry["event_count"]),
+                "replay_count": int(entry["replay_count"]),
+                "positive_count": int(entry["positive_count"]),
+                "negative_count": int(entry["negative_count"]),
+                "last_reward": float(entry["last_reward"]),
+                "last_replay": float(entry["last_replay"]),
+                "updated_at": float(entry["updated_at"]),
+                "status": (
+                    "consolidated"
+                    if float(entry["strength"])
+                    >= self.consolidated_threshold
+                    else "forming"
+                ),
+            })
+        rows.sort(
+            key=lambda row: (
+                float(row["strength"]),
+                int(row["replay_count"]),
+                int(row["event_count"]),
+                float(row["updated_at"]),
+            ),
+            reverse=True,
+        )
+        return rows[:limit]
+
     def observe(
         self,
         *,
