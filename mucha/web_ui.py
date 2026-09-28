@@ -186,6 +186,12 @@ const groups=[
   ["exploration_drive_start_seconds","Eksploracja: start","number",5,0,86400,"Po ilu sekundach niezmienionej sceny zaczyna rosnąć exploration drive."],
   ["exploration_drive_ramp_seconds","Eksploracja: ramp","number",5,1,86400,"Czas wzrostu exploration drive od 0 do 100%."],
   ["exploration_drive_max_magnitude","Eksploracja: siła","number",0.05,0,4,"Maksymalna siła bodźca kierowanego przez realne połączenia do voice_move."],
+  ["episodic_prediction_enabled","Pamięć epizodyczna / prediction error","bool",0,0,0,"Zapamiętuje wyniki decyzji voice w podobnych kontekstach i oblicza błąd przewidywania nagrody."],
+  ["episodic_memory_size","Pamięć epizodów","number",16,16,5000,"Maksymalna liczba ostatnich epizodów voice trzymanych w pamięci bieżącego procesu."],
+  ["prediction_learning_rate","Tempo uczenia predykcji","number",0.01,0.001,1,"Jak szybko przewidywana nagroda context+action zbliża się do rzeczywistych wyników."],
+  ["prediction_error_scale","Wpływ prediction error na connectome","number",0.01,0,1,"Jaka część błędu przewidywania trafia jako dodatkowa korekta reward/punish do zapisanego śladu neuronalnego."],
+  ["prediction_error_max_correction","Limit korekty prediction error","number",0.01,0,0.5,"Maksymalna dodatkowa korekta pojedynczego epizodu."],
+  ["prediction_max_age_seconds","Maks. wiek oczekiwanego wyniku","number",5,5,3600,"Jak długo po decyzji reward/punish może zostać przypisany do jej przewidywanego wyniku."],
   ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
   ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie uruchamia się mechanizm overstay/threat."],
   ["overstay_punish_amount","Kara STAY za zbyt długi pobyt","number",0.05,0,1,"Kara ucząca ścieżkę STAY, gdy Mucha po maximum_dwell_seconds nadal zostaje na kanale."],
@@ -1985,6 +1991,12 @@ function renderVoiceDebug(items){
       '<div class="voice-pill"><small>exploration drive</small><strong class="'+(Number(v.exploration_drive_level||0)>0?"ok":"")+'">'+(Number(v.exploration_drive_level||0)*100).toFixed(1)+'%</strong></div>'+
       '<div class="voice-pill"><small>wiek sceny</small><strong>'+Number(v.voice_scene_age||0).toFixed(0)+' s</strong></div>'+
       '<div class="voice-pill"><small>homeostasis paths</small><strong>'+esc(Object.entries(v.homeostasis_guided||{}).map(([k,x])=>k+' '+Number((x||{}).reach_max||0).toFixed(3)).join(' • ')||"—")+'</strong></div>'+
+      '<div class="voice-pill"><small>prediction context</small><strong>'+esc(v.prediction_context||"—")+'</strong></div>'+
+      '<div class="voice-pill"><small>predicted reward</small><strong>'+Number(v.predicted_reward||0).toFixed(3)+'</strong></div>'+
+      '<div class="voice-pill"><small>prediction error</small><strong class="'+(Number(v.prediction_error||0)>0?"ok":Number(v.prediction_error||0)<0?"no":"")+'">'+(v.prediction_error==null?"—":Number(v.prediction_error).toFixed(3))+'</strong></div>'+
+      '<div class="voice-pill"><small>prediction correction</small><strong>'+Number(v.prediction_correction_applied||0).toFixed(3)+'</strong></div>'+
+      '<div class="voice-pill"><small>episodic memory</small><strong>'+Number(v.episodic_memory_size||0)+' ep.</strong></div>'+
+      '<div class="voice-pill"><small>expected by action</small><strong>'+esc(Object.entries(v.prediction_expected||{}).map(([k,x])=>k+' '+Number(x||0).toFixed(2)).join(' • ')||"—")+'</strong></div>'+
       '<div class="voice-pill"><small>STAY punish</small><strong class="'+(v.social_drive_stay_punished?"no":"")+'">'+(v.social_drive_stay_punished?Number(v.social_drive_stay_punish_amount||0).toFixed(3):"nie")+'</strong></div>'+
       '<div class="voice-pill"><small>JOIN reward</small><strong class="'+(Number(v.social_join_reward||0)>0?"ok":"")+'">'+Number(v.social_join_reward||0).toFixed(3)+'</strong></div>'+
       '<div class="voice-pill"><small>reward opportunity</small><strong class="'+(v.reward_opportunity_channel?"ok":"")+'">'+esc(v.reward_opportunity_channel||"—")+'</strong></div>'+
