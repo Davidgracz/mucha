@@ -37,7 +37,7 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;justify-content
 h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#c6d2df;text-decoration:none;border:1px solid var(--line);background:#0e161f;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:var(--a);border-color:var(--a);color:#06110e;font-weight:850}
 .intro{display:grid;grid-template-columns:1fr auto;gap:14px;align-items:center;background:linear-gradient(135deg,rgba(88,218,196,.08),rgba(112,170,255,.05));border:1px solid var(--line);border-radius:16px;padding:14px 16px;margin-bottom:12px}.intro strong{font-size:13px}.intro p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.5}.search{width:min(360px,42vw);border:1px solid #294157;background:#071019;color:var(--txt);border-radius:10px;padding:10px 12px;outline:0}.search:focus{border-color:var(--a);box-shadow:0 0 0 3px rgba(88,218,196,.08)}
 .layout{display:grid;grid-template-columns:1fr 1fr;gap:12px}.section{background:var(--panel);border:1px solid var(--line);border-radius:16px;overflow:hidden;min-width:0}.section.wide{grid-column:span 2}.section summary{list-style:none;cursor:pointer;padding:15px 16px;display:flex;justify-content:space-between;align-items:center;gap:14px}.section summary::-webkit-details-marker{display:none}.section summary:hover{background:rgba(255,255,255,.015)}.section-title b{display:block;font-size:12px;text-transform:uppercase;letter-spacing:.09em}.section-title small{display:block;color:var(--muted);font-size:10px;margin-top:4px;line-height:1.4}.chev{color:#6f879b;font-size:13px}.section[open] .chev{transform:rotate(90deg)}.section-body{border-top:1px solid var(--line);padding:13px}
-.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.field{background:var(--panel2);border:1px solid #1c2d3e;border-radius:11px;padding:11px;min-width:0}.field.hidden{display:none}.field-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.field label{display:block;color:#d8e4ee;font-size:11px;font-weight:700;line-height:1.35}.hint{color:#72879a;font-size:9px;line-height:1.45;margin-top:4px;min-height:25px}.field input[type=number],.field input[type=text]{width:100%;margin-top:8px;border:1px solid #294057;background:#050d14;color:var(--txt);border-radius:9px;padding:9px 10px;font:inherit}.field input:focus{outline:0;border-color:var(--a);box-shadow:0 0 0 3px rgba(88,218,196,.07)}
+.fields{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.field{background:var(--panel2);border:1px solid #1c2d3e;border-radius:11px;padding:11px;min-width:0}.field.hidden{display:none}.field-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.field label{display:block;color:#d8e4ee;font-size:11px;font-weight:700;line-height:1.35}.config-key{display:block;color:#eef7ff;font:700 11px/1.35 ui-monospace,SFMono-Regular,Consolas,monospace;overflow-wrap:anywhere}.friendly-name{display:block;color:#8fa5b8;font-size:9px;font-weight:600;margin-top:3px}.hint{color:#72879a;font-size:9px;line-height:1.45;margin-top:4px;min-height:25px}.field input[type=number],.field input[type=text]{width:100%;margin-top:8px;border:1px solid #294057;background:#050d14;color:var(--txt);border-radius:9px;padding:9px 10px;font:inherit}.field input:focus{outline:0;border-color:var(--a);box-shadow:0 0 0 3px rgba(88,218,196,.07)}
 .switch{position:relative;width:42px;height:23px;flex:0 0 auto}.switch input{opacity:0;width:0;height:0}.slider{position:absolute;inset:0;background:#172534;border:1px solid #2a4054;border-radius:999px;cursor:pointer;transition:.15s}.slider:before{content:"";position:absolute;width:17px;height:17px;left:2px;top:2px;border-radius:50%;background:#8194a6;transition:.15s}.switch input:checked+.slider{background:rgba(88,218,196,.22);border-color:rgba(88,218,196,.6)}.switch input:checked+.slider:before{transform:translateX(19px);background:var(--a);box-shadow:0 0 12px rgba(88,218,196,.45)}
 .channels{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px;max-height:420px;overflow:auto}.channel{display:grid;grid-template-columns:28px 1fr auto;gap:8px;align-items:center;padding:9px;background:var(--panel2);border:1px solid #1d2e3e;border-radius:9px}.channel input{accent-color:var(--a)}.channel b{font-size:11px}.channel small{color:var(--muted);font-size:9px;word-break:break-all}
 .savebar{position:sticky;bottom:12px;z-index:20;margin-top:14px;background:rgba(7,13,20,.95);border:1px solid #294057;border-radius:15px;padding:12px 13px;display:flex;justify-content:space-between;gap:12px;align-items:center;backdrop-filter:blur(12px);box-shadow:0 20px 55px rgba(0,0,0,.28)}.status-wrap{min-width:0}.status{font-size:12px;color:var(--muted);line-height:1.4}.dirty{font-size:9px;color:#6f8497;margin-top:3px}.ok{color:var(--good)!important}.bad{color:var(--bad)!important}.warn{color:var(--warn)!important}
@@ -52,7 +52,7 @@ button{border:0;border-radius:11px;padding:11px 16px;background:var(--a);color:#
 </div>
 
 <div class="intro">
- <div><strong>Zmiany są trwałe</strong><p>Wartości są walidowane przed zapisem. Po kliknięciu zapisu panel zapisze override, zrestartuje usługę Muchy i poczeka aż dashboard ponownie odpowie.</p></div>
+ <div><strong>Zmiany są trwałe</strong><p>Nazwa każdego pola pokazuje dokładną ścieżkę z configu, np. <code>voice.maximum_dwell_seconds</code>. Polska nazwa pod spodem wyjaśnia znaczenie. Wartości są walidowane przed zapisem do config.local.toml.</p></div>
  <input class="search" id="search" type="search" placeholder="Szukaj ustawienia, np. TTS, reward, cooldown…">
 </div>
 
@@ -175,8 +175,16 @@ const groups=[
   ["reward_opportunity_stay_punish_interval_seconds","Interwał kary za ignorowanie","number",5,5,3600,"Minimalny odstęp między kolejnymi karami STAY przy aktywnej możliwości nagrody."],
   ["motivation_propagation_steps","Ticki propagacji motywacji","number",1,2,12,"Ile kroków connectomu dostaje social drive / reward opportunity zanim zostanie odczytane stay vs voice_join. 4 pozwala przejść ścieżkom 3-hop."],
   ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
-  ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie rośnie presja na zmianę kanału."],
-  ["move_threshold","Próg move","number",0.01,0,1,"Próg decyzji o zmianie kanału."],
+  ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie uruchamia się mechanizm overstay/threat."],
+  ["overstay_punish_amount","Kara STAY za zbyt długi pobyt","number",0.05,0,1,"Kara ucząca ścieżkę STAY, gdy Mucha po maximum_dwell_seconds nadal zostaje na kanale."],
+  ["overstay_punish_interval_seconds","Interwał kary overstay","number",1,1,3600,"Minimalny odstęp między kolejnymi karami STAY za zbyt długi pobyt."],
+  ["threat_ramp_seconds","Narastanie presji overstay","number",1,1,86400,"Czas narastania sygnału threat od początku overstay do pełnej siły."],
+  ["threat_magnitude","Siła sygnału threat","number",0.05,0,4,"Maksymalna amplituda sygnału threat używanego po przekroczeniu maksymalnego pobytu."],
+  ["threat_move_boost","Legacy boost MOVE","number",0.01,0,1,"Dodatkowe wzmocnienie MOVE w trybie legacy; przy sterowaniu connectomem nie zastępuje decyzji sieci."],
+  ["threat_affinity_relaxation","Rozluźnienie affinity przy threat","number",0.01,0,1,"Zmniejsza wpływ przywiązania do bieżącego kanału podczas presji overstay."],
+  ["threat_escape_reward","Reward za ucieczkę z threat","number",0.01,0,1,"Nagroda za skuteczne opuszczenie/przeniesienie się z kanału po presji threat."],
+  ["threat_steps","Ticki propagacji threat","number",1,1,12,"Liczba kroków connectomu używana do propagacji sygnału threat."],
+  ["move_threshold","Próg move","number",0.01,0,1,"Próg decyzji o zmianie kanału w trybie legacy."],
   ["join_threshold","Próg join","number",0.01,0,1,"Próg decyzji o wejściu na voice."],
   ["leave_threshold","Próg leave","number",0.01,0,1,"Próg decyzji o opuszczeniu voice."],
   ["include_empty_channels","Uwzględniaj puste kanały","bool",0,0,0,"Pozwala eksplorować puste kanały."]
@@ -201,19 +209,20 @@ const groups=[
 ];
 
 const channelSections=[
- {id:"blocked-text",title:"Wykluczone kanały tekstowe",desc:"Zaznaczone kanały są całkowicie pomijane przez część tekstową.",kind:"text"},
- {id:"blocked-voice",title:"Wykluczone kanały voice",desc:"Mucha nie wejdzie na zaznaczone kanały voice.",kind:"voice"},
- {id:"blocked-guild",title:"Wykluczone serwery voice",desc:"Całkowity zakaz voice dla zaznaczonych serwerów.",kind:"guild"}
+ {id:"blocked-text",title:"discord.blocked_text_channel_ids",desc:"Wykluczone kanały tekstowe — zaznaczone kanały są całkowicie pomijane przez część tekstową.",kind:"text"},
+ {id:"blocked-voice",title:"voice.blocked_voice_channel_ids",desc:"Wykluczone kanały voice — Mucha nie wejdzie na zaznaczone kanały.",kind:"voice"},
+ {id:"blocked-guild",title:"voice.blocked_voice_guild_ids",desc:"Wykluczone serwery voice — całkowity zakaz VC dla zaznaczonych serwerów.",kind:"guild"}
 ];
 
 function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
 function fieldId(section,key){return section+"-"+key}
 function renderField(section,f){
- const [key,label,type,step,min,max,hint]=f,value=state[section]?.[key],id=fieldId(section,key);
- const search=(label+" "+key+" "+hint+" "+section).toLowerCase();
- if(type==="bool")return '<div class="field" data-search="'+esc(search)+'"><div class="field-head"><div><label for="'+id+'">'+esc(label)+'</label><div class="hint">'+esc(hint)+'</div></div><label class="switch"><input id="'+id+'" type="checkbox" '+(value?'checked':'')+'><span class="slider"></span></label></div></div>';
- if(type==="text")return '<div class="field" data-search="'+esc(search)+'"><label for="'+id+'">'+esc(label)+'</label><div class="hint">'+esc(hint)+'</div><input id="'+id+'" type="text" value="'+esc(value)+'"></div>';
- return '<div class="field" data-search="'+esc(search)+'"><label for="'+id+'">'+esc(label)+'</label><div class="hint">'+esc(hint)+'</div><input id="'+id+'" type="number" step="'+step+'" min="'+min+'" max="'+max+'" value="'+value+'"></div>';
+ const [key,label,type,step,min,max,hint]=f,value=state[section]?.[key],id=fieldId(section,key),configKey=section+"."+key;
+ const search=(label+" "+configKey+" "+hint+" "+section).toLowerCase();
+ const name='<code class="config-key">'+esc(configKey)+'</code><span class="friendly-name">'+esc(label)+'</span>';
+ if(type==="bool")return '<div class="field" data-search="'+esc(search)+'"><div class="field-head"><div><label for="'+id+'">'+name+'</label><div class="hint">'+esc(hint)+'</div></div><label class="switch"><input id="'+id+'" type="checkbox" '+(value?'checked':'')+'><span class="slider"></span></label></div></div>';
+ if(type==="text")return '<div class="field" data-search="'+esc(search)+'"><label for="'+id+'">'+name+'</label><div class="hint">'+esc(hint)+'</div><input id="'+id+'" type="text" value="'+esc(value)+'"></div>';
+ return '<div class="field" data-search="'+esc(search)+'"><label for="'+id+'">'+name+'</label><div class="hint">'+esc(hint)+'</div><input id="'+id+'" type="number" step="'+step+'" min="'+min+'" max="'+max+'" value="'+value+'"></div>';
 }
 function renderSections(){
  const root=$("sections");
