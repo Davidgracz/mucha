@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import ctypes
 import hashlib
 import hmac
 import json
@@ -1460,7 +1461,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
 </style></head>
 <body><main>
 <div class="top">
-  <div class="brand"><div class="logo">🪰</div><div><h1>Mucha Control Center</h1><div class="sub">VPS • Discord • Connectome • Chaser • Audio</div></div></div>
+  <div class="brand"><div class="logo">🪰</div><div><h1>Mucha Control Center</h1><div class="sub">Windows / VPS • Discord • Connectome • Chaser • Audio</div></div></div>
   <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
 </div>
 
@@ -1473,7 +1474,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
 
 <section class="grid">
  <div class="card">
-  <h2>🪰 Mucha Service</h2>
+  <h2>🪰 Mucha Process / Service</h2>
   <div class="kpis">
    <div class="k"><small>RAM</small><strong id="mucha-ram">—</strong></div>
    <div class="k"><small>Uptime</small><strong id="mucha-up">—</strong></div>
@@ -1500,7 +1501,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
  </div>
 
  <div class="card">
-  <h2>🖥 VPS</h2>
+  <h2>🖥 System</h2>
   <div class="kpis">
    <div class="k"><small>Uptime</small><strong id="vps-up">—</strong></div>
    <div class="k"><small>Load</small><strong id="vps-load">—</strong></div>
@@ -2456,7 +2457,21 @@ class WebDashboard:
         self.auth_password_env = str(auth_password_env)
         self.auth_password = os.getenv(self.auth_password_env, "")
         self.session_hours = max(1, int(session_hours))
-        self.chaser_status_file = Path(chaser_status_file)
+        configured_chaser_status = Path(chaser_status_file)
+        if (
+            os.name == "nt"
+            and not configured_chaser_status.exists()
+            and str(chaser_status_file).replace("\\", "/").startswith(
+                "/opt/mucha-chaser/"
+            )
+        ):
+            configured_chaser_status = (
+                Path(__file__).resolve().parents[2]
+                / "mucha-chaser"
+                / "state"
+                / "chaser_status.json"
+            )
+        self.chaser_status_file = configured_chaser_status
         self.config_provider = config_provider
         self.config_updater = config_updater
         self.connectome_provider = connectome_provider
@@ -2467,6 +2482,7 @@ class WebDashboard:
         self.runner: web.AppRunner | None = None
         self.site: web.TCPSite | None = None
         self._bind_host = self.host
+        self._process_started_monotonic = time.monotonic()
 
     def _session_token(self, expires: int) -> str:
         payload = str(int(expires))
@@ -2905,6 +2921,90 @@ class WebDashboard:
         )
 
     async def _service_status(self, unit: str) -> dict:
+        if os.name == "nt":
+            if unit == "mucha.service":
+                memory_bytes = 0
+                try:
+                    class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                        _fields_ = [
+                            ("cb", ctypes.c_ulong),
+                            ("PageFaultCount", ctypes.c_ulong),
+                            ("PeakWorkingSetSize", ctypes.c_size_t),
+                            ("WorkingSetSize", ctypes.c_size_t),
+                            ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                            ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                            ("PagefileUsage", ctypes.c_size_t),
+                            ("PeakPagefileUsage", ctypes.c_size_t),
+                        ]
+
+                    counters = PROCESS_MEMORY_COUNTERS()
+                    counters.cb = ctypes.sizeof(counters)
+                    process = ctypes.windll.kernel32.GetCurrentProcess()
+                    if ctypes.windll.psapi.GetProcessMemoryInfo(
+                        process,
+                        ctypes.byref(counters),
+                        counters.cb,
+                    ):
+                        memory_bytes = int(counters.WorkingSetSize)
+                except (AttributeError, OSError, ValueError):
+                    memory_bytes = 0
+
+                return {
+                    "unit": unit,
+                    "active": True,
+                    "active_state": "active",
+                    "sub_state": "local-windows",
+                    "pid": os.getpid(),
+                    "memory_bytes": memory_bytes,
+                    "cpu_seconds": float(time.process_time()),
+                    "uptime_seconds": max(
+                        0.0,
+                        time.monotonic() - self._process_started_monotonic,
+                    ),
+                    "error": "",
+                }
+
+            if unit == "mucha-chaser.service":
+                status = self._chaser_status()
+                active = bool(status.get("online")) if status else False
+                try:
+                    started_at = float(status.get("started_at") or 0.0)
+                except (TypeError, ValueError):
+                    started_at = 0.0
+                return {
+                    "unit": unit,
+                    "active": active,
+                    "active_state": "active" if active else "inactive",
+                    "sub_state": "local-windows" if active else "status-file",
+                    "pid": 0,
+                    "memory_bytes": 0,
+                    "cpu_seconds": 0.0,
+                    "uptime_seconds": (
+                        max(0.0, time.time() - started_at)
+                        if started_at
+                        else 0.0
+                    ),
+                    "error": (
+                        ""
+                        if status
+                        else f"Brak statusu: {self.chaser_status_file}"
+                    ),
+                }
+
+            return {
+                "unit": unit,
+                "active": False,
+                "active_state": "unknown",
+                "sub_state": "windows",
+                "pid": 0,
+                "memory_bytes": 0,
+                "cpu_seconds": 0.0,
+                "uptime_seconds": 0.0,
+                "error": "Usługa systemd niedostępna w Windows.",
+            }
+
         props = (
             "ActiveState,SubState,MainPID,MemoryCurrent,CPUUsageNSec,"
             "ActiveEnterTimestampMonotonic"
@@ -2961,6 +3061,63 @@ class WebDashboard:
         }
 
     def _system_status(self) -> dict:
+        if os.name == "nt":
+            total = 0
+            available = 0
+            try:
+                class MEMORYSTATUSEX(ctypes.Structure):
+                    _fields_ = [
+                        ("dwLength", ctypes.c_ulong),
+                        ("dwMemoryLoad", ctypes.c_ulong),
+                        ("ullTotalPhys", ctypes.c_ulonglong),
+                        ("ullAvailPhys", ctypes.c_ulonglong),
+                        ("ullTotalPageFile", ctypes.c_ulonglong),
+                        ("ullAvailPageFile", ctypes.c_ulonglong),
+                        ("ullTotalVirtual", ctypes.c_ulonglong),
+                        ("ullAvailVirtual", ctypes.c_ulonglong),
+                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                    ]
+
+                status = MEMORYSTATUSEX()
+                status.dwLength = ctypes.sizeof(status)
+                if ctypes.windll.kernel32.GlobalMemoryStatusEx(
+                    ctypes.byref(status)
+                ):
+                    total = int(status.ullTotalPhys)
+                    available = int(status.ullAvailPhys)
+            except (AttributeError, OSError, ValueError):
+                pass
+
+            try:
+                uptime = (
+                    float(ctypes.windll.kernel32.GetTickCount64()) / 1000.0
+                )
+            except (AttributeError, OSError, ValueError):
+                uptime = 0.0
+
+            try:
+                disk_root = Path.cwd().anchor or (
+                    os.environ.get("SystemDrive", "C:") + "\\"
+                )
+                disk = shutil.disk_usage(disk_root)
+            except OSError:
+                disk = shutil.disk_usage(Path.cwd())
+
+            used = max(0, total - available)
+            percent = (used / total * 100.0) if total else 0.0
+            return {
+                "platform": "windows",
+                "uptime_seconds": uptime,
+                "load": [],
+                "mem_total": total,
+                "mem_available": available,
+                "mem_used": used,
+                "mem_percent": percent,
+                "disk_total": disk.total,
+                "disk_used": disk.used,
+                "disk_free": disk.free,
+            }
+
         mem: dict[str, int] = {}
         try:
             for line in Path("/proc/meminfo").read_text(
@@ -2985,16 +3142,18 @@ class WebDashboard:
 
         try:
             load = list(os.getloadavg())
-        except OSError:
-            load = [0.0, 0.0, 0.0]
+        except (OSError, AttributeError):
+            load = []
 
-        disk = shutil.disk_usage("/")
+        disk_root = Path.cwd().anchor or "/"
+        disk = shutil.disk_usage(disk_root)
         total = int(mem.get("MemTotal", 0))
         available = int(mem.get("MemAvailable", 0))
         used = max(0, total - available)
         percent = (used / total * 100.0) if total else 0.0
 
         return {
+            "platform": "linux",
             "uptime_seconds": uptime,
             "load": load,
             "mem_total": total,
@@ -3015,6 +3174,17 @@ class WebDashboard:
             return {}
 
     async def _journal_tail(self, unit: str, lines: int = 18) -> list[str]:
+        if os.name == "nt":
+            if unit == "mucha.service":
+                return [
+                    "Tryb lokalny Windows — logi Muchy są w oknie launchera."
+                ]
+            if unit == "mucha-chaser.service":
+                return [
+                    "Tryb lokalny Windows — logi Chasera są w oknie launchera."
+                ]
+            return []
+
         try:
             proc = await asyncio.create_subprocess_exec(
                 "journalctl",
