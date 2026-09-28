@@ -5180,7 +5180,11 @@ class MuchaClient(discord.Client):
 
         now = time.monotonic()
         vc = guild.voice_client
-        current = vc.channel if vc and vc.is_connected() else None
+        current = (
+            self._current_voice_channel(guild)
+            if vc is not None and vc.is_connected()
+            else None
+        )
 
         if self._is_voice_guild_blocked(guild):
             if vc is not None and vc.is_connected():
