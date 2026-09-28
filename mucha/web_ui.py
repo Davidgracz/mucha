@@ -1278,11 +1278,49 @@ function updateTrail(){
  for(const n of (data.nodes||[])){if(!roleVisible(n))continue;if(selectedRegion&&regionOf(n)!==selectedRegion)continue;seen.add(n.id);const a=Math.abs(Number(n.activation||0)),old=trail.get(n.id)||0;trail.set(n.id,Math.max(a,old*.94))}
  for(const [id,v] of trail){if(!seen.has(id)){const nv=v*.90;if(nv<.015)trail.delete(id);else trail.set(id,nv)}}
 }
+function currentFlow(){
+ return data&&data.signal_flow?(data.signal_flow.latest||null):null
+}
+function flowNodeSet(){
+ const f=currentFlow(),ids=new Set();if(!f)return ids;
+ for(const e of (f.edges||[])){ids.add(String(e.source));ids.add(String(e.target))}
+ for(const id of (f.output_nodes||[]))ids.add(String(id));
+ for(const cue of (f.cues||[]))for(const id of (cue.root_ids||[]))ids.add(String(id));
+ return ids
+}
+function drawSignalFlow(w,h){
+ if(!data||!showFlow)return;const f=currentFlow();if(!f||!(f.edges||[]).length)return;
+ const nodes=new Map((data.nodes||[]).map(n=>[String(n.id),n])),edges=(f.edges||[]).filter(e=>nodes.has(String(e.source))&&nodes.has(String(e.target)));
+ if(!edges.length)return;const maxC=Math.max(.000001,...edges.map(e=>Math.abs(Number(e.contribution||0)))),tone=actionColors[f.winner]||"#55ead0",phase=(performance.now()%1100)/1100;
+ ctx.save();ctx.globalCompositeOperation="lighter";
+ edges.slice(0,140).forEach((e,i)=>{const a=nodes.get(String(e.source)),b=nodes.get(String(e.target)),p1=point(a,w,h,26),p2=point(b,w,h,26),q=clamp(Math.abs(Number(e.contribution||0))/maxC,0,1),neg=Number(e.contribution||0)<0;
+  ctx.strokeStyle=tone;ctx.globalAlpha=.08+q*.48;ctx.lineWidth=.45+q*2.0;ctx.setLineDash(neg?[4,4]:[]);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();ctx.setLineDash([]);
+  const t=(phase+i*.071)%1,x=p1.x+(p2.x-p1.x)*t,y=p1.y+(p2.y-p1.y)*t;ctx.fillStyle=neg?"#ff77b7":tone;ctx.globalAlpha=.40+q*.60;ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=5+q*9;ctx.beginPath();ctx.arc(x,y,1.2+q*2.1,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0
+ });
+ ctx.globalAlpha=1;ctx.restore()
+}
+function liveFlowRows(n){
+ const rows=n.live_flow_edges||[];if(!rows.length)return '<div class="note">Ten neuron nie uczestniczy w najmocniejszych krawędziach ostatniej klatki.</div>';
+ return rows.map(x=>'<div class="signal-row '+(Number(x.contribution||0)>=0?"pos":"neg")+'"><b>'+esc(x.direction==="in"?"IN":"OUT")+'</b><span>'+esc(x.peer||"—")+'</span><em>'+(Number(x.contribution||0)>=0?"+":"")+Number(x.contribution||0).toFixed(4)+'</em></div>').join("")
+}
+function renderSignalFlow(){
+ const root=$("signal-flow"),snap=data&&data.signal_flow?data.signal_flow:{},f=snap.latest||null,learning=(snap.learning||[]).slice(-1)[0]||null;
+ if(!f){$("flow-winner").textContent="BRAK";$("flow-edge-count").textContent="0";$("flow-frame").textContent="brak klatki";root.className="empty";root.textContent="Pierwsza klatka pojawi się po następnym bodźcu i propagacji connectomu.";return}
+ const edges=f.edges||[],cues=f.cues||[],top=edges.slice(0,7),history=(snap.history||[]).slice(-8).reverse();
+ $("flow-winner").textContent=String(f.winner||"—").toUpperCase();$("flow-edge-count").textContent=nfmt(edges.length);$("flow-frame").textContent="tick "+nfmt(f.tick)+" • "+nfmt(f.frame)+"/"+nfmt(f.frames);
+ const cueHtml=cues.slice(0,8).map(x=>'<span class="flow-cue">'+esc(x.action?x.action+" • ":"")+esc(x.key||x.kind||"cue")+' ×'+nfmt(x.neurons||0)+'</span>').join("")||'<span class="flow-cue">brak jawnego cue</span>';
+ const edgeHtml=top.map(e=>'<div class="signal-row '+(Number(e.contribution||0)>=0?"pos":"neg")+'"><b>'+esc(String(e.source).slice(-6))+'</b><span>→ '+esc(String(e.target).slice(-6))+(Math.abs(Number(e.learned_delta||0))>1e-9?' • learned '+Number(e.learned_delta).toExponential(1):'')+'</span><em>'+(Number(e.contribution||0)>=0?"+":"")+Number(e.contribution||0).toFixed(4)+'</em></div>').join("")||'<div class="note">Brak silnych krawędzi w tej klatce.</div>';
+ const histHtml=history.map(x=>'<div class="signal-row"><b>#'+nfmt(x.tick)+'</b><span>'+esc((x.cues&&x.cues[0]?x.cues[0].key:"propagation"))+'</span><em>'+esc(x.winner||"—")+'</em></div>').join("");
+ const learnHtml=learning?'<div class="learn-row"><b>Ostatnia plastyczność:</b> reward '+(Number(learning.amount||0)>=0?"+":"")+Number(learning.amount||0).toFixed(3)+' • '+nfmt(learning.changed_neurons)+' neuronów • '+nfmt(learning.changed_synapses)+' synaps'+((learning.top_synapses||[]).length?' • top Δ '+Number(learning.top_synapses[0].change||0).toExponential(2):'')+'</div>':'<div class="learn-row">Brak reward/punish od startu tej sesji.</div>';
+ root.className="";root.innerHTML='<div class="signal-summary"><div><small>readout</small><b style="color:'+(actionColors[f.winner]||"#fff")+'">'+esc(f.winner||"—")+'</b></div><div><small>gain</small><b>'+Number(f.propagation_gain||0).toFixed(3)+'</b></div><div><small>edges</small><b>'+nfmt(edges.length)+'</b></div></div><div>'+cueHtml+'</div><div class="flow-note">'+esc(snap.method||"")+'</div><div class="signal-list" style="margin-top:8px">'+edgeHtml+'</div>'+learnHtml+'<div class="effects"><small>Ostatnie klatki flow</small><div class="signal-list">'+histHtml+'</div></div>'
+}
 function drawNodes(w,h){
  if(!data)return;hover=null;const nodes=(data.nodes||[]);let maxA=.0001;for(const n of nodes)maxA=Math.max(maxA,Math.abs(Number(n.activation||0)));
- for(const n of nodes){if(!roleVisible(n))continue;if(selectedRegion&&regionOf(n)!==selectedRegion)continue;const p=point(n,w,h,26),a=Math.abs(Number(n.activation||0)),q=clamp(a/maxA,0,1),hist=showTrail?(trail.get(n.id)||a):a,c=colors[n.role]||colors.internal;
+ const focus=followDecision?flowNodeSet():null;
+ for(const n of nodes){if(!roleVisible(n))continue;if(selectedRegion&&regionOf(n)!==selectedRegion)continue;const p=point(n,w,h,26),a=Math.abs(Number(n.activation||0)),q=clamp(a/maxA,0,1),hist=showTrail?(trail.get(n.id)||a):a,c=colors[n.role]||colors.internal,dim=followDecision&&focus&&focus.size&&!focus.has(String(n.id));
   if(showTrail&&hist>a+.015){ctx.strokeStyle=c;ctx.globalAlpha=clamp(hist*.34,0,.28);ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.x,p.y,6+hist*24,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
-  ctx.shadowColor=c;ctx.shadowBlur=4+q*22;ctx.fillStyle=c;ctx.globalAlpha=.25+q*.75;ctx.beginPath();ctx.arc(p.x,p.y,2.1+q*5.4,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;
+  ctx.shadowColor=c;ctx.shadowBlur=4+q*22;ctx.fillStyle=c;ctx.globalAlpha=dim?.10:(.25+q*.75);ctx.beginPath();ctx.arc(p.x,p.y,2.1+q*5.4,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;
+  if(n.decision_output){const f=currentFlow(),tone=actionColors[(f||{}).winner]||"#fff";ctx.strokeStyle=tone;ctx.lineWidth=1.5;ctx.globalAlpha=.85;ctx.beginPath();ctx.arc(p.x,p.y,9+q*6,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
   if(!n.real_position){ctx.strokeStyle="rgba(255,209,102,.45)";ctx.lineWidth=.6;ctx.beginPath();ctx.arc(p.x,p.y,4+q*5.6,0,Math.PI*2);ctx.stroke()}
   if(mouse.inside){const dx=mouse.x-p.x,dy=mouse.y-p.y;if(dx*dx+dy*dy<120)hover=n}
   if(selected&&selected.id===n.id){ctx.strokeStyle="#fff";ctx.lineWidth=1.2;ctx.globalAlpha=.9;ctx.beginPath();ctx.arc(p.x,p.y,11+q*8,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
@@ -1291,7 +1329,7 @@ function drawNodes(w,h){
 function draw(){
  requestAnimationFrame(draw);const r=wrap.getBoundingClientRect(),w=r.width,h=r.height;ctx.clearRect(0,0,w,h);
  const grad=ctx.createRadialGradient(w*.5,h*.5,20,w*.5,h*.5,Math.max(w,h)*.55);grad.addColorStop(0,"rgba(34,67,91,.07)");grad.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
- drawReference(w,h);drawRegions(w,h);drawNodes(w,h)
+ drawReference(w,h);drawRegions(w,h);drawSignalFlow(w,h);drawNodes(w,h)
 }
 function renderActions(scores){
  const order=["speak","explore","react","voice_join","voice_move","voice_leave","stay"];
@@ -1354,6 +1392,8 @@ document.querySelectorAll(".proj").forEach(b=>b.onclick=()=>{projection=b.datase
 document.querySelectorAll(".role").forEach(b=>b.onclick=()=>{roleFilter=b.dataset.role;document.querySelectorAll(".role").forEach(x=>x.classList.toggle("on",x===b));selectedRegion="";$("region-filter").textContent=roleFilter.toUpperCase();regionInspector();updateTrail()});
 $("regions-btn").onclick=()=>{showRegions=!showRegions;$("regions-btn").classList.toggle("on",showRegions)};
 $("trail-btn").onclick=()=>{showTrail=!showTrail;$("trail-btn").classList.toggle("on",showTrail);if(!showTrail)trail.clear()};
+$("flow-btn").onclick=()=>{showFlow=!showFlow;$("flow-btn").classList.toggle("on",showFlow)};
+$("follow-btn").onclick=()=>{followDecision=!followDecision;$("follow-btn").classList.toggle("on",followDecision)};
 
 function render(payload){
  const m=payload.brain_map||{};data=m;updateTrail();const scores=payload.scores||{};
@@ -1363,7 +1403,7 @@ function render(payload){
  const top=(m.regions||[])[0];$("top-region").textContent=top?top.name:"—";$("top-region-detail").textContent=top?(nfmt(top.active_count)+" active • mean "+Number(top.mean_abs||0).toFixed(3)):"brak adnotacji";
  const badge=$("coord-badge"),mode=m.coordinate_mode||"synthetic";badge.textContent=mode==="real"?"REAL FAFB COORDS":mode==="hybrid"?"HYBRID COORDS":"FALLBACK LAYOUT";badge.className="badge "+mode;
  const rs=$("region-source");rs.textContent=m.region_source==="neuropil"?"NAMED NEUROPILS":"CLASS FALLBACK";rs.className="badge "+(m.region_source==="neuropil"?"neuropil":"fallback");$("region-note").textContent=m.region_source_detail||"—";
- $("event").textContent=payload.last_event||"—";$("last-action").textContent=payload.last_action||"—";$("source").textContent=(payload.source||"runtime").includes("FlyWire")?"FAFB v783":"runtime";renderActions(scores);renderRegions();regionInspector();
+ $("event").textContent=payload.last_event||"—";$("last-action").textContent=payload.last_action||"—";$("source").textContent=(payload.source||"runtime").includes("FlyWire")?"FAFB v783":"runtime";renderActions(scores);renderSignalFlow();renderRegions();regionInspector();
  if(selected){const fresh=(m.nodes||[]).find(n=>n.id===selected.id);if(fresh){selected=fresh;inspect(fresh)}}
  $("live").textContent="LIVE";lastFetch=Date.now()
 }
