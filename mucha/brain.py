@@ -720,17 +720,40 @@ class FlyBrain:
             return np.empty(0, dtype=np.int32), []
 
         output_set = set(int(i) for i in output.tolist())
-        ranked: list[tuple[int, int, str]] = []
+        ranked: list[tuple[int, int, int, int]] = []
         seen: set[int] = set()
+
+        def rank_match(
+            source_rank: int,
+            idx: int,
+            label: str,
+        ) -> tuple[int, int, int, int] | None:
+            hit_positions = [
+                pos
+                for pos, term in enumerate(terms)
+                if term in label
+            ]
+            if not hit_positions:
+                return None
+            priority = min(hit_positions)
+            specificity = max(
+                len(terms[pos])
+                for pos in hit_positions
+            )
+            return (
+                source_rank,
+                priority,
+                -specificity,
+                idx,
+            )
 
         for idx_raw in output:
             idx = int(idx_raw)
             label = str(annotations[idx]).lower()
-            hits = [term for term in terms if term in label]
-            if not hits:
+            match = rank_match(0, idx, label)
+            if match is None:
                 continue
-            specificity = max(len(term) for term in hits)
-            ranked.append((0, -specificity, idx))
+            ranked.append(match)
             seen.add(idx)
 
         # Only broaden the search when the output pool had no biological
@@ -741,15 +764,13 @@ class FlyBrain:
                 if idx in seen:
                     continue
                 label = str(annotations[idx]).lower()
-                hits = [term for term in terms if term in label]
-                if not hits:
-                    continue
-                specificity = max(len(term) for term in hits)
-                ranked.append((1, -specificity, idx))
+                match = rank_match(1, idx, label)
+                if match is not None:
+                    ranked.append(match)
 
-        ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+        ranked.sort()
         chosen = np.asarray(
-            [item[2] for item in ranked[: max(1, int(limit))]],
+            [item[3] for item in ranked[: max(1, int(limit))]],
             dtype=np.int32,
         )
         matched_terms: list[str] = []
