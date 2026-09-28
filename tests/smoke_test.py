@@ -205,7 +205,9 @@ def main():
         assert "Path Inspector" in CONNECTOME_HTML
         assert "path-list" in CONNECTOME_HTML
         assert "selectAction" in CONNECTOME_HTML
-        assert "action="+ "encodeURIComponent(selectedAction)" in CONNECTOME_HTML
+        assert "&action=" in CONNECTOME_HTML
+        assert "encodeURIComponent(selectedAction)" in CONNECTOME_HTML
+        assert "visualWithSelectedPath" in CONNECTOME_HTML
         assert "Zapisz i zrestartuj Muchę" in CONFIG_HTML
         assert "Neuromodulatory v2" in CONFIG_HTML
         assert "dopamine_plasticity_gain" in CONFIG_HTML
