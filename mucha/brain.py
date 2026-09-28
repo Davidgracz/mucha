@@ -2270,7 +2270,8 @@ class FlyBrain:
             "learning_events": len(self._signal_learning_history),
             "method": (
                 "live edge contribution = propagation_gain × "
-                "(FAFB weight + learned delta) × source activation"
+                "(FAFB weight + learned delta + attractor recurrent delta) "
+                "× source activation"
             ),
         }
 
