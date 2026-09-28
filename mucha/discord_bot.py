@@ -5730,6 +5730,7 @@ class MuchaClient(discord.Client):
             "reward_opportunity_guided_reach_max": 0.0,
             "reward_opportunity_stay_punished": False,
             "reward_opportunity_stay_punish_amount": 0.0,
+            "motivation_propagation_steps": 0,
             "social_drive_guided_mode": None,
             "social_drive_guided_neurons": 0,
             "social_drive_guided_reach_mean": 0.0,
@@ -6114,14 +6115,28 @@ class MuchaClient(discord.Client):
                     ),
                     )
                 )
-                self.brain.step(
-                    max(
-                        2,
-                        int(self.cfg.voice.threat_steps)
-                        if threat_active
-                        else 2,
+                motivation_active = bool(
+                    current is None
+                    and (
+                        reward_opportunity is not None
+                        or social_drive_level > 0.0
                     )
                 )
+                propagation_steps = max(
+                    2,
+                    int(self.cfg.voice.threat_steps)
+                    if threat_active
+                    else 2,
+                    int(
+                        self.cfg.voice.motivation_propagation_steps
+                    )
+                    if motivation_active
+                    else 2,
+                )
+                debug["motivation_propagation_steps"] = (
+                    propagation_steps
+                )
+                self.brain.step(propagation_steps)
                 brain_decision = self.brain.voice_action_decision(
                     connected=bool(
                         vc is not None and vc.is_connected()
