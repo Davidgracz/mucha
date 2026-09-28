@@ -104,6 +104,12 @@ class FlyBrain:
         self._neuro_map_history = deque(maxlen=180)
         self._action_output_pools: dict[str, np.ndarray] = {}
         self._action_output_info: dict[str, dict] = {}
+        self._action_structural_cache: tuple[
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+            np.ndarray,
+        ] | None = None
         self._word_association_signature_cache: dict[
             str, tuple[np.ndarray, np.ndarray]
         ] = {}
@@ -366,21 +372,34 @@ class FlyBrain:
             output = np.arange(self.c.n_neurons, dtype=np.int32)
         width = min(max(1, int(width)), len(output))
 
-        abs_matrix = self.c.matrix.copy()
-        abs_matrix.data = np.abs(abs_matrix.data)
-        incoming_all = np.asarray(
-            abs_matrix.sum(axis=1)
-        ).ravel().astype(np.float32)
-        outgoing_all = np.asarray(
-            abs_matrix.sum(axis=0)
-        ).ravel().astype(np.float32)
-        signed_out_all = np.asarray(
-            self.c.matrix.sum(axis=0)
-        ).ravel().astype(np.float32)
+        if self._action_structural_cache is None:
+            abs_matrix = self.c.matrix.copy()
+            abs_matrix.data = np.abs(abs_matrix.data)
+            incoming_all = np.asarray(
+                abs_matrix.sum(axis=1)
+            ).ravel().astype(np.float32)
+            outgoing_all = np.asarray(
+                abs_matrix.sum(axis=0)
+            ).ravel().astype(np.float32)
+            signed_out_all = np.asarray(
+                self.c.matrix.sum(axis=0)
+            ).ravel().astype(np.float32)
+            self._action_structural_cache = (
+                output.copy(),
+                incoming_all[output],
+                outgoing_all[output],
+                signed_out_all[output],
+            )
 
-        incoming = incoming_all[output]
-        outgoing = outgoing_all[output]
-        signed_out = signed_out_all[output]
+        cached_output, incoming, outgoing, signed_out = (
+            self._action_structural_cache
+        )
+        if not np.array_equal(cached_output, output):
+            self._action_structural_cache = None
+            return self._structural_action_fallback(
+                action,
+                width,
+            )
 
         def norm(values: np.ndarray) -> np.ndarray:
             values = np.asarray(values, dtype=np.float32)
