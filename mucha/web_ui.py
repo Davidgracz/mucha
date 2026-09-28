@@ -2128,7 +2128,7 @@ function renderVoiceDebug(items){
     const consolidatedRows=(v.episodic_top_memories||[]).slice(0,5).map(m=>{
       const people=(m.user_names||[]).join(", ")||(m.user_ids||[]).join(", ")||"—";
       const place=m.channel_name||"poza VC";
-      const strength=clamp(Number(m.strength||0),0,1);
+      const strength=Math.max(0,Math.min(1,Number(m.strength||0)));
       const status=String(m.status||"forming");
       return '<div class="memory-row"><b>'+esc(m.action||"—")+'</b><span>'+esc(place)+' • '+esc(people)+' • '+nfmt(m.event_count||0)+' evt / '+nfmt(m.replay_count||0)+' replay</span><em class="'+(status==="consolidated"?"ok":"")+'">'+(strength*100).toFixed(0)+'%</em></div>';
     }).join("")||'<div class="voice-note">Brak utrwalanych scen.</div>';
