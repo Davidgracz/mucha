@@ -373,6 +373,14 @@ class MuchaClient(discord.Client):
             "serotonin_stability_gain",
             "octopamine_arousal_gain",
             "neuromodulator_smoothing",
+            "internal_states_enabled",
+            "internal_state_pool_size",
+            "internal_state_entry_width",
+            "internal_state_recurrent_gain",
+            "internal_state_level_gain",
+            "internal_state_arousal_gain",
+            "internal_state_stress_gain",
+            "internal_state_satiety_stability_gain",
         ]
         language_fields = [
             "min_chars_before_speaking",
@@ -653,6 +661,30 @@ class MuchaClient(discord.Client):
             ),
             ("brain", "neuromodulator_smoothing"): (
                 float, 0.0, 0.999
+            ),
+            ("brain", "internal_states_enabled"): (
+                bool, None, None
+            ),
+            ("brain", "internal_state_pool_size"): (
+                int, 24, 1024
+            ),
+            ("brain", "internal_state_entry_width"): (
+                int, 16, 1024
+            ),
+            ("brain", "internal_state_recurrent_gain"): (
+                float, 0.0, 2.0
+            ),
+            ("brain", "internal_state_level_gain"): (
+                float, 0.1, 20.0
+            ),
+            ("brain", "internal_state_arousal_gain"): (
+                float, 0.0, 1.5
+            ),
+            ("brain", "internal_state_stress_gain"): (
+                float, 0.0, 1.5
+            ),
+            ("brain", "internal_state_satiety_stability_gain"): (
+                float, 0.0, 0.5
             ),
             ("language", "min_chars_before_speaking"): (int, 100, 1000000),
             ("language", "min_unique_chars_before_speaking"): (int, 5, 500),
@@ -6630,6 +6662,8 @@ class MuchaClient(discord.Client):
             "habituation_suppression": 0.0,
             "exploration_drive_level": 0.0,
             "homeostasis_guided": {},
+            "internal_states": {},
+            "internal_state_cues": {},
             "prediction_context": None,
             "prediction_scene_key": None,
             "prediction_expected": {},
@@ -7292,6 +7326,16 @@ class MuchaClient(discord.Client):
                     ),
                 )
                 scores = dict(brain_decision["scores"])
+                debug["internal_states"] = (
+                    self.brain.internal_state_diagnostics()
+                )
+                if voice_context_diag:
+                    debug["internal_state_cues"] = dict(
+                        voice_context_diag.get(
+                            "internal_state_cues",
+                            {},
+                        )
+                    )
                 decision_trace = self.brain.capture_learning_trace()
                 chosen_action = str(brain_decision["action"])
                 predicted_reward = float(
