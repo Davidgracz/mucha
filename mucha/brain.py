@@ -303,6 +303,37 @@ class FlyBrain:
     def device_name(self) -> str:
         return self.compute.info.device_name
 
+    def _rebuild_synaptic_matrix(self) -> None:
+        n = self.c.n_neurons
+        if not self._synaptic_delta_map:
+            cpu = scipy_sparse.csr_matrix(
+                self.c.matrix.shape,
+                dtype=np.float32,
+            )
+        else:
+            items = list(self._synaptic_delta_map.items())
+            keys = np.fromiter(
+                (item[0] for item in items),
+                dtype=np.int64,
+                count=len(items),
+            )
+            values = np.fromiter(
+                (item[1] for item in items),
+                dtype=np.float32,
+                count=len(items),
+            )
+            rows = (keys // n).astype(np.int32, copy=False)
+            cols = (keys % n).astype(np.int32, copy=False)
+            cpu = scipy_sparse.coo_matrix(
+                (values, (rows, cols)),
+                shape=self.c.matrix.shape,
+                dtype=np.float32,
+            ).tocsr()
+            cpu.eliminate_zeros()
+
+        self._synaptic_matrix_cpu = cpu
+        self.synaptic_matrix = self.compute.sparse_from_scipy(cpu)
+
     def _load_state(self) -> None:
         p = self.cfg.state_file
         if not p.exists():
@@ -314,6 +345,40 @@ class FlyBrain:
             self.eligibility[...] = self.compute.asarray(data["eligibility"], dtype=np.float32)
         if "plastic_bias" in data and data["plastic_bias"].shape == self.plastic_bias.shape:
             self.plastic_bias[...] = self.compute.asarray(data["plastic_bias"], dtype=np.float32)
+        if (
+            "synaptic_post" in data
+            and "synaptic_pre" in data
+            and "synaptic_delta" in data
+        ):
+            post = np.asarray(data["synaptic_post"], dtype=np.int64)
+            pre = np.asarray(data["synaptic_pre"], dtype=np.int64)
+            delta = np.asarray(data["synaptic_delta"], dtype=np.float32)
+            valid = (
+                (post >= 0)
+                & (post < self.c.n_neurons)
+                & (pre >= 0)
+                & (pre < self.c.n_neurons)
+                & np.isfinite(delta)
+                & (np.abs(delta) > 1e-9)
+            )
+            post = post[valid]
+            pre = pre[valid]
+            delta = delta[valid]
+            max_edges = max(
+                0,
+                int(self.cfg.synaptic_plasticity_max_edges),
+            )
+            if max_edges and len(delta) > max_edges:
+                order = np.argsort(np.abs(delta))[::-1][:max_edges]
+                post = post[order]
+                pre = pre[order]
+                delta = delta[order]
+            n = self.c.n_neurons
+            self._synaptic_delta_map = {
+                int(r) * n + int(col): float(value)
+                for r, col, value in zip(post, pre, delta)
+            }
+            self._rebuild_synaptic_matrix()
         if "reward_trace" in data:
             self.reward_trace = float(data["reward_trace"])
         if "tick_count" in data:
@@ -323,11 +388,37 @@ class FlyBrain:
         p = self.cfg.state_file
         p.parent.mkdir(parents=True, exist_ok=True)
         tmp = p.with_suffix(".tmp.npz")
+        syn_items = list(self._synaptic_delta_map.items())
+        if syn_items:
+            syn_keys = np.fromiter(
+                (item[0] for item in syn_items),
+                dtype=np.int64,
+                count=len(syn_items),
+            )
+            syn_delta = np.fromiter(
+                (item[1] for item in syn_items),
+                dtype=np.float32,
+                count=len(syn_items),
+            )
+            syn_post = (
+                syn_keys // self.c.n_neurons
+            ).astype(np.int32, copy=False)
+            syn_pre = (
+                syn_keys % self.c.n_neurons
+            ).astype(np.int32, copy=False)
+        else:
+            syn_post = np.empty(0, dtype=np.int32)
+            syn_pre = np.empty(0, dtype=np.int32)
+            syn_delta = np.empty(0, dtype=np.float32)
+
         np.savez_compressed(
             tmp,
             state=self.compute.to_cpu(self.state).astype(np.float16),
             eligibility=self.compute.to_cpu(self.eligibility).astype(np.float16),
             plastic_bias=self.compute.to_cpu(self.plastic_bias).astype(np.float16),
+            synaptic_post=syn_post,
+            synaptic_pre=syn_pre,
+            synaptic_delta=syn_delta.astype(np.float16),
             reward_trace=np.float32(self.reward_trace),
             tick_count=np.int64(self.tick_count),
         )
