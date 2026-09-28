@@ -301,6 +301,12 @@ class MuchaClient(discord.Client):
             "synaptic_plasticity_max_delta",
             "synaptic_plasticity_trace_neurons",
             "synaptic_plasticity_max_edges",
+            "neuromodulation_enabled",
+            "neuromodulatory_direct_residual",
+            "dopamine_plasticity_gain",
+            "serotonin_stability_gain",
+            "octopamine_arousal_gain",
+            "neuromodulator_smoothing",
         ]
         language_fields = [
             "min_chars_before_speaking",
@@ -466,6 +472,24 @@ class MuchaClient(discord.Client):
             ),
             ("brain", "synaptic_plasticity_max_edges"): (
                 int, 1000, 250000
+            ),
+            ("brain", "neuromodulation_enabled"): (
+                bool, None, None
+            ),
+            ("brain", "neuromodulatory_direct_residual"): (
+                float, 0.0, 1.0
+            ),
+            ("brain", "dopamine_plasticity_gain"): (
+                float, 0.0, 4.0
+            ),
+            ("brain", "serotonin_stability_gain"): (
+                float, 0.0, 0.30
+            ),
+            ("brain", "octopamine_arousal_gain"): (
+                float, 0.0, 1.5
+            ),
+            ("brain", "neuromodulator_smoothing"): (
+                float, 0.0, 0.999
             ),
             ("language", "min_chars_before_speaking"): (int, 100, 1000000),
             ("language", "min_unique_chars_before_speaking"): (int, 5, 500),
