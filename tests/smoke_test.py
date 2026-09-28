@@ -32,15 +32,31 @@ def main():
         # Voice behavior is now selected by competition between connectome
         # action readouts. The adapter may mask physically impossible actions,
         # but does not apply join/move/leave thresholds in neural mode.
+        state_before_social_drive = b.compute.to_cpu(
+            b.state
+        ).copy()
         b.inject_voice_decision_context(
             999,
             None,
             connected=False,
             dwell_progress=0.0,
             overstay_level=0.0,
-            human_count=2,
+            human_count=0,
             alternatives=3,
+            outside_seconds=420.0,
+            available_humans=4,
+            social_drive_level=1.0,
+            social_drive_magnitude=1.4,
         )
+        state_after_social_drive = b.compute.to_cpu(
+            b.state
+        )
+        assert np.max(
+            np.abs(
+                state_after_social_drive
+                - state_before_social_drive
+            )
+        ) > 0.25
         b.step(2)
         voice_out = b.voice_action_decision(
             connected=False,
@@ -203,6 +219,7 @@ def main():
         assert "Neuromodulation v2" in CONNECTOME_HTML
         assert "neuromod-da" in CONNECTOME_HTML
         assert "Path Inspector" in CONNECTOME_HTML
+        assert "voice-social-drive" in CONNECTOME_HTML
         assert "path-list" in CONNECTOME_HTML
         assert "selectAction" in CONNECTOME_HTML
         assert "&action=" in CONNECTOME_HTML
@@ -214,6 +231,10 @@ def main():
         assert "neural_social_memory_enabled" in CONFIG_HTML
         assert "neural_affinity_weight" in CONFIG_HTML
         assert "connectome_voice_control_enabled" in CONFIG_HTML
+        assert "social_drive_enabled" in CONFIG_HTML
+        assert "social_drive_max_magnitude" in CONFIG_HTML
+        assert "social_drive_stay_punish" in CONFIG_HTML
+        assert "social_join_reward" in CONFIG_HTML
         assert "Social Neural Memory" in AFFINITY_HTML
         assert "neural-users" in AFFINITY_HTML
         assert 'const out={brain:{},language:{},behavior:{},voice:{}};' in CONFIG_HTML
@@ -232,6 +253,9 @@ def main():
         assert "voice_action_decision" in bot_source
         assert "connectome-readout-competition" in bot_source
         assert "inject_voice_decision_context" in bot_source
+        assert "_last_social_drive_punish" in bot_source
+        assert "neural social drive outside voice" in bot_source
+        assert "neural social drive join" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
