@@ -1927,34 +1927,41 @@ class FlyBrain:
         *,
         human_count: int,
         strength: float,
-    ) -> None:
-        """Present a possible reward as sensory evidence, never as a score bonus."""
+    ) -> dict:
+        """Present a possible reward through sensory cells that reach JOIN."""
         strength = max(0.0, min(4.0, float(strength)))
         human_count = max(0, int(human_count))
         if strength <= 0.0:
-            return
+            return {
+                "mode": "inactive",
+                "neurons": 0,
+                "reach_mean": 0.0,
+                "reach_max": 0.0,
+                "magnitude": 0.0,
+            }
 
-        self.inject(
-            "voice:reward-opportunity:any",
-            strength,
-            192,
-        )
-        self.inject(
+        guided = self.inject_action_guided_sensory(
+            "voice_join",
             (
-                f"voice:reward-opportunity:guild:{guild_id}:"
-                f"channel:{channel_id}"
+                f"reward-opportunity:{guild_id}:"
+                f"{channel_id}"
             ),
-            0.82 * strength,
-            144,
+            strength,
+            width=224,
+            hops=3,
         )
+        # Generic context still carries "people/reward exists" information,
+        # but the strongest motivational component is selected by actual
+        # structural reach to the voice_join readout.
         self.inject(
             (
                 "voice:reward-opportunity:people:"
                 f"{min(8, human_count)}"
             ),
-            0.38 + 0.10 * min(8, human_count),
-            80,
+            0.30 + 0.08 * min(8, human_count),
+            72,
         )
+        return guided
 
     def step(self, ticks: int = 1) -> None:
         for _ in range(max(1, ticks)):
@@ -2842,15 +2849,20 @@ class FlyBrain:
                     social_drive_magnitude
                     * social_drive_level
                 )
-                self.inject(
-                    "internal:voice-social-drive",
+                self.inject_action_guided_sensory(
+                    "voice_join",
+                    f"social-drive:{guild_id}",
                     magnitude,
-                    192,
+                    width=224,
+                    hops=3,
                 )
+                # Keep a weaker untargeted state cue so the network still gets
+                # context that this is prolonged isolation, not a direct motor
+                # command.
                 self.inject(
-                    f"voice:social-drive:guild:{guild_id}",
-                    0.72 * magnitude,
-                    128,
+                    f"voice:social-drive-context:{guild_id}",
+                    0.24 * magnitude,
+                    64,
                 )
         if overstay_level > 0.0:
             self.inject(
