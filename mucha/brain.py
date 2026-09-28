@@ -44,6 +44,14 @@ class FlyBrain:
         self.state = self.compute.zeros(n, dtype=np.float32)
         self.eligibility = self.compute.zeros(n, dtype=np.float32)
         self.plastic_bias = self.compute.zeros(n, dtype=np.float32)
+        self._synaptic_delta_map: dict[int, float] = {}
+        self._synaptic_matrix_cpu = scipy_sparse.csr_matrix(
+            self.c.matrix.shape,
+            dtype=np.float32,
+        )
+        self.synaptic_matrix = self.compute.sparse_from_scipy(
+            self._synaptic_matrix_cpu
+        )
         self.reward_trace = 0.0
         self.tick_count = 0
         self._pool_cache: dict[tuple[str, int], np.ndarray] = {}
@@ -72,6 +80,10 @@ class FlyBrain:
             "changed_neurons": 0,
             "mean_delta": 0.0,
             "max_delta": 0.0,
+            "changed_synapses": 0,
+            "learned_synapses": 0,
+            "synaptic_mean_delta": 0.0,
+            "synaptic_max_delta": 0.0,
             "before": {},
             "after": {},
             "impact": {},
