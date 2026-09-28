@@ -974,7 +974,10 @@ class MuchaClient(discord.Client):
         user_id: int,
         affinity_delta: float,
     ) -> dict | None:
-        if not self.cfg.behavior.neural_social_memory_enabled:
+        if (
+            not self.cfg.behavior.social_learning_enabled
+            or not self.cfg.behavior.neural_social_memory_enabled
+        ):
             return None
         scaled = float(affinity_delta) * max(
             0.0,
