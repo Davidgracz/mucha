@@ -21,6 +21,15 @@ class BrainConfig:
     synaptic_plasticity_max_delta: float = 0.08
     synaptic_plasticity_trace_neurons: int = 256
     synaptic_plasticity_max_edges: int = 40000
+    consolidation_enabled: bool = True
+    consolidation_interval_seconds: int = 300
+    bias_forgetting_half_life_hours: float = 72.0
+    synaptic_forgetting_half_life_hours: float = 168.0
+    synaptic_consolidation_gain: float = 0.08
+    synaptic_consolidation_decay_half_life_days: float = 30.0
+    synaptic_consolidation_protection: float = 5.0
+    synaptic_prune_threshold: float = 0.00001
+    synaptic_consolidated_threshold: float = 0.35
     neuromodulation_enabled: bool = True
     neuromodulatory_direct_residual: float = 0.12
     dopamine_plasticity_gain: float = 1.60
@@ -114,6 +123,10 @@ class VoiceConfig:
     memory_replay_reward_scale: float = 0.10
     memory_replay_steps: int = 6
     memory_replay_max_age_days: int = 14
+    episodic_consolidation_gain: float = 0.08
+    episodic_forgetting_half_life_days: float = 14.0
+    episodic_forgetting_interval_seconds: int = 300
+    episodic_consolidated_threshold: float = 0.35
     minimum_dwell_seconds: int = 60
     maximum_dwell_seconds: int = 300
     overstay_punish_amount: float = 0.5
