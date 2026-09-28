@@ -221,6 +221,7 @@ class MuchaClient(discord.Client):
         self._voice_reward_opportunity: dict[int, dict] = {}
         self._deadly_voice_until: dict[tuple[int, int], float] = {}
         self._voice_last_visit: dict[tuple[int, int], float] = {}
+        self._voice_homeostasis_state: dict[int, dict] = {}
         self._chaser_follow_state: dict[tuple[int, int], dict] = {}
         self._chaser_confirmed: dict[int, int] = {}
         self._chaser_panic_until: dict[int, float] = {}
@@ -405,6 +406,18 @@ class MuchaClient(discord.Client):
             "reward_opportunity_stay_punish",
             "reward_opportunity_stay_punish_interval_seconds",
             "motivation_propagation_steps",
+            "homeostasis_enabled",
+            "social_fatigue_start_seconds",
+            "social_fatigue_ramp_seconds",
+            "social_fatigue_max_magnitude",
+            "habituation_enabled",
+            "habituation_half_life_seconds",
+            "habituation_max_suppression",
+            "habituation_change_magnitude",
+            "exploration_drive_enabled",
+            "exploration_drive_start_seconds",
+            "exploration_drive_ramp_seconds",
+            "exploration_drive_max_magnitude",
             "minimum_dwell_seconds",
             "maximum_dwell_seconds",
             "overstay_punish_amount",
@@ -671,6 +684,42 @@ class MuchaClient(discord.Client):
             ),
             ("voice", "motivation_propagation_steps"): (
                 int, 2, 12
+            ),
+            ("voice", "homeostasis_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "social_fatigue_start_seconds"): (
+                int, 0, 86400
+            ),
+            ("voice", "social_fatigue_ramp_seconds"): (
+                int, 1, 86400
+            ),
+            ("voice", "social_fatigue_max_magnitude"): (
+                float, 0.0, 4.0
+            ),
+            ("voice", "habituation_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "habituation_half_life_seconds"): (
+                int, 1, 86400
+            ),
+            ("voice", "habituation_max_suppression"): (
+                float, 0.0, 0.95
+            ),
+            ("voice", "habituation_change_magnitude"): (
+                float, 0.0, 4.0
+            ),
+            ("voice", "exploration_drive_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "exploration_drive_start_seconds"): (
+                int, 0, 86400
+            ),
+            ("voice", "exploration_drive_ramp_seconds"): (
+                int, 1, 86400
+            ),
+            ("voice", "exploration_drive_max_magnitude"): (
+                float, 0.0, 4.0
             ),
             ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
             ("voice", "maximum_dwell_seconds"): (int, 1, 86400),
@@ -3004,6 +3053,115 @@ class MuchaClient(discord.Client):
     ) -> None:
         now = time.monotonic() if now is None else now
         self._voice_last_visit[(int(guild_id), int(channel_id))] = now
+
+    def _voice_homeostasis_levels(
+        self,
+        guild_id: int,
+        current_channel_id: int | None,
+        current_user_ids: list[int],
+        *,
+        now: float,
+        dwell_elapsed: float,
+        outside_seconds: float,
+        alternatives: int,
+    ) -> dict:
+        """Derive slow internal drives without directly selecting an action."""
+        guild_id = int(guild_id)
+        current_users = tuple(sorted(int(x) for x in current_user_ids))
+        scene_key = (
+            (int(current_channel_id), current_users)
+            if current_channel_id is not None
+            else None
+        )
+        state = self._voice_homeostasis_state.get(guild_id)
+        if state is None or state.get("scene_key") != scene_key:
+            state = {
+                "scene_key": scene_key,
+                "scene_since": float(now),
+                "changed_at": float(now),
+            }
+            self._voice_homeostasis_state[guild_id] = state
+
+        scene_age = (
+            max(0.0, float(now) - float(state["scene_since"]))
+            if scene_key is not None
+            else 0.0
+        )
+        connected = current_channel_id is not None
+        homeostasis = bool(self.cfg.voice.homeostasis_enabled)
+
+        social_fatigue = 0.0
+        if homeostasis and connected and current_users:
+            start = max(
+                0.0,
+                float(self.cfg.voice.social_fatigue_start_seconds),
+            )
+            ramp = max(
+                1.0,
+                float(self.cfg.voice.social_fatigue_ramp_seconds),
+            )
+            social_fatigue = max(
+                0.0,
+                min(1.0, (dwell_elapsed - start) / ramp),
+            )
+
+        habituation = 0.0
+        if (
+            homeostasis
+            and self.cfg.voice.habituation_enabled
+            and connected
+        ):
+            half_life = max(
+                1.0,
+                float(self.cfg.voice.habituation_half_life_seconds),
+            )
+            habituation = max(
+                0.0,
+                min(1.0, 1.0 - (2.0 ** (-scene_age / half_life))),
+            )
+
+        exploration = 0.0
+        if (
+            homeostasis
+            and self.cfg.voice.exploration_drive_enabled
+            and connected
+            and alternatives > 0
+        ):
+            start = max(
+                0.0,
+                float(self.cfg.voice.exploration_drive_start_seconds),
+            )
+            ramp = max(
+                1.0,
+                float(self.cfg.voice.exploration_drive_ramp_seconds),
+            )
+            exploration = max(
+                0.0,
+                min(1.0, (scene_age - start) / ramp),
+            )
+
+        suppression = (
+            habituation
+            * max(
+                0.0,
+                min(
+                    0.95,
+                    float(self.cfg.voice.habituation_max_suppression),
+                ),
+            )
+        )
+        return {
+            "scene_age": scene_age,
+            "social_need": (
+                max(0.0, float(outside_seconds))
+                if not connected
+                else 0.0
+            ),
+            "social_fatigue": social_fatigue,
+            "habituation": habituation,
+            "habituation_suppression": suppression,
+            "exploration": exploration,
+        }
 
     def _voice_reward_opportunity_for(
         self,
@@ -5743,6 +5901,15 @@ class MuchaClient(discord.Client):
             "available_humans": 0,
             "social_drive_active": False,
             "social_drive_level": 0.0,
+            "homeostasis_enabled": bool(
+                self.cfg.voice.homeostasis_enabled
+            ),
+            "voice_scene_age": 0.0,
+            "social_fatigue_level": 0.0,
+            "habituation_level": 0.0,
+            "habituation_suppression": 0.0,
+            "exploration_drive_level": 0.0,
+            "homeostasis_guided": {},
             "social_drive_stay_punished": False,
             "social_drive_stay_punish_amount": 0.0,
             "social_join_reward": 0.0,
@@ -6061,6 +6228,30 @@ class MuchaClient(discord.Client):
             if current is not None
             else []
         )
+        homeostasis = self._voice_homeostasis_levels(
+            guild.id,
+            current.id if current is not None else None,
+            [m.id for m in current_humans],
+            now=now,
+            dwell_elapsed=dwell_elapsed,
+            outside_seconds=outside_seconds,
+            alternatives=alternatives_count,
+        )
+        debug["voice_scene_age"] = float(
+            homeostasis["scene_age"]
+        )
+        debug["social_fatigue_level"] = float(
+            homeostasis["social_fatigue"]
+        )
+        debug["habituation_level"] = float(
+            homeostasis["habituation"]
+        )
+        debug["habituation_suppression"] = float(
+            homeostasis["habituation_suppression"]
+        )
+        debug["exploration_drive_level"] = float(
+            homeostasis["exploration"]
+        )
         disliked_strength = max(
             (
                 min(1.0, max(0.0, -float(affinity)))
@@ -6084,10 +6275,22 @@ class MuchaClient(discord.Client):
 
         async with self._brain_lock:
             for ch, humans in channels:
+                sensory_scale = 1.0
+                if current is not None and ch.id == current.id:
+                    sensory_scale = max(
+                        0.05,
+                        1.0
+                        - float(
+                            homeostasis[
+                                "habituation_suppression"
+                            ]
+                        ),
+                    )
                 self.brain.inject_voice_snapshot(
                     guild.id,
                     ch.id,
                     [m.id for m in humans],
+                    sensory_scale=sensory_scale,
                 )
             deadly_duration = max(
                 1.0,
@@ -6141,14 +6344,37 @@ class MuchaClient(discord.Client):
                     social_drive_magnitude=float(
                         self.cfg.voice.social_drive_max_magnitude
                     ),
+                    social_fatigue_level=float(
+                        homeostasis["social_fatigue"]
+                    ),
+                    social_fatigue_magnitude=float(
+                        self.cfg.voice.social_fatigue_max_magnitude
+                    ),
+                    habituation_level=float(
+                        homeostasis["habituation"]
+                    ),
+                    habituation_change_magnitude=float(
+                        self.cfg.voice.habituation_change_magnitude
+                    ),
+                    exploration_drive_level=float(
+                        homeostasis["exploration"]
+                    ),
+                    exploration_drive_magnitude=float(
+                        self.cfg.voice.exploration_drive_max_magnitude
+                    ),
                     )
                 )
                 motivation_active = bool(
-                    current is None
-                    and (
-                        reward_opportunity is not None
-                        or social_drive_level > 0.0
+                    (
+                        current is None
+                        and (
+                            reward_opportunity is not None
+                            or social_drive_level > 0.0
+                        )
                     )
+                    or float(homeostasis["social_fatigue"]) > 0.0
+                    or float(homeostasis["habituation"]) > 0.0
+                    or float(homeostasis["exploration"]) > 0.0
                 )
                 propagation_steps = max(
                     2,
@@ -6220,6 +6446,29 @@ class MuchaClient(discord.Client):
             debug["social_drive_guided_reach_max"] = float(
                 social_diag.get("reach_max", 0.0)
             )
+
+        if voice_context_diag:
+            guided = {}
+            for key in (
+                "social_fatigue_move",
+                "social_fatigue_leave",
+                "habituation",
+                "exploration_drive",
+            ):
+                row = voice_context_diag.get(key)
+                if not row:
+                    continue
+                guided[key] = {
+                    "mode": str(row.get("mode", "")),
+                    "neurons": int(row.get("neurons", 0)),
+                    "reach_mean": float(
+                        row.get("reach_mean", 0.0)
+                    ),
+                    "reach_max": float(
+                        row.get("reach_max", 0.0)
+                    ),
+                }
+            debug["homeostasis_guided"] = guided
 
         if (
             connectome_voice_control
