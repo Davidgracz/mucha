@@ -30,6 +30,23 @@ def main():
         scores = b.action_scores()
         assert 0 <= scores["speak"] <= 1
 
+        b.inject("signal-flow-smoke", 1.0, 64)
+        b.step(2)
+        signal_flow = b.signal_flow_snapshot()
+        assert signal_flow["latest"] is not None
+        assert signal_flow["latest"]["edges"]
+        assert signal_flow["latest"]["winner"] in b.ACTIONS
+        assert any(
+            cue.get("key") == "signal-flow-smoke"
+            for cue in signal_flow["latest"]["cues"]
+        )
+        first_flow_edge = signal_flow["latest"]["edges"][0]
+        assert "source" in first_flow_edge
+        assert "target" in first_flow_edge
+        assert "contribution" in first_flow_edge
+        assert "effective_weight" in first_flow_edge
+        assert "live edge contribution" in signal_flow["method"]
+
         episodes = VoiceEpisodicMemory(
             max_events=32,
             learning_rate=0.5,
@@ -441,6 +458,11 @@ def main():
         assert "memory_replay_max_age_days" in CONFIG_HTML
         assert "MEMORY REPLAY" in HTML
         assert "Credit queue" in HTML
+        assert "SIGNAL FLOW" in NEUROMAP_HTML
+        assert "FOLLOW DECISION" in NEUROMAP_HTML
+        assert "Live signal flow" in NEUROMAP_HTML
+        assert "renderSignalFlow" in NEUROMAP_HTML
+        assert "live flow in / out" in NEUROMAP_HTML
         assert "neural tie-break" in HTML
         assert "overstay_punish_amount" in CONFIG_HTML
         assert "overstay_punish_interval_seconds" in CONFIG_HTML
@@ -489,6 +511,13 @@ def main():
         assert "_maybe_memory_replay" in bot_source
         assert "memory_replay_reward_scale" in bot_source
         assert "replay_candidates" in bot_source
+        brain_source = (ROOT / "mucha" / "brain.py").read_text(
+            encoding="utf-8"
+        )
+        assert "_capture_signal_flow_tick" in brain_source
+        assert "signal_flow_snapshot" in brain_source
+        assert "effective_weight" in brain_source
+        assert "top_synapses" in brain_source
         assert "preferred_channel_id" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
@@ -544,6 +573,18 @@ def main():
             assert "learned_delta" in edge
             assert "effective_weight" in edge
 
+        neuro = b.neuro_map_snapshot(
+            count=220,
+            projection="xy",
+        )
+        assert "signal_flow" in neuro
+        assert neuro["signal_flow"]["latest"] is not None
+        assert neuro["nodes"]
+        assert "incoming_edges" in neuro["nodes"][0]
+        assert "outgoing_edges" in neuro["nodes"][0]
+        assert "live_flow_in" in neuro["nodes"][0]
+        assert "live_flow_out" in neuro["nodes"][0]
+
         # Reward should now change both neuron bias and real existing
         # connectome edges through the sparse learned-synapse overlay.
         coo = c.matrix.tocoo()
@@ -569,6 +610,10 @@ def main():
         )
         assert learning["changed_synapses"] >= 1
         assert learning["learned_synapses"] >= 1
+        assert learning["top_synapses"]
+        assert "source" in learning["top_synapses"][0]
+        assert "target" in learning["top_synapses"][0]
+        assert "change" in learning["top_synapses"][0]
         b.save()
         reloaded = FlyBrain(c, cfg)
         assert reloaded.diagnostics()["learned_synapses"] >= 1
