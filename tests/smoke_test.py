@@ -13,6 +13,7 @@ if str(ROOT) not in sys.path:
 from mucha.config import BrainConfig
 from mucha.connectome import Connectome
 from mucha.brain import FlyBrain
+from mucha.episodic import VoiceEpisodicMemory
 from mucha.language import OnlineLanguage
 from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, HTML, OVERVIEW_HTML, PUBLIC_OVERVIEW_HTML
 
@@ -28,6 +29,25 @@ def main():
         b.step(5)
         scores = b.action_scores()
         assert 0 <= scores["speak"] <= 1
+
+        episodes = VoiceEpisodicMemory(
+            max_events=32,
+            learning_rate=0.5,
+        )
+        assert episodes.predict("ctx", "voice_join") == 0.0
+        ep = episodes.observe(
+            guild_id=1,
+            context="ctx",
+            action="voice_join",
+            actual_reward=0.6,
+            predicted_reward=0.0,
+            source="smoke",
+        )
+        assert abs(ep["prediction_error"] - 0.6) < 1e-9
+        assert abs(
+            episodes.predict("ctx", "voice_join") - 0.3
+        ) < 1e-9
+        assert episodes.size() == 1
 
         # Voice behavior is now selected by competition between connectome
         # action readouts. The adapter may mask physically impossible actions,
@@ -332,6 +352,10 @@ def main():
         assert "habituation_max_suppression" in CONFIG_HTML
         assert "exploration_drive_enabled" in CONFIG_HTML
         assert "exploration_drive_max_magnitude" in CONFIG_HTML
+        assert "episodic_prediction_enabled" in CONFIG_HTML
+        assert "prediction_learning_rate" in CONFIG_HTML
+        assert "prediction_error_scale" in CONFIG_HTML
+        assert "prediction_error_max_correction" in CONFIG_HTML
         assert "neural tie-break" in HTML
         assert "overstay_punish_amount" in CONFIG_HTML
         assert "overstay_punish_interval_seconds" in CONFIG_HTML
@@ -369,6 +393,9 @@ def main():
         assert "habituation_suppression" in bot_source
         assert "social_fatigue_level" in bot_source
         assert "exploration_drive_level" in bot_source
+        assert "VoiceEpisodicMemory" in bot_source
+        assert "_voice_prediction_context" in bot_source
+        assert "prediction_error_max_correction" in bot_source
         assert "preferred_channel_id" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
