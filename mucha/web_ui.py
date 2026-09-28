@@ -2145,6 +2145,8 @@ function renderVoiceDebug(items){
     const predErr=v.prediction_error==null?null:Number(v.prediction_error);
     const predClass=predErr==null?"":predErr>0?"ok":predErr<0?"no":"";
     const replay=v.memory_replay||{};
+    const neuralInternal=(v.internal_states||{}).states||{};
+    const internalLevel=name=>Math.max(0,Math.min(1,Number((neuralInternal[name]||{}).level||0)));
     const replayLast=(replay.last||[]).slice(-1)[0]||null;
     const replaySummary=replayLast
       ? (String(replayLast.action||"—")+" • "+String(replayLast.channel_name||"poza VC")+" • reward "+Number(replayLast.replay_reward||0).toFixed(3)+" • memory "+(Math.max(0,Math.min(1,Number(replayLast.memory_strength||0)))*100).toFixed(0)+"% • "+Number(replayLast.steps||0)+" tick • "+Number(replayLast.changed_synapses||0)+" synaps")
@@ -2214,12 +2216,22 @@ function renderVoiceDebug(items){
         '</div>'+
 
         '<div class="voice-box">'+
-          '<h3>🫀 Homeostaza</h3>'+
-          drive("Social need",v.social_drive_level,"")+
-          drive("Social fatigue",v.social_fatigue_level,"warn-fill")+
-          drive("Habituation",v.habituation_level,"warn-fill")+
-          drive("Exploration",v.exploration_drive_level,"")+
-          '<div class="voice-note">Wygaszenie aktualnej sceny: <b>'+pct(v.habituation_suppression).toFixed(0)+'%</b>. Te stany są bodźcami dla connectomu, nie bezpośrednimi komendami.</div>'+
+          '<h3>🫀 Homeostaza sensoryczna</h3>'+
+          drive("Social need cue",v.social_drive_level,"")+
+          drive("Social fatigue cue",v.social_fatigue_level,"warn-fill")+
+          drive("Habituation cue",v.habituation_level,"warn-fill")+
+          drive("Exploration cue",v.exploration_drive_level,"")+
+          '<div class="voice-note">To są wejścia sensoryczne. Poniżej widać faktyczny stan zespołów neuronów po propagacji.</div>'+
+        '</div>'+
+
+        '<div class="voice-box">'+
+          '<h3>🧠 Neural internal states</h3>'+
+          drive("SOCIAL NEED",internalLevel("social_need"),"")+
+          drive("CURIOSITY",internalLevel("curiosity"),"")+
+          drive("STRESS",internalLevel("stress"),"warn-fill")+
+          drive("SATIETY",internalLevel("satiety"),"warn-fill")+
+          drive("AROUSAL",internalLevel("arousal"),"")+
+          '<div class="voice-note">Dominujący attractor: <b>'+esc((v.internal_states||{}).dominant||"—")+'</b> '+(Number((v.internal_states||{}).dominant_level||0)*100).toFixed(0)+'% • brak bezpośredniego action-score bonusu.</div>'+
         '</div>'+
 
         '<div class="voice-box">'+
