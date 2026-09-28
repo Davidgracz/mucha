@@ -6171,6 +6171,100 @@ class MuchaClient(discord.Client):
                     guild,
                 )
 
+        if threat_active and connectome_voice_control:
+            threat_trace = decision_trace
+            self._last_brain_event = (
+                f"VOICE THREAT INPUT • {current.name} • "
+                f"{threat_level * 100:.0f}%"
+            )
+            debug["threat_magnitude"] = (
+                float(self.cfg.voice.threat_magnitude)
+                * threat_level
+            )
+            last_punish = self._last_overstay_punish.get(
+                guild.id,
+                0.0,
+            )
+            punish_interval = max(
+                float(self.cfg.voice.poll_seconds),
+                float(
+                    self.cfg.voice.overstay_punish_interval_seconds
+                ),
+            )
+            if (
+                now - last_punish >= punish_interval
+                and brain_decision is not None
+                and brain_decision["action"] == "stay"
+                and threat_trace is not None
+            ):
+                punish_amount = max(
+                    0.0,
+                    min(
+                        1.0,
+                        float(
+                            self.cfg.voice.overstay_punish_amount
+                        ),
+                    ),
+                )
+                async with self._brain_lock:
+                    self.brain.reward(
+                        -punish_amount,
+                        action="stay",
+                        trace=threat_trace,
+                    )
+                    self.brain.step(1)
+                    brain_decision = (
+                        self.brain.voice_action_decision(
+                            connected=True,
+                            can_move=bool(
+                                alternatives_count > 0
+                            ),
+                            can_leave=True,
+                        )
+                    )
+                    scores = dict(
+                        brain_decision["scores"]
+                    )
+                    decision_trace = (
+                        self.brain.capture_learning_trace()
+                    )
+                    affinities = {
+                        ch.id: self.brain.channel_affinity(
+                            guild.id,
+                            ch.id,
+                        )
+                        for ch, _ in channels
+                    }
+                self._last_overstay_punish[guild.id] = now
+                debug["overstay_punished"] = True
+                debug["overstay_punish_amount"] = (
+                    -punish_amount
+                )
+                debug["brain_decision"] = {
+                    "action": brain_decision["action"],
+                    "score": brain_decision["score"],
+                    "runner_up": brain_decision["runner_up"],
+                    "runner_up_score": brain_decision[
+                        "runner_up_score"
+                    ],
+                    "margin": brain_decision["margin"],
+                    "candidates": dict(
+                        brain_decision["candidates"]
+                    ),
+                }
+                debug["scores"].update({
+                    "voice_join": scores["voice_join"],
+                    "voice_move": scores["voice_move"],
+                    "voice_leave": scores["voice_leave"],
+                    "stay": scores["stay"],
+                })
+                self._record_reward(
+                    -punish_amount,
+                    "stay",
+                    "connectome voice overstay",
+                    guild,
+                )
+
         current_aff = affinities.get(current.id, 0.5)
 
         # When the current channel becomes threatening, deliberately search for
@@ -6179,7 +6273,11 @@ class MuchaClient(discord.Client):
             item for item in channels
             if item[0].id != current.id
         ]
-        if threat_active and alternatives:
+        if (
+            threat_active
+            and alternatives
+            and not connectome_voice_control
+        ):
             target, exploration = self._choose_voice_target(
                 guild,
                 alternatives,
