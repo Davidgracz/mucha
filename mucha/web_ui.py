@@ -211,7 +211,7 @@ function renderChannels(){
 function channelRow(kind,id,name,sub,checked){return '<label class="channel"><input type="checkbox" data-'+kind+'="'+id+'" '+(checked?'checked':'')+'><div><b>'+esc(name)+'</b><br><small>'+esc(sub)+'</small></div><small>'+id+'</small></label>'}
 function bindInputs(){document.querySelectorAll("input").forEach(el=>{if(el.id==="search")return;el.addEventListener("input",markDirty);el.addEventListener("change",markDirty)})}
 function collect(){
- const out={language:{},behavior:{},voice:{}};
+ const out={brain:{},language:{},behavior:{},voice:{}};
  for(const g of groups)for(const [key,,type] of g.fields){
   const el=$(fieldId(g.section,key));if(!el)continue;
   out[g.section][key]=type==="bool"?el.checked:(type==="text"?el.value:Number(el.value))
