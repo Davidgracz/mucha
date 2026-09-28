@@ -8,6 +8,11 @@ noise = 0.018
 plasticity_lr = 0.0025
 plasticity_decay = 0.998
 max_bias = 0.35
+synaptic_plasticity_enabled = true
+synaptic_plasticity_lr = 0.0015
+synaptic_plasticity_max_delta = 0.08
+synaptic_plasticity_trace_neurons = 256
+synaptic_plasticity_max_edges = 40000
 steps_per_event = 3
 idle_steps = 1
 backend = "auto"
@@ -36,6 +41,9 @@ connectome_word_control_enabled = true
 connectome_word_control_min_vocab = 1500
 connectome_word_control_strength = 0.35
 connectome_word_control_candidates = 24
+connectome_word_feedback_enabled = true
+connectome_word_feedback_steps = 2
+connectome_word_feedback_magnitude = 0.18
 
 [voice]
 enabled = true
