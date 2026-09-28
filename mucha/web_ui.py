@@ -2117,7 +2117,7 @@ function renderVoiceDebug(items){
     const replay=v.memory_replay||{};
     const replayLast=(replay.last||[]).slice(-1)[0]||null;
     const replaySummary=replayLast
-      ? (String(replayLast.action||"—")+" • "+String(replayLast.channel_name||"poza VC")+" • reward "+Number(replayLast.replay_reward||0).toFixed(3)+" • "+Number(replayLast.steps||0)+" tick • "+Number(replayLast.changed_synapses||0)+" synaps")
+      ? (String(replayLast.action||"—")+" • "+String(replayLast.channel_name||"poza VC")+" • reward "+Number(replayLast.replay_reward||0).toFixed(3)+" • memory "+(Math.max(0,Math.min(1,Number(replayLast.memory_strength||0)))*100).toFixed(0)+"% • "+Number(replayLast.steps||0)+" tick • "+Number(replayLast.changed_synapses||0)+" synaps")
       : (replay.reason||"brak replay");
     const memoryRows=(v.episodic_recent||[]).slice(-3).reverse().map(ep=>{
       const people=(ep.user_names||[]).join(", ")||(ep.user_ids||[]).join(", ")||"—";
