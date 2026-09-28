@@ -3871,13 +3871,20 @@ class MuchaClient(discord.Client):
     async def _connectome_dashboard_snapshot(
         self,
         follow_activity: bool = False,
+        action: str | None = None,
     ) -> dict:
         async with self._brain_lock:
-            return self.brain.connectome_visual_snapshot(
+            snap = self.brain.connectome_visual_snapshot(
                 count=42 if follow_activity else 64,
                 edge_limit=150 if follow_activity else 190,
                 follow_activity=follow_activity,
             )
+            action = str(action or "").strip()
+            if action in self.brain.ACTIONS:
+                snap["action_path"] = (
+                    self.brain.action_path_snapshot(action)
+                )
+            return snap
 
     async def _association_dashboard_snapshot(self) -> dict:
         word_rows = self.language.association_words(limit=28)
