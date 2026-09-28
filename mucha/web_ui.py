@@ -667,7 +667,7 @@ main{max-width:1600px;margin:auto;padding:22px}
 h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}
 .nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#b9cad9;text-decoration:none;border:1px solid var(--line);background:#0b131c;padding:8px 11px;border-radius:10px;font-size:12px}
 .nav a:hover{border-color:#36536e;color:white}.nav a.active{background:linear-gradient(90deg,var(--cyan),#78e6d4);color:#03110d;border-color:var(--cyan);font-weight:850}
-.hero{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}
+.hero{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}
 .kpi,.card{background:linear-gradient(180deg,rgba(12,19,28,.96),rgba(8,14,21,.96));border:1px solid var(--line);border-radius:16px;box-shadow:0 16px 50px rgba(0,0,0,.18)}
 .kpi{padding:13px 14px;position:relative;overflow:hidden}.kpi:after{content:"";position:absolute;inset:auto -20px -28px auto;width:86px;height:86px;border-radius:50%;background:radial-gradient(circle,rgba(85,234,208,.10),transparent 70%)}
 .kpi small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}.kpi strong{font-size:18px}.kpi em{display:block;color:#9eb1c3;font-size:10px;font-style:normal;margin-top:4px}
@@ -713,6 +713,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
  <div class="kpi"><small>Aktywne |a| &gt; .1</small><strong id="k-active">—</strong><em>bieżący tick</em></div>
  <div class="kpi"><small>Mean |activation|</small><strong id="k-mean">—</strong><em id="k-backend">backend —</em></div>
  <div class="kpi"><small>Reward trace</small><strong id="k-reward">—</strong><em id="k-tick">tick —</em></div>
+ <div class="kpi"><small>Uczone synapsy</small><strong id="k-synapses">—</strong><em id="k-synapse-delta">max |Δ| —</em></div>
 </section>
 
 <section class="flow">
@@ -866,7 +867,7 @@ $("follow-btn").onclick=()=>{followActivity=!followActivity;localStorage.setItem
 function render(s,v){
  stateSnap=s;visualSnap=v;ingestGraph(v);
  const d=s.diag||{},ld=s.language_diag||{},cw=ld.connectome_word_control_last||{};
- $("k-neurons").textContent=nfmt(d.neurons);$("k-connections").textContent=nfmt(d.connections);$("k-active").textContent=nfmt(d.active_abs_gt_0_1);$("k-mean").textContent=Number(d.mean_abs||0).toFixed(5);$("k-reward").textContent=Number(d.reward_trace||0).toFixed(3);$("k-backend").textContent=(d.backend||"—")+" • "+(d.device||"");$("k-tick").textContent="tick "+nfmt(d.ticks);
+ $("k-neurons").textContent=nfmt(d.neurons);$("k-connections").textContent=nfmt(d.connections);$("k-active").textContent=nfmt(d.active_abs_gt_0_1);$("k-mean").textContent=Number(d.mean_abs||0).toFixed(5);$("k-reward").textContent=Number(d.reward_trace||0).toFixed(3);$("k-backend").textContent=(d.backend||"—")+" • "+(d.device||"");$("k-tick").textContent="tick "+nfmt(d.ticks);$("k-synapses").textContent=nfmt(d.learned_synapses||0);$("k-synapse-delta").textContent="max |Δ| "+Number(d.synaptic_max_abs||0).toFixed(5);
  $("selected").textContent=nfmt(v.selected_neurons);$("edges").textContent=nfmt(v.selected_edges);$("event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";renderActions(s.scores||{});
  $("stable-age").textContent=followActivity?"FOLLOW":Math.round(Number(v.stable_age_seconds||0))+" s / "+Math.round(Number(v.stable_window_seconds||45))+" s";
  $("replacements").textContent=nfmt(v.replacements||0);
@@ -1290,6 +1291,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
   <h2>📊 Brain Snapshot</h2>
   <div class="row"><span>Neurony</span><strong id="neurons">—</strong></div>
   <div class="row"><span>Połączenia</span><strong id="connections">—</strong></div>
+  <div class="row"><span>Uczone synapsy</span><strong id="learned-synapses">—</strong></div>
   <div class="row"><span>Aktywne |a| &gt; .1</span><strong id="active-neurons">—</strong></div>
   <div class="row"><span>Mean |a|</span><strong id="mean-a">—</strong></div>
   <div class="row"><span>Reward trace</span><strong id="reward-trace">—</strong></div>
@@ -1336,7 +1338,7 @@ function render(d){
  $("audio-file").textContent=a.file||"—";$("audio-text").textContent=a.text||"—";
  $("stt-status").textContent=(stt.status||"—")+" • "+(stt.model||"—");
  $("stt-heard").textContent=stt.text?((stt.user||"ktoś")+": "+stt.text):"—";
- $("neurons").textContent=nfmt(diag.neurons);$("connections").textContent=nfmt(diag.connections);$("active-neurons").textContent=nfmt(diag.active_abs_gt_0_1);
+ $("neurons").textContent=nfmt(diag.neurons);$("connections").textContent=nfmt(diag.connections);$("learned-synapses").textContent=nfmt(diag.learned_synapses||0);$("active-neurons").textContent=nfmt(diag.active_abs_gt_0_1);
  $("mean-a").textContent=Number(diag.mean_abs||0).toFixed(5);$("reward-trace").textContent=Number(diag.reward_trace||0).toFixed(4);$("ticks").textContent=nfmt(diag.ticks);
  renderActions(s.scores||{});
  $("mucha-logs").textContent=(d.logs?.mucha||[]).join("\n")||"brak logów";$("chaser-logs").textContent=(d.logs?.chaser||[]).join("\n")||"brak logów";
