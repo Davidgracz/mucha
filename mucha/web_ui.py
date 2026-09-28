@@ -18,7 +18,7 @@ from aiohttp import web
 log = logging.getLogger("mucha.web")
 
 SnapshotProvider = Callable[[], Awaitable[dict]]
-ConnectomeProvider = Callable[[bool], Awaitable[dict]]
+ConnectomeProvider = Callable[[bool, str | None], Awaitable[dict]]
 NeuromapProvider = Callable[[str], Awaitable[dict]]
 AssociationProvider = Callable[[], Awaitable[dict]]
 ConfigProvider = Callable[[], dict]
@@ -2391,7 +2391,11 @@ class WebDashboard:
         if self.connectome_provider is None:
             raise web.HTTPServiceUnavailable(text="connectome provider unavailable")
         raw = str(request.query.get("follow", "")).strip().lower()
-        snap = await self.connectome_provider(raw in {"1", "true", "yes", "on"})
+        action = str(request.query.get("action", "")).strip()
+        snap = await self.connectome_provider(
+            raw in {"1", "true", "yes", "on"},
+            action or None,
+        )
         return web.json_response(
             snap,
             dumps=lambda x: json.dumps(x, ensure_ascii=False),
@@ -2557,7 +2561,11 @@ class WebDashboard:
             )
         raw = str(request.query.get("follow", "")).strip().lower()
         follow_activity = raw in {"1", "true", "yes", "on"}
-        snap = await self.connectome_provider(follow_activity)
+        action = str(request.query.get("action", "")).strip()
+        snap = await self.connectome_provider(
+            follow_activity,
+            action or None,
+        )
         return web.json_response(
             snap,
             dumps=lambda x: json.dumps(x, ensure_ascii=False),
