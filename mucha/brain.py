@@ -1397,6 +1397,16 @@ class FlyBrain:
                     ),
                     "source_index": source,
                     "target_index": target,
+                    "source_position": {
+                        "x": float(self._neuro_map_coords[source, 0]),
+                        "y": float(self._neuro_map_coords[source, 1]),
+                        "z": float(self._neuro_map_coords[source, 2]),
+                    },
+                    "target_position": {
+                        "x": float(self._neuro_map_coords[target, 0]),
+                        "y": float(self._neuro_map_coords[target, 1]),
+                        "z": float(self._neuro_map_coords[target, 2]),
+                    },
                     "source_activation": source_activation,
                     "base_weight": float(base_weights[pos]),
                     "learned_delta": float(learned_values[pos]),
@@ -1463,6 +1473,15 @@ class FlyBrain:
             "output_indices": output_indices,
             "output_nodes": [
                 str(int(self.c.root_ids[index]))
+                for index in output_indices
+            ],
+            "output_points": [
+                {
+                    "id": str(int(self.c.root_ids[index])),
+                    "x": float(self._neuro_map_coords[index, 0]),
+                    "y": float(self._neuro_map_coords[index, 1]),
+                    "z": float(self._neuro_map_coords[index, 2]),
+                }
                 for index in output_indices
             ],
             "edges": edge_rows,
