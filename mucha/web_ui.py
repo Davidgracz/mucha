@@ -69,6 +69,13 @@ const $=id=>document.getElementById(id);
 let state=null,baseline="",dirtyCount=0;
 
 const groups=[
+ {id:"synapses",title:"Plastyczność synaptyczna",desc:"Reward i punish mogą zmieniać siłę rzeczywistych połączeń FAFB uczestniczących w ostatnim śladzie aktywności.",section:"brain",open:true,fields:[
+  ["synaptic_plasticity_enabled","Uczenie synaps","bool",0,0,0,"Włącza rzadką nakładkę uczonych wag na istniejących połączeniach connectomu."],
+  ["synaptic_plasticity_lr","Tempo uczenia synaps","number",0.0001,0,0.05,"Jak mocno pojedynczy reward/punish zmienia aktywne połączenia."],
+  ["synaptic_plasticity_max_delta","Maks. zmiana synapsy","number",0.005,0.001,0.5,"Limit odchylenia uczonej wagi od bazowej wagi FAFB."],
+  ["synaptic_plasticity_trace_neurons","Neurony śladu dla synaps","number",16,32,1024,"Ile najsilniejszych neuronów eligibility analizować przy reward/punish."],
+  ["synaptic_plasticity_max_edges","Limit uczonych synaps","number",1000,1000,250000,"Maksymalna liczba zapamiętanych zmian połączeń; najsilniejsze są zachowywane."]
+ ]},
  {id:"language-main",title:"Język i odpowiedzi",desc:"Kiedy Mucha może mówić i jak długie odpowiedzi generuje.",section:"language",open:true,fields:[
   ["min_chars_before_speaking","Minimum danych przed mówieniem","number",50,100,1000000,"Ile poznanych znaków musi mieć model zanim zacznie odpowiadać."],
   ["min_unique_chars_before_speaking","Minimum unikalnych znaków","number",1,5,500,"Chroni przed startem na bardzo ubogim materiale."],
