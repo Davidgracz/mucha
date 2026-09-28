@@ -4870,7 +4870,7 @@ class MuchaClient(discord.Client):
 
         if not self.cfg.language.spontaneous_text or not self.language.ready():
             return
-        if scores["speak"] < max(self.cfg.behavior.speak_threshold + 0.08, 0.80):
+        if scores["speak"] < self.cfg.behavior.speak_threshold + 0.08:
             return
         for guild in self.guilds:
             last = self.last_spontaneous.get(guild.id, 0.0)
