@@ -1818,8 +1818,10 @@ class FlyBrain:
             except (TypeError, ValueError):
                 return 0.0
 
-        # Vectorized direct connectivity into Mucha's artificial action
-        # readout populations. This is system influence, not a biological claim.
+        # Vectorized direct connectivity into Mucha's action readout
+        # populations. Typed descending neurons are biological anchors; the
+        # mapping from those broad behaviors to Discord actions is still an
+        # explicit adapter and must not be read as a literal biological claim.
         action_influence: dict[str, np.ndarray] = {}
         for action, targets in self._action_output_pools.items():
             if len(targets) == 0 or len(selected) == 0:
