@@ -49,6 +49,63 @@ def main():
         ) < 1e-9
         assert episodes.size() == 1
 
+        persistent_path = td / "voice-episodes.sqlite3"
+        persistent = VoiceEpisodicMemory(
+            max_events=32,
+            learning_rate=0.5,
+            database=persistent_path,
+            max_persisted_events=100,
+        )
+        scene_key = persistent.make_scene_key(
+            555,
+            [22, 11],
+        )
+        persisted = persistent.observe(
+            guild_id=7,
+            channel_id=555,
+            channel_name="ASG",
+            user_ids=[22, 11],
+            user_names=["Stivi", "Dawid"],
+            context="in|need=0|fatigue=1",
+            scene_key=scene_key,
+            action="voice_move",
+            actual_reward=0.8,
+            source="persistent smoke",
+        )
+        assert persisted["scene_observations"] == 1
+        assert persistent.size() == 1
+        expected_before = persistent.predict(
+            "in|need=0|fatigue=1",
+            "voice_move",
+            scene_key=scene_key,
+        )
+        assert expected_before > 0.0
+        persistent.close()
+
+        restored = VoiceEpisodicMemory(
+            max_events=32,
+            learning_rate=0.5,
+            database=persistent_path,
+            max_persisted_events=100,
+        )
+        assert restored.size() == 1
+        expected_after = restored.predict(
+            "in|need=0|fatigue=1",
+            "voice_move",
+            scene_key=scene_key,
+        )
+        assert abs(expected_after - expected_before) < 1e-9
+        restored_recent = restored.recent(1)[0]
+        assert restored_recent["channel_id"] == 555
+        assert restored_recent["channel_name"] == "ASG"
+        assert restored_recent["user_ids"] == [11, 22]
+        assert set(restored_recent["user_names"]) == {
+            "Dawid",
+            "Stivi",
+        }
+        assert restored.diagnostics()["persistent"] is True
+        restored.close()
+
         # Voice behavior is now selected by competition between connectome
         # action readouts. The adapter may mask physically impossible actions,
         # but does not apply join/move/leave thresholds in neural mode.
@@ -353,6 +410,9 @@ def main():
         assert "exploration_drive_enabled" in CONFIG_HTML
         assert "exploration_drive_max_magnitude" in CONFIG_HTML
         assert "episodic_prediction_enabled" in CONFIG_HTML
+        assert "episodic_database" in CONFIG_HTML
+        assert "episodic_max_persisted_events" in CONFIG_HTML
+        assert "episodic_recall_magnitude" in CONFIG_HTML
         assert "prediction_learning_rate" in CONFIG_HTML
         assert "prediction_error_scale" in CONFIG_HTML
         assert "prediction_error_max_correction" in CONFIG_HTML
@@ -395,6 +455,9 @@ def main():
         assert "exploration_drive_level" in bot_source
         assert "VoiceEpisodicMemory" in bot_source
         assert "_voice_prediction_context" in bot_source
+        assert "_update_pending_voice_scene" in bot_source
+        assert "episodic_recall_magnitude" in bot_source
+        assert "prediction_scene_key" in bot_source
         assert "prediction_error_max_correction" in bot_source
         assert "preferred_channel_id" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
