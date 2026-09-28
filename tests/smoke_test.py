@@ -86,6 +86,7 @@ def main():
         assert "target" in first_flow_edge
         assert "contribution" in first_flow_edge
         assert "effective_weight" in first_flow_edge
+        assert "attractor_delta" in first_flow_edge
         assert "source_position" in first_flow_edge
         assert "target_position" in first_flow_edge
         assert signal_flow["latest"]["output_points"]
@@ -622,6 +623,9 @@ def main():
         assert "inject_internal_state_cue" in brain_source
         assert "internal_state_diagnostics" in brain_source
         assert "_internal_attractor_edge_map" in brain_source
+        assert "internal-state:stress:chaser" in bot_source
+        assert "neural_arousal" in bot_source
+        assert "effective_arousal" in bot_source
         assert "consolidate_replay" in bot_source
         assert "apply_forgetting" in bot_source
         assert "preferred_channel_id" in bot_source
