@@ -645,8 +645,15 @@ class VoiceEpisodicMemory:
         limit: int = 12,
     ) -> list[dict]:
         limit = max(1, min(100, int(limit)))
+        recent_meta: dict[tuple[str, str], VoiceEpisode] = {}
+        for episode in reversed(self._episodes):
+            key = (episode.scene_key, episode.action)
+            if key not in recent_meta:
+                recent_meta[key] = episode
+
         rows = []
         for (scene_key, action), entry in self._consolidation.items():
+            episode = recent_meta.get((scene_key, action))
             rows.append({
                 "scene_key": scene_key,
                 "action": action,
@@ -658,6 +665,31 @@ class VoiceEpisodicMemory:
                 "last_reward": float(entry["last_reward"]),
                 "last_replay": float(entry["last_replay"]),
                 "updated_at": float(entry["updated_at"]),
+                "channel_id": (
+                    episode.channel_id
+                    if episode is not None
+                    else None
+                ),
+                "channel_name": (
+                    episode.channel_name
+                    if episode is not None
+                    else ""
+                ),
+                "user_ids": (
+                    list(episode.user_ids)
+                    if episode is not None
+                    else []
+                ),
+                "user_names": (
+                    list(episode.user_names)
+                    if episode is not None
+                    else []
+                ),
+                "last_episode_time": (
+                    float(episode.time)
+                    if episode is not None
+                    else 0.0
+                ),
                 "status": (
                     "consolidated"
                     if float(entry["strength"])
