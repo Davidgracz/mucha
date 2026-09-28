@@ -691,51 +691,19 @@ function draw(){
 }
 
 function inspect(n){
- selected=n;
- if(!n){
-  $("inspector").className="empty";
-  $("inspector").textContent="Kliknij słowo na mapie. Pozostałe węzły zostaną przygaszone, a jego relacje będą łatwiejsze do odczytania.";
-  renderRows();
-  return
- }
- $("inspector").className="";
- const related=data.edges.filter(e=>e.source===n.id||e.target===n.id).sort((a,b)=>Number(b.weight||0)-Number(a.weight||0));
- $("inspector").innerHTML="<div class='word-title'><h3>"+esc(n.id)+"</h3><span>"+related.length+" relacji</span></div><div class='meta'><div><small>brain score</small><b>"+Number(n.brain_score||0).toFixed(3)+"</b></div><div><small>salience</small><b>"+Number(n.salience||0).toFixed(3)+"</b></div><div><small>activation</small><b>"+Number(n.activation||0).toFixed(5)+"</b></div><div><small>plastic bias</small><b>"+Number(n.plastic_bias||0).toFixed(6)+"</b></div><div><small>liczba wystąpień</small><b>"+nfmt(n.count)+"</b></div><div><small>language reward</small><b>"+Number(n.language_reward||0).toFixed(3)+"</b></div></div>";
- renderRows()
+ selected=n||selected;if(!selected)return;const n0=selected;$("picked").textContent=n0.real_position?"REAL POSITION":"FALLBACK POSITION";
+ $("inspector").className="";$("inspector").innerHTML='<div class="ins-title"><div><strong>'+esc(n0.id)+'</strong><div class="note">'+esc(n0.primary_type||n0.sub_class||n0.cell_class||n0.super_class||"brak typu")+'</div></div><span class="role">'+esc(n0.role)+'</span></div>'+
+ '<div class="meta"><div><small>activation</small><b>'+(Number(n0.activation)>=0?"+":"")+Number(n0.activation||0).toFixed(5)+'</b></div><div><small>eligibility</small><b>'+Number(n0.eligibility||0).toFixed(5)+'</b></div>'+
+ '<div><small>class</small><b>'+esc(n0.cell_class||"—")+'</b></div><div><small>sub_class</small><b>'+esc(n0.sub_class||"—")+'</b></div>'+
+ '<div><small>super_class</small><b>'+esc(n0.super_class||"—")+'</b></div><div><small>side / flow</small><b>'+esc((n0.side||"—")+" / "+(n0.flow||"—"))+'</b></div>'+
+ '<div><small>neurotransmitter</small><b>'+esc(n0.nt_type||"—")+'</b></div><div><small>primary neuropil</small><b>'+esc(n0.primary_neuropil||"—")+'</b></div>'+
+ '<div><small>static in / out</small><b>'+nfmt(n0.incoming_edges||0)+' / '+nfmt(n0.outgoing_edges||0)+'</b></div><div><small>live flow in / out</small><b>'+Number(n0.live_flow_in||0).toFixed(4)+' / '+Number(n0.live_flow_out||0).toFixed(4)+'</b></div></div>'+
+ '<div class="effects"><small>Live incoming / outgoing — ostatnia klatka</small>'+liveFlowRows(n0)+'</div>'+
+ '<div class="effects"><small>Top neuropile wg incident synapse mass</small>'+neuropilRows(n0)+'</div>'+
+ '<div class="effects"><small>Wpływ na systemowe readouty Muchy</small>'+effectRows(n0)+'</div>'+
+ '<div class="note">Live flow pokazuje zmierzone wkłady z ostatniej propagacji. Korelacja/readout nadal nie jest dowodem biologicznej funkcji neuronu.</div>'
 }
-
-function renderStats(){
- $("nodes").textContent=nfmt(data.nodes.length);$("nodes-total").textContent="z "+nfmt(raw.node_count||0)+" dostępnych";
- $("edges").textContent=nfmt(data.edges.length);$("edges-total").textContent="z "+nfmt(raw.edge_count||0)+" dostępnych";
- $("reward").textContent=Number(raw.reward_trace||0).toFixed(3);$("tick").textContent=nfmt(raw.ticks);$("source").textContent=raw.source||"runtime";
- const s=(data.edges||[])[0];$("strongest").textContent=s?(s.source+" ↔ "+s.target):"—";$("strongest-w").textContent=s?("waga "+Number(s.weight||0).toFixed(3)):"brak krawędzi";
- $("event").textContent=raw.last_event||"—";$("method").textContent="CONNECTOME"
-}
-
-function renderRows(){
- let rows=(data.edges||[]).slice();
- if(selected)rows=rows.filter(e=>e.source===selected.id||e.target===selected.id);
- rows=rows.slice(0,14);
- $("assoc").innerHTML=rows.map(e=>"<div class='row' data-a='"+esc(e.source)+"' data-b='"+esc(e.target)+"'><div><b>"+esc(e.source)+" ↔ "+esc(e.target)+"</b><small>structure "+Number(e.structural||0).toFixed(3)+" • learned <span class='"+(Number(e.learned||0)>=0?"pos":"neg")+"'>"+(Number(e.learned||0)>=0?"+":"")+Number(e.learned||0).toFixed(3)+"</span> • activity "+Number(e.pair_activation||0).toFixed(3)+"</small></div><b class='weight'>"+Number(e.weight||0).toFixed(3)+"</b></div>").join("")||"<div class='empty'>Brak widocznych połączeń dla tego ustawienia.</div>";
- document.querySelectorAll(".row").forEach(x=>x.onclick=()=>{const preferred=selected?(x.dataset.a===selected.id?x.dataset.b:x.dataset.a):x.dataset.a;const n=data.nodes.find(n=>n.id===preferred);if(n)inspect(n)})
-}
-
-function render(d){
- raw=d||{nodes:[],edges:[]};
- rebuildData();
- if(selected){const fresh=data.nodes.find(n=>n.id===selected.id);if(fresh){selected=fresh;inspect(fresh)}else inspect(null)}
- $("live").textContent="LIVE"
-}
-
-async function update(){try{const r=await fetch("/api/associations",{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}}
-
-$("node-limit").oninput=e=>{nodeLimit=Number(e.target.value);$("node-limit-out").textContent=nodeLimit;rebuildData()};
-$("edge-limit").oninput=e=>{edgeLimit=Number(e.target.value);$("edge-limit-out").textContent=edgeLimit;rebuildData()};
-$("labels-auto").onclick=()=>{labelMode="auto";$("labels-auto").classList.add("on");$("labels-all").classList.remove("on")};
-$("labels-all").onclick=()=>{labelMode="all";$("labels-all").classList.add("on");$("labels-auto").classList.remove("on")};
-$("reset-layout").onclick=resetLayout;
-$("clear-selection").onclick=()=>inspect(null);
-canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top});
+canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.inside=true;if(hover){tip.style.display="block";tip.style.left=Math.min(r.width-255,mouse.x+13)+"px";tip.style.top=Math.min(r.height-155,mouse.y+13)+"px";tip.innerHTML='<b>'+esc(hover.id)+'</b><br><span class="mut">'+esc(hover.primary_type||hover.cell_class||hover.super_class||hover.role)+'</span><br><span class="acc">activation '+Number(hover.activation||0).toFixed(5)+'</span><br>flow in/out '+Number(hover.live_flow_in||0).toFixed(3)+' / '+Number(hover.live_flow_out||0).toFixed(3)+'<br>neuropil '+esc(hover.primary_neuropil||"—")+'<br>'+esc(hover.side||"")+' '+esc(hover.nt_type||"")}else tip.style.display="none"});
 canvas.addEventListener("mouseleave",()=>{mouse.x=-9999;mouse.y=-9999});
 canvas.addEventListener("click",()=>{if(hover)inspect(hover)});
 window.addEventListener("resize",()=>{resize();resetLayout()});
