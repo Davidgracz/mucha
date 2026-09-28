@@ -6525,6 +6525,23 @@ class MuchaClient(discord.Client):
             self._voice_debug[guild.id] = debug
             return
 
+        if (
+            connectome_voice_control
+            and (
+                brain_decision is None
+                or brain_decision["action"] != "voice_move"
+            )
+        ):
+            debug["decision"] = "CONNECTOME • STAY"
+            debug["reason"] = (
+                f"winner {(brain_decision or {}).get('action', 'stay')} • "
+                f"stay {scores['stay']:.3f} / "
+                f"move {scores['voice_move']:.3f} / "
+                f"leave {scores['voice_leave']:.3f}"
+            )
+            self._voice_debug[guild.id] = debug
+            return
+
         target, exploration = self._choose_voice_target(
             guild,
             channels,
@@ -6549,7 +6566,10 @@ class MuchaClient(discord.Client):
             self._voice_debug[guild.id] = debug
             return
 
-        if scores["voice_move"] < self.cfg.voice.move_threshold:
+        if (
+            not connectome_voice_control
+            and scores["voice_move"] < self.cfg.voice.move_threshold
+        ):
             debug["decision"] = "ZOSTAJĘ"
             debug["reason"] = (
                 f"voice_move {scores['voice_move']:.3f} < próg "
@@ -6573,7 +6593,10 @@ class MuchaClient(discord.Client):
         required_exploration = (
             current_exploration + float(self.cfg.voice.move_margin)
         )
-        if target_exploration < required_exploration:
+        if (
+            not connectome_voice_control
+            and target_exploration < required_exploration
+        ):
             debug["decision"] = "ZOSTAJĘ"
             debug["reason"] = (
                 f"explore {target.name}={target_exploration:.3f} < wymagane "
@@ -6584,11 +6607,21 @@ class MuchaClient(discord.Client):
             return
 
         debug["decision"] = f"MOVE → {target.name}"
-        debug["reason"] = (
-            f"voice_move {scores['voice_move']:.3f} ≥ {self.cfg.voice.move_threshold:.3f}; "
-            f"explore {target_exploration:.3f} > {current_exploration:.3f}; "
-            f"affinity {target_aff:.3f}"
-        )
+        if connectome_voice_control and brain_decision is not None:
+            debug["reason"] = (
+                f"CONNECTOME WINNER voice_move "
+                f"{scores['voice_move']:.3f}; "
+                f"margin {brain_decision['margin']:.3f}; "
+                f"target neural affinity {target_aff:.3f}"
+            )
+        else:
+            debug["reason"] = (
+                f"voice_move {scores['voice_move']:.3f} ≥ "
+                f"{self.cfg.voice.move_threshold:.3f}; "
+                f"explore {target_exploration:.3f} > "
+                f"{current_exploration:.3f}; "
+                f"affinity {target_aff:.3f}"
+            )
         try:
             await vc.move_to(target)
             self.voice_arrived[guild.id] = now
@@ -6601,8 +6634,42 @@ class MuchaClient(discord.Client):
             )
             self._last_overstay_punish.pop(guild.id, None)
             self._last_brain_action = f"VOICE MOVE → {target.name}"
-            async with self._brain_lock:
-                learning_trace = self.brain.capture_learning_trace()
+            if connectome_voice_control and decision_trace is not None:
+                learning_trace = decision_trace
+            else:
+                async with self._brain_lock:
+                    learning_trace = self.brain.capture_learning_trace()
+            if (
+                connectome_voice_control
+                and threat_active
+                and learning_trace is not None
+            ):
+                self._mark_deadly_voice_channel(
+                    guild.id,
+                    current.id,
+                    now,
+                )
+                escape_reward = max(
+                    0.0,
+                    min(
+                        1.0,
+                        float(self.cfg.voice.threat_escape_reward),
+                    ),
+                )
+                if escape_reward > 0.0:
+                    async with self._brain_lock:
+                        self.brain.reward(
+                            escape_reward,
+                            action="voice_move",
+                            trace=learning_trace,
+                        )
+                        self.brain.step(1)
+                    self._record_reward(
+                        escape_reward,
+                        "voice_move",
+                        "connectome threat escape",
+                        guild,
+                    )
             self._set_reinforceable(
                 guild,
                 "voice_move",
