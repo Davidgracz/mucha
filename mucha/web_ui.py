@@ -743,6 +743,8 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
 .event{font:10px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;color:#9eb0c0;background:#060c12;border:1px solid #162536;border-radius:11px;padding:10px;word-break:break-word}
 .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;color:#7990a4;font-size:9px}.lg{display:inline-flex;align-items:center;gap:5px}.lg i{width:8px;height:8px;border-radius:50%}.sens{background:var(--cyan)}.internal{background:var(--blue)}.mod{background:var(--violet)}.out{background:var(--pink)}
 .circuits-card{margin-bottom:12px}.circuits-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.circuit{background:#071019;border:1px solid #172a3b;border-radius:13px;padding:11px;min-width:0;transition:.18s}.circuit.hot{border-color:rgba(85,234,208,.42);box-shadow:0 0 22px rgba(85,234,208,.06)}.circuit-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.circuit-title{font-size:12px;font-weight:850;color:#e8f4ff}.circuit-mode{font-size:8px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:4px 6px;border-radius:999px;border:1px solid #284056;color:#8da5b8;white-space:nowrap}.circuit-mode.bio{color:var(--good);border-color:rgba(86,227,154,.32);background:rgba(86,227,154,.06)}.circuit-mode.adaptive{color:var(--cyan);border-color:rgba(85,234,208,.36);background:rgba(85,234,208,.07)}.circuit-mode.fallback{color:var(--warn);border-color:rgba(255,209,102,.28);background:rgba(255,209,102,.05)}.circuit-score{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin:10px 0 7px}.circuit-score .track{height:7px}.circuit-score b{font-size:11px}.circuit-meta{display:flex;gap:9px;flex-wrap:wrap;color:#7790a5;font-size:9px;margin-bottom:7px}.circuit-types{font-size:10px;line-height:1.5;color:#b6c7d5;min-height:30px}.circuit-seeds{margin-top:7px;padding-top:7px;border-top:1px solid rgba(28,43,59,.7);font:9px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#71899d;max-height:54px;overflow:auto}.circuit-activity{margin-top:6px;color:#91a8b9;font-size:9px}.circuit-activity strong{color:var(--cyan)}
+.circuit{cursor:pointer}.circuit:hover{border-color:#365b78;transform:translateY(-1px)}.circuit.selected{border-color:var(--cyan);box-shadow:0 0 0 1px rgba(85,234,208,.18),0 0 26px rgba(85,234,208,.08)}
+.path-card{margin-bottom:12px}.path-meta{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}.path-pill{padding:5px 8px;border:1px solid #233a4e;border-radius:999px;background:#071019;color:#8fa5b8;font-size:9px}.path-list{display:flex;flex-direction:column;gap:9px}.path-row{border:1px solid #172a3b;background:#071019;border-radius:13px;padding:10px}.path-head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:8px}.path-head b{font-size:11px}.path-head span{font-size:9px;color:#8298aa}.path-chain{display:flex;align-items:stretch;gap:5px;overflow-x:auto;padding-bottom:4px}.path-node{min-width:150px;max-width:190px;padding:8px;border:1px solid #20374c;background:#08131d;border-radius:10px}.path-node.sensory{border-color:rgba(85,234,208,.35)}.path-node.output{border-color:rgba(255,120,183,.38)}.path-node.modulatory{border-color:rgba(181,140,255,.35)}.path-node small{display:block;color:#70879b;font-size:8px;text-transform:uppercase;letter-spacing:.07em}.path-node b{display:block;margin:3px 0;font-size:10px;word-break:break-all}.path-node em{display:block;color:#93a8ba;font:9px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;font-style:normal}.path-edge{min-width:132px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;color:#718ca2;font:8px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace}.path-edge strong{font-size:18px;color:#547a96;line-height:1}.path-edge .learned{color:var(--cyan);font-weight:800}.path-empty{padding:18px;border:1px dashed #284055;border-radius:12px;color:#758ca0;font-size:10px}
 @media(max-width:1120px){.grid{grid-template-columns:1fr}.graph-wrap{height:560px}.hero{grid-template-columns:repeat(3,1fr)}.circuits-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.graph-wrap{height:500px}.circuits-grid{grid-template-columns:1fr}}
 </style>
@@ -767,7 +769,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
  <div class="arrow">→</div>
  <div class="flowbox"><small>2 • PROPAGATION</small><strong>139k neuronów + 3.7M połączeń</strong><p>Aktywność rozchodzi się po prawdziwej topologii FlyWire i miesza z pamięcią/plastycznością.</p></div>
  <div class="arrow">→</div>
- <div class="flowbox"><small>3 • READOUT</small><strong>typed DNs + connectome</strong><p>Znane typy neuronów zstępujących kotwiczą akcje, a prawdziwe połączenia FAFB rozszerzają ich pule.</p></div>
+ <div class="flowbox"><small>3 • READOUT</small><strong>action circuits + competition</strong><p>Akcje mają własne pule wyjściowe; voice wybiera zwycięski readout, a kod tylko sprawdza fizyczną wykonalność i wykonuje ruch.</p></div>
  <div class="arrow">→</div>
  <div class="flowbox"><small>4 • LANGUAGE / ACTION</small><strong>generator + connectome</strong><p>Po rozbudowie słownika connectome może również zmieniać szanse konkretnych słów.</p></div>
 </section>
@@ -778,6 +780,15 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
   <span class="mode">LIVE CIRCUITS</span>
  </div>
  <div class="circuits-grid" id="biological-circuits"></div>
+</section>
+
+<section class="card path-card">
+ <div class="card-head">
+  <div><h2>Path Inspector</h2><div class="muted" style="margin-top:4px">Kliknij akcję powyżej. Ścieżki są śledzone wstecz po realnych krawędziach FAFB aż do sensory, z bazową wagą i learned Δ.</div></div>
+  <span class="mode" id="path-action">VOICE_MOVE</span>
+ </div>
+ <div class="path-meta" id="path-meta"><span class="path-pill">czekam na ścieżkę…</span></div>
+ <div class="path-list" id="path-list"><div class="path-empty">Wybierz akcję, aby zobaczyć jej aktualnie najsilniejsze drogi sensory → output.</div></div>
 </section>
 
 <section class="card circuits-card">
@@ -846,6 +857,8 @@ const $=id=>document.getElementById(id);
 const canvas=$("net"),ctx=canvas.getContext("2d"),wrap=$("graph-wrap"),tip=$("tip");
 let stateSnap=null,visualSnap=null,layout={},hover=null,lastUpdate=0;
 let followActivity=localStorage.getItem("mucha-connectome-follow")==="1";
+let selectedAction=localStorage.getItem("mucha-connectome-action")||"voice_move";
+let actionPathSnap=null,pathLastRequest=0;
 const graphNodes=new Map(),graphEdges=new Map();
 const colors={sensory:"#55ead0",internal:"#6da8ff",modulatory:"#b58cff",output:"#ff78b7"};
 const nfmt=n=>Number(n||0).toLocaleString("pl-PL");
@@ -943,7 +956,14 @@ canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();m
 canvas.addEventListener("mouseleave",()=>{mouse.inside=false;tip.style.display="none"});
 function renderActions(scores){
  const order=["speak","explore","react","voice_join","voice_move","voice_leave","stay"];
- $("actions").innerHTML=order.map(k=>{const v=clamp(Number(scores[k]||0),0,1);return '<div class="act"><label>'+k+'</label><div class="track"><div class="fill" style="width:'+(v*100).toFixed(1)+'%"></div></div><b>'+v.toFixed(2)+'</b></div>'}).join("");
+ $("actions").innerHTML=order.map(k=>{const v=clamp(Number(scores[k]||0),0,1);return '<div class="act" style="cursor:pointer" onclick="selectAction(\''+k+'\')"><label>'+k+'</label><div class="track"><div class="fill" style="width:'+(v*100).toFixed(1)+'%"></div></div><b>'+v.toFixed(2)+'</b></div>'}).join("");
+}
+function selectAction(action){
+ selectedAction=String(action||"voice_move");
+ localStorage.setItem("mucha-connectome-action",selectedAction);
+ pathLastRequest=0;
+ $("path-action").textContent=selectedAction.toUpperCase();
+ update();
 }
 function renderBiologicalCircuits(pools,scores){
  const order=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];
@@ -958,7 +978,7 @@ function renderBiologicalCircuits(pools,scores){
   const searched=(p.seed_terms||[]).slice(0,7).map(esc).join(", ");
   const external=Number(p.external_seed_count||0);
   const mean=Number(p.mean_abs_activation||0),max=Number(p.max_abs_activation||0);
-  return '<div class="circuit '+(score>.58?"hot":"")+'">'+
+  return '<div class="circuit '+(score>.58?"hot ":"")+(selectedAction===action?"selected":"")+'" onclick="selectAction(\''+action+'\')">'+
    '<div class="circuit-head"><div class="circuit-title">'+esc(action)+'</div><span class="circuit-mode '+(adaptive?"adaptive":(bio?"bio":"fallback"))+'">'+esc(p.mode||"—")+'</span></div>'+
    '<div class="circuit-score"><div class="track"><div class="fill" style="width:'+(score*100).toFixed(1)+'%"></div></div><b>'+score.toFixed(3)+'</b></div>'+
    '<div class="circuit-meta"><span>'+(adaptive?'sensory cues':'seeds')+' <b>'+nfmt(p.seed_count||0)+'</b></span><span>pool <b>'+nfmt(p.pool_size||0)+'</b></span>'+(!adaptive&&external?'<span>spoza output <b>'+nfmt(external)+'</b></span>':'')+'</div>'+
@@ -969,6 +989,35 @@ function renderBiologicalCircuits(pools,scores){
  }).join("");
  $("biological-circuits").innerHTML=html;
 }
+function renderActionPath(p){
+ if(!p){$("path-action").textContent=selectedAction.toUpperCase();return}
+ $("path-action").textContent=String(p.action||selectedAction).toUpperCase();
+ if(p.error){
+  $("path-meta").innerHTML='<span class="path-pill">'+esc(p.error)+'</span>';
+  $("path-list").innerHTML='<div class="path-empty">Brak ścieżki do pokazania.</div>';
+  return;
+ }
+ $("path-meta").innerHTML=
+  '<span class="path-pill">score <b>'+Number(p.score||0).toFixed(3)+'</b></span>'+
+  '<span class="path-pill">'+esc(p.mode||"—")+'</span>'+
+  '<span class="path-pill">pool '+nfmt(p.pool_size||0)+'</span>'+
+  '<span class="path-pill">pełne sensory paths '+nfmt(p.complete_paths||0)+' / '+nfmt((p.paths||[]).length)+'</span>'+
+  '<span class="path-pill">depth ≤ '+nfmt(p.max_depth||0)+'</span>';
+ const paths=p.paths||[];
+ $("path-list").innerHTML=paths.map(path=>{
+  const nodes=path.nodes||[],edges=path.edges||[];
+  let chain='';
+  nodes.forEach((node,i)=>{
+   const label=node.type||node.neuropil||node.role||"neuron";
+   chain+='<div class="path-node '+esc(node.role||"internal")+'"><small>'+esc(node.role||"internal")+'</small><b>#'+esc(node.id)+'</b><em>'+esc(label)+'</em><em>a '+Number(node.activation||0).toFixed(4)+' • bias '+Number(node.bias||0).toFixed(5)+' • elig '+Number(node.eligibility||0).toFixed(3)+'</em></div>';
+   if(i<edges.length){
+    const e=edges[i]||{},delta=Number(e.learned_delta||0),effective=Number(e.effective_weight||0);
+    chain+='<div class="path-edge"><strong>→</strong><span>base '+Number(e.base_weight||0).toFixed(4)+'</span><span class="'+(Math.abs(delta)>1e-9?"learned":"")+'">Δ '+(delta>=0?"+":"")+delta.toFixed(5)+'</span><span>eff '+effective.toFixed(4)+'</span></div>';
+   }
+  });
+  return '<div class="path-row"><div class="path-head"><b>PATH '+nfmt(path.rank||0)+' '+(path.complete?"✓ sensory→output":"• partial")+'</b><span>strength '+Number(path.strength||0).toFixed(3)+'</span></div><div class="path-chain">'+chain+'</div></div>';
+ }).join("")||'<div class="path-empty">Nie znaleziono ścieżki w aktualnym limicie głębokości. To nie znaczy, że połączenia nie istnieją — mogą być dłuższe lub aktualnie słabe.</div>';
+}
 function updateModeButton(){
  const b=$("follow-btn");b.textContent="FOLLOW ACTIVITY: "+(followActivity?"ON":"OFF");b.className="follow "+(followActivity?"on":"");
  $("mode-label").textContent=followActivity?"DYNAMIC TOP ACTIVITY":"STABLE WINDOW";
@@ -976,6 +1025,8 @@ function updateModeButton(){
 $("follow-btn").onclick=()=>{followActivity=!followActivity;localStorage.setItem("mucha-connectome-follow",followActivity?"1":"0");updateModeButton();update()};
 function render(s,v){
  stateSnap=s;visualSnap=v;ingestGraph(v);
+ if(v.action_path){actionPathSnap=v.action_path;pathLastRequest=Date.now()}
+ renderActionPath(actionPathSnap);
  const d=s.diag||{},ld=s.language_diag||{},cw=ld.connectome_word_control_last||{};
  $("k-neurons").textContent=nfmt(d.neurons);$("k-connections").textContent=nfmt(d.connections);$("k-active").textContent=nfmt(d.active_abs_gt_0_1);$("k-mean").textContent=Number(d.mean_abs||0).toFixed(5);$("k-reward").textContent=Number(d.reward_trace||0).toFixed(3);$("k-backend").textContent=(d.backend||"—")+" • "+(d.device||"");$("k-tick").textContent="tick "+nfmt(d.ticks);$("k-synapses").textContent=nfmt(d.learned_synapses||0);$("k-synapse-delta").textContent="max |Δ| "+Number(d.synaptic_max_abs||0).toFixed(5);
  $("selected").textContent=nfmt(v.selected_neurons);$("edges").textContent=nfmt(v.selected_edges);$("connected-outputs").textContent=nfmt(v.connected_output_neurons||0);$("isolated-nodes").textContent=nfmt(v.isolated_neurons||0);$("event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";renderActions(s.scores||{});
@@ -993,9 +1044,11 @@ function render(s,v){
 }
 async function update(){
  try{
+  const wantPath=Date.now()-pathLastRequest>2500;
+  const pathQuery=wantPath?"&action="+encodeURIComponent(selectedAction):"";
   const [stateResp,visualResp]=await Promise.all([
    fetch("/api/state",{cache:"no-store"}),
-   fetch("/api/connectome?follow="+(followActivity?"1":"0"),{cache:"no-store"})
+   fetch("/api/connectome?follow="+(followActivity?"1":"0")+pathQuery,{cache:"no-store"})
   ]);
   if(stateResp.status===401||visualResp.status===401){location="/login";return}
   if(!stateResp.ok)throw new Error("state HTTP "+stateResp.status);
@@ -1003,7 +1056,7 @@ async function update(){
   render(await stateResp.json(),await visualResp.json())
  }catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}
 }
-window.addEventListener("resize",resize);updateModeButton();resize();draw();setInterval(update,900);update();
+window.addEventListener("resize",resize);$("path-action").textContent=selectedAction.toUpperCase();updateModeButton();resize();draw();setInterval(update,900);update();
 </script>
 </body></html>"""
 NEUROMAP_HTML = r"""<!doctype html>
