@@ -174,9 +174,19 @@ class MuchaClient(discord.Client):
         self._language_start_diag = self.language.diagnostics()
         self._stt_transcripts_since_start = 0
         self.random = random.Random(cfg.brain.seed + 1)
+        episodic_path = Path(cfg.voice.episodic_database)
+        if not episodic_path.is_absolute():
+            episodic_path = (
+                Path(__file__).resolve().parents[1]
+                / episodic_path
+            )
         self.voice_episodes = VoiceEpisodicMemory(
             max_events=cfg.voice.episodic_memory_size,
             learning_rate=cfg.voice.prediction_learning_rate,
+            database=episodic_path,
+            max_persisted_events=(
+                cfg.voice.episodic_max_persisted_events
+            ),
         )
         self._voice_prediction_pending: dict[int, dict] = {}
         self._voice_prediction_corrections: dict[int, dict] = {}
@@ -427,7 +437,10 @@ class MuchaClient(discord.Client):
             "exploration_drive_ramp_seconds",
             "exploration_drive_max_magnitude",
             "episodic_prediction_enabled",
+            "episodic_database",
             "episodic_memory_size",
+            "episodic_max_persisted_events",
+            "episodic_recall_magnitude",
             "prediction_learning_rate",
             "prediction_error_scale",
             "prediction_error_max_correction",
@@ -738,8 +751,17 @@ class MuchaClient(discord.Client):
             ("voice", "episodic_prediction_enabled"): (
                 bool, None, None
             ),
+            ("voice", "episodic_database"): (
+                str, None, None
+            ),
             ("voice", "episodic_memory_size"): (
                 int, 16, 5000
+            ),
+            ("voice", "episodic_max_persisted_events"): (
+                int, 16, 1000000
+            ),
+            ("voice", "episodic_recall_magnitude"): (
+                float, 0.0, 4.0
             ),
             ("voice", "prediction_learning_rate"): (
                 float, 0.001, 1.0
@@ -1090,6 +1112,19 @@ class MuchaClient(discord.Client):
                         source=source,
                         predicted_reward=float(
                             pending.get("predicted_reward", 0.0)
+                        ),
+                        channel_id=pending.get("channel_id"),
+                        channel_name=str(
+                            pending.get("channel_name", "")
+                        ),
+                        user_ids=list(
+                            pending.get("user_ids", [])
+                        ),
+                        user_names=list(
+                            pending.get("user_names", [])
+                        ),
+                        scene_key=str(
+                            pending.get("scene_key", "")
                         ),
                     )
                     self._voice_prediction_last[guild.id] = episode
@@ -3299,6 +3334,39 @@ class MuchaClient(discord.Client):
             "exploration": exploration,
         }
 
+    def _update_pending_voice_scene(
+        self,
+        guild_id: int,
+        channel: discord.VoiceChannel,
+    ) -> None:
+        pending = self._voice_prediction_pending.get(
+            int(guild_id)
+        )
+        if pending is None:
+            return
+        humans = [
+            member
+            for member in channel.members
+            if not member.bot
+        ]
+        user_ids = sorted(int(member.id) for member in humans)
+        pending["channel_id"] = int(channel.id)
+        pending["channel_name"] = str(channel.name)
+        pending["user_ids"] = user_ids
+        pending["user_names"] = [
+            member.display_name
+            for member in sorted(
+                humans,
+                key=lambda item: int(item.id),
+            )
+        ]
+        pending["scene_key"] = (
+            self.voice_episodes.make_scene_key(
+                channel.id,
+                user_ids,
+            )
+        )
+
     def _voice_reward_opportunity_for(
         self,
         guild_id: int,
@@ -4558,6 +4626,7 @@ class MuchaClient(discord.Client):
             "last_action": self._last_brain_action,
             "paused": self.paused,
             "voice_debug": list(self._voice_debug.values()),
+            "episodic_memory": self.voice_episodes.diagnostics(),
             "audio_debug": dict(self._audio_debug),
             "stt_debug": dict(self._stt_debug),
             "reaction_debug": reaction_debug,
@@ -6047,7 +6116,19 @@ class MuchaClient(discord.Client):
             "exploration_drive_level": 0.0,
             "homeostasis_guided": {},
             "prediction_context": None,
+            "prediction_scene_key": None,
             "prediction_expected": {},
+            "episodic_recall": {},
+            "episodic_persistent": bool(
+                self.voice_episodes.db is not None
+            ),
+            "episodic_database": str(
+                self.voice_episodes.path or ""
+            ),
+            "episodic_prediction_count": (
+                self.voice_episodes.prediction_count()
+            ),
+            "episodic_recent": self.voice_episodes.recent(6),
             "predicted_reward": 0.0,
             "prediction_error": None,
             "prediction_correction_applied": 0.0,
@@ -6412,15 +6493,28 @@ class MuchaClient(discord.Client):
             if current is not None
             else ("voice_join", "stay")
         )
+        prediction_user_ids = (
+            [int(m.id) for m in current_humans]
+            if current is not None
+            else sorted(available_human_ids)
+        )
+        prediction_scene_key = (
+            self.voice_episodes.make_scene_key(
+                current.id if current is not None else None,
+                prediction_user_ids,
+            )
+        )
         prediction_expected = (
             self.voice_episodes.predictions(
                 prediction_context,
                 prediction_actions,
+                scene_key=prediction_scene_key,
             )
             if self.cfg.voice.episodic_prediction_enabled
             else {}
         )
         debug["prediction_context"] = prediction_context
+        debug["prediction_scene_key"] = prediction_scene_key
         debug["prediction_expected"] = dict(prediction_expected)
         last_prediction = self._voice_prediction_last.get(
             guild.id
@@ -6523,6 +6617,59 @@ class MuchaClient(discord.Client):
                     )
                 )
 
+            episodic_recall = {}
+            if (
+                connectome_voice_control
+                and self.cfg.voice.episodic_prediction_enabled
+            ):
+                recall_scale = max(
+                    0.0,
+                    min(
+                        4.0,
+                        float(
+                            self.cfg.voice.episodic_recall_magnitude
+                        ),
+                    ),
+                )
+                for action_name, expected_reward in (
+                    prediction_expected.items()
+                ):
+                    magnitude = (
+                        recall_scale
+                        * max(0.0, float(expected_reward))
+                    )
+                    if magnitude <= 0.001:
+                        continue
+                    episodic_recall[action_name] = (
+                        self.brain.inject_action_guided_sensory(
+                            action_name,
+                            (
+                                "episodic-recall:"
+                                f"{guild.id}:"
+                                f"{prediction_scene_key}"
+                            ),
+                            magnitude,
+                            width=176,
+                            hops=3,
+                        )
+                    )
+                if episodic_recall:
+                    debug["episodic_recall"] = {
+                        key: {
+                            "mode": str(value.get("mode", "")),
+                            "neurons": int(
+                                value.get("neurons", 0)
+                            ),
+                            "reach_max": float(
+                                value.get("reach_max", 0.0)
+                            ),
+                            "magnitude": float(
+                                value.get("magnitude", 0.0)
+                            ),
+                        }
+                        for key, value in episodic_recall.items()
+                    }
+
             if connectome_voice_control:
                 voice_context_diag = (
                     self.brain.inject_voice_decision_context(
@@ -6610,12 +6757,42 @@ class MuchaClient(discord.Client):
                 )
                 debug["predicted_reward"] = predicted_reward
                 if self.cfg.voice.episodic_prediction_enabled:
+                    prediction_members = (
+                        current_humans
+                        if current is not None
+                        else [
+                            member
+                            for _, humans in channels
+                            for member in humans
+                        ]
+                    )
+                    seen_members = {}
+                    for member in prediction_members:
+                        seen_members[int(member.id)] = member
                     self._voice_prediction_pending[guild.id] = {
                         "time": now,
                         "context": prediction_context,
+                        "scene_key": prediction_scene_key,
                         "action": chosen_action,
                         "predicted_reward": predicted_reward,
                         "trace": decision_trace,
+                        "channel_id": (
+                            int(current.id)
+                            if current is not None
+                            else None
+                        ),
+                        "channel_name": (
+                            str(current.name)
+                            if current is not None
+                            else ""
+                        ),
+                        "user_ids": sorted(
+                            seen_members.keys()
+                        ),
+                        "user_names": [
+                            seen_members[user_id].display_name
+                            for user_id in sorted(seen_members)
+                        ],
                     }
             else:
                 self.brain.step(2)
@@ -6988,6 +7165,10 @@ class MuchaClient(discord.Client):
                     connect_kwargs["cls"] = voice_recv.VoiceRecvClient
                 new_vc = await target.connect(**connect_kwargs)
                 self._ensure_voice_listener(new_vc)
+                self._update_pending_voice_scene(
+                    guild.id,
+                    target,
+                )
                 self.voice_arrived[guild.id] = now
                 self._mark_voice_visit(guild.id, target.id, now)
                 await self._mark_social_voice_arrival(
@@ -7492,6 +7673,10 @@ class MuchaClient(discord.Client):
                 )
                 try:
                     await vc.move_to(target)
+                    self._update_pending_voice_scene(
+                        guild.id,
+                        target,
+                    )
                     self.voice_arrived[guild.id] = now
                     self._mark_voice_visit(guild.id, target.id, now)
                     await self._mark_social_voice_arrival(
