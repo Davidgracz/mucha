@@ -4561,6 +4561,13 @@ class MuchaClient(discord.Client):
                 float(self.cfg.voice.memory_replay_reward_scale),
             ),
         )
+        if magnitude <= 0.001:
+            self._memory_replay_debug.update({
+                "state": "WAITING",
+                "reason": "zero-magnitude",
+                "quiet_for": quiet_for,
+            })
+            return
         steps = max(
             1,
             min(24, int(self.cfg.voice.memory_replay_steps)),
