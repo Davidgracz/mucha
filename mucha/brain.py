@@ -515,7 +515,14 @@ class FlyBrain:
 
     def step(self, ticks: int = 1) -> None:
         for _ in range(max(1, ticks)):
-            propagated = self.matrix.dot(self.state).astype(self.xp.float32, copy=False)
+            propagated = self.matrix.dot(self.state).astype(
+                self.xp.float32,
+                copy=False,
+            )
+            if self._synaptic_delta_map:
+                propagated = propagated + self.synaptic_matrix.dot(
+                    self.state
+                ).astype(self.xp.float32, copy=False)
             noise = self.compute.random_normal(0.0, self.cfg.noise, size=self.state.shape)
             x = (
                 self.cfg.leak * self.state
