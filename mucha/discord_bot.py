@@ -124,6 +124,14 @@ class SentTrace:
 
 
 class MuchaClient(discord.Client):
+    # Permanent no-write channels. These IDs are intentionally hard-coded so
+    # neither config.local.toml nor the web panel can accidentally enable them.
+    HARD_BLOCKED_TEXT_CHANNEL_IDS = frozenset({
+        344519890083774475,
+        506193122460434443,
+        784590857633267713,
+    })
+
     def __init__(self, cfg: Config):
         intents = discord.Intents.default()
         intents.message_content = True
@@ -431,7 +439,10 @@ class MuchaClient(discord.Client):
             "guilds": [],
         }
 
-        blocked_text = set(self.cfg.discord.blocked_text_channel_ids)
+        blocked_text = (
+            set(self.cfg.discord.blocked_text_channel_ids)
+            | set(self.HARD_BLOCKED_TEXT_CHANNEL_IDS)
+        )
         blocked_voice = set(self.cfg.voice.blocked_voice_channel_ids)
         blocked_voice_guilds = set(self.cfg.voice.blocked_voice_guild_ids)
         for guild in self.guilds:
@@ -446,6 +457,10 @@ class MuchaClient(discord.Client):
                     "name": channel.name,
                     "guild": guild.name,
                     "blocked": channel.id in blocked_text,
+                    "hard_blocked": (
+                        channel.id
+                        in self.HARD_BLOCKED_TEXT_CHANNEL_IDS
+                    ),
                 })
             for channel in guild.voice_channels:
                 data["channels"]["voice"].append({
@@ -2181,7 +2196,11 @@ class MuchaClient(discord.Client):
         channel_id = getattr(channel, "id", None)
         if channel_id is None:
             return False
-        return int(channel_id) in self.cfg.discord.blocked_text_channel_ids
+        channel_id = int(channel_id)
+        return (
+            channel_id in self.HARD_BLOCKED_TEXT_CHANNEL_IDS
+            or channel_id in self.cfg.discord.blocked_text_channel_ids
+        )
 
     def _is_voice_channel_blocked(self, channel: object) -> bool:
         channel_id = getattr(channel, "id", None)
