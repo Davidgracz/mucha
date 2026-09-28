@@ -3089,9 +3089,9 @@ class WebDashboard:
                 pass
 
             try:
-                uptime = (
-                    float(ctypes.windll.kernel32.GetTickCount64()) / 1000.0
-                )
+                get_tick_count_64 = ctypes.windll.kernel32.GetTickCount64
+                get_tick_count_64.restype = ctypes.c_ulonglong
+                uptime = float(get_tick_count_64()) / 1000.0
             except (AttributeError, OSError, ValueError):
                 uptime = 0.0
 
