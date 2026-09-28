@@ -63,11 +63,20 @@ def main():
     # They are still explicitly marked as demo metadata in the manifest.
     typed = output[: min(len(output), 96)]
     demo_types = (
-        "pIP10", "pMP2", "DNa01", "DNa02", "DNg13", "DNp09",
+        "DNa01", "DNa02", "DNg13", "DNp09",
         "MDN", "DNp06", "aDN1", "aDN2", "DNp07", "DNp10",
     )
     for pos, idx in enumerate(typed):
         primary_type[int(idx)] = demo_types[pos % len(demo_types)]
+    # Keep the communication/song seed intentionally outside the broad output
+    # pool so the smoke test proves full-connectome seed discovery works.
+    external_speak_idx = min(
+        n - 1,
+        max(0, int(sensory[-1]) + 5) if len(sensory) else 5,
+    )
+    if external_speak_idx in set(int(i) for i in output.tolist()):
+        external_speak_idx = max(0, int(output[0]) - 1)
+    primary_type[int(external_speak_idx)] = "pIP10"
     demo_neuropils = np.where(
         x < -0.25,
         "DEMO_L",
