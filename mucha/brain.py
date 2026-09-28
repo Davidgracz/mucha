@@ -796,6 +796,11 @@ class FlyBrain:
             idx = self._backend_indices(idx_cpu)
             self.state[idx] += np.float32(0.35 * amount)
 
+        synaptic_learning = self._reinforce_synapses(
+            amount,
+            trace,
+        )
+
         after = self.action_scores()
         impact = {name: after[name] - before[name] for name in self.ACTIONS}
 
@@ -830,6 +835,10 @@ class FlyBrain:
             "changed_neurons": nonzero,
             "mean_delta": mean_delta,
             "max_delta": max_delta,
+            "changed_synapses": synaptic_learning["changed"],
+            "learned_synapses": synaptic_learning["total"],
+            "synaptic_mean_delta": synaptic_learning["mean_delta"],
+            "synaptic_max_delta": synaptic_learning["max_delta"],
             "before": before,
             "after": after,
             "impact": impact,
