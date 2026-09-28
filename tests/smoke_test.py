@@ -14,7 +14,7 @@ from mucha.config import BrainConfig
 from mucha.connectome import Connectome
 from mucha.brain import FlyBrain
 from mucha.language import OnlineLanguage
-from mucha.web_ui import ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, PUBLIC_OVERVIEW_HTML
+from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, PUBLIC_OVERVIEW_HTML
 
 
 def main():
@@ -44,6 +44,37 @@ def main():
             b._action_output_pools["voice_leave"],
         )
         assert 0 <= b.language_word_score("siema") <= 1
+
+        # Each Discord user now owns a stable sensory identity plus a
+        # connectivity-derived memory assembly. Social reward/punish must
+        # change persistent neural memory rather than only the SQL affinity.
+        social_uid = 424242
+        identity_a = b.user_identity_pool(social_uid).copy()
+        identity_b = b.user_identity_pool(social_uid).copy()
+        memory_a = b.user_memory_pool(social_uid).copy()
+        memory_b = b.user_memory_pool(social_uid).copy()
+        assert np.array_equal(identity_a, identity_b)
+        assert np.array_equal(memory_a, memory_b)
+        assert len(identity_a) > 0
+        assert len(memory_a) > 0
+        b.activate_user_memory(social_uid, 0.7)
+        b.step(2)
+        social_positive = b.reinforce_user_memory(
+            social_uid,
+            0.12,
+        )
+        assert social_positive["neural_affinity"] > 0.0
+        assert social_positive["maturity"] > 0.0
+        assert social_positive["learned_synapses"] > 0
+        assert social_positive["top_edges"]
+
+        disliked_uid = 434343
+        social_negative = b.reinforce_user_memory(
+            disliked_uid,
+            -0.18,
+        )
+        assert social_negative["neural_affinity"] < 0.0
+        assert social_negative["learned_synapses"] > 0
 
         nm = b.neuromodulator_diagnostics()
         assert nm["enabled"]
@@ -125,6 +156,10 @@ def main():
         assert "Zapisz i zrestartuj Muchę" in CONFIG_HTML
         assert "Neuromodulatory v2" in CONFIG_HTML
         assert "dopamine_plasticity_gain" in CONFIG_HTML
+        assert "neural_social_memory_enabled" in CONFIG_HTML
+        assert "neural_affinity_weight" in CONFIG_HTML
+        assert "Social Neural Memory" in AFFINITY_HTML
+        assert "neural-users" in AFFINITY_HTML
         assert 'const out={brain:{},language:{},behavior:{},voice:{}};' in CONFIG_HTML
         bot_source = (ROOT / "mucha" / "discord_bot.py").read_text(
             encoding="utf-8"
@@ -136,6 +171,8 @@ def main():
         ):
             assert hard_blocked_id in bot_source
         assert "HARD_BLOCKED_TEXT_CHANNEL_IDS" in bot_source
+        assert "_user_affinity_components" in bot_source
+        assert "_write_neural_social_memory" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
