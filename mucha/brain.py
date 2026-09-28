@@ -2675,11 +2675,54 @@ class FlyBrain:
                     min(0.90 * abs(base_weight), new),
                 )
 
+            applied_delta = float(new - old)
+            old_strength = float(
+                self._synaptic_consolidation_map.get(key, 0.0)
+            )
+            consolidation_gain = max(
+                0.0,
+                min(
+                    1.0,
+                    float(self.cfg.synaptic_consolidation_gain),
+                ),
+            )
+            evidence = min(
+                1.0,
+                abs(float(amount)) * float(edge_elig[pos]),
+            )
+            consistent = (
+                abs(old) <= 1e-12
+                or abs(applied_delta) <= 1e-12
+                or old * applied_delta >= 0.0
+            )
+            if consistent:
+                new_strength = old_strength + (
+                    consolidation_gain
+                    * (0.20 + 0.80 * evidence)
+                    * (1.0 - old_strength)
+                )
+            else:
+                new_strength = old_strength * (
+                    1.0
+                    - min(
+                        0.85,
+                        consolidation_gain
+                        * (0.60 + 0.90 * evidence),
+                    )
+                )
+            new_strength = max(
+                0.0,
+                min(1.0, float(new_strength)),
+            )
+
             if abs(new) <= 1e-9:
                 self._synaptic_delta_map.pop(key, None)
+                self._synaptic_consolidation_map.pop(key, None)
+                self._synaptic_last_touched_map.pop(key, None)
             else:
                 self._synaptic_delta_map[key] = float(new)
-            applied_delta = float(new - old)
+                self._synaptic_consolidation_map[key] = new_strength
+                self._synaptic_last_touched_map[key] = time.time()
             applied.append(applied_delta)
             if abs(applied_delta) > 1e-12:
                 applied_edges.append({
@@ -2705,6 +2748,14 @@ class FlyBrain:
                     "old_learned_delta": old,
                     "new_learned_delta": float(new),
                     "change": applied_delta,
+                    "consolidation": new_strength,
+                    "memory_status": (
+                        "consolidated"
+                        if new_strength >= float(
+                            self.cfg.synaptic_consolidated_threshold
+                        )
+                        else "fresh"
+                    ),
                 })
 
         max_edges = max(
@@ -2718,6 +2769,19 @@ class FlyBrain:
                 reverse=True,
             )[:max_edges]
             self._synaptic_delta_map = dict(strongest)
+            kept = set(self._synaptic_delta_map)
+            self._synaptic_consolidation_map = {
+                key: value
+                for key, value
+                in self._synaptic_consolidation_map.items()
+                if key in kept
+            }
+            self._synaptic_last_touched_map = {
+                key: value
+                for key, value
+                in self._synaptic_last_touched_map.items()
+                if key in kept
+            }
 
         if applied:
             self._rebuild_synaptic_matrix()
