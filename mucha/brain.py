@@ -131,6 +131,10 @@ class FlyBrain:
         self._word_association_signature_cache: dict[
             str, tuple[np.ndarray, np.ndarray]
         ] = {}
+        self._absolute_connectome_cpu: scipy_sparse.csr_matrix | None = None
+        self._user_identity_cache: dict[int, np.ndarray] = {}
+        self._user_memory_cache: dict[int, np.ndarray] = {}
+        self._user_memory_last_activation: dict[int, float] = {}
         self._init_neuro_map_metadata()
         self.last_learning: dict = {
             "amount": 0.0,
@@ -1258,13 +1262,357 @@ class FlyBrain:
         self.state[idx] += np.float32(magnitude) * jitter
         self.xp.clip(self.state, -3.0, 3.0, out=self.state)
 
+    def _absolute_connectome(self) -> scipy_sparse.csr_matrix:
+        if self._absolute_connectome_cpu is None:
+            matrix = self.c.matrix.copy().tocsr()
+            matrix.data = np.abs(
+                matrix.data
+            ).astype(np.float32, copy=False)
+            self._absolute_connectome_cpu = matrix
+        return self._absolute_connectome_cpu
+
+    def user_identity_pool(
+        self,
+        user_id: int,
+        width: int = 96,
+    ) -> np.ndarray:
+        """Stable neural identity for one Discord user."""
+        user_id = int(user_id)
+        cached = self._user_identity_cache.get(user_id)
+        if cached is not None and len(cached):
+            return cached
+        pool = self._subset(
+            f"social:user-identity:{user_id}",
+            self.c.sensory,
+            width,
+        ).astype(np.int32, copy=False)
+        self._user_identity_cache[user_id] = pool
+        return pool
+
+    def user_memory_pool(
+        self,
+        user_id: int,
+        width: int = 128,
+    ) -> np.ndarray:
+        """Build a stable memory assembly from real FAFB connectivity."""
+        user_id = int(user_id)
+        cached = self._user_memory_cache.get(user_id)
+        if cached is not None and len(cached):
+            return cached
+
+        identity = self.user_identity_pool(user_id)
+        width = max(
+            32,
+            min(int(width), self.c.n_neurons),
+        )
+        absolute = self._absolute_connectome()
+        cue = np.zeros(
+            self.c.n_neurons,
+            dtype=np.float32,
+        )
+        cue[identity] = 1.0
+        hop1 = np.asarray(
+            absolute.dot(cue)
+        ).ravel().astype(np.float32, copy=False)
+        hop2 = np.asarray(
+            absolute.dot(hop1)
+        ).ravel().astype(np.float32, copy=False)
+        score = (
+            0.55 * hop1
+            + hop2
+        ).astype(np.float32, copy=False)
+        score[identity] = 0.0
+
+        if np.any(score > 0.0):
+            k = min(width, int(np.count_nonzero(score > 0.0)))
+            part = np.argpartition(score, -k)[-k:]
+            order = part[
+                np.argsort(score[part])[::-1]
+            ]
+            pool = order.astype(np.int32, copy=False)
+        else:
+            # This should be rare; keep the representation deterministic if a
+            # demo/sparse connectome has no outgoing path from the identity.
+            pool = self._subset(
+                f"social:user-memory:{user_id}",
+                np.arange(
+                    self.c.n_neurons,
+                    dtype=np.int32,
+                ),
+                width,
+            ).astype(np.int32, copy=False)
+
+        self._user_memory_cache[user_id] = pool
+        return pool
+
+    def activate_user_memory(
+        self,
+        user_id: int,
+        magnitude: float = 0.45,
+    ) -> None:
+        """Reactivate a user's stable identity and its learned assembly."""
+        user_id = int(user_id)
+        magnitude = max(0.0, min(2.0, float(magnitude)))
+        identity = self.user_identity_pool(user_id)
+        memory = self.user_memory_pool(user_id)
+
+        identity_idx = self._backend_indices(identity)
+        memory_idx = self._backend_indices(memory)
+        self.state[identity_idx] += np.float32(magnitude)
+        # A weak recall term lets persistent plasticity reappear immediately;
+        # subsequent ticks still propagate through the real connectome.
+        self.state[memory_idx] += np.float32(
+            0.16 * magnitude
+        )
+        self.eligibility[identity_idx] = self.xp.maximum(
+            self.eligibility[identity_idx],
+            np.float32(0.72),
+        )
+        self.eligibility[memory_idx] = self.xp.maximum(
+            self.eligibility[memory_idx],
+            np.float32(0.36),
+        )
+        self.xp.clip(
+            self.state,
+            -3.0,
+            3.0,
+            out=self.state,
+        )
+        self._user_memory_last_activation[user_id] = time.time()
+
+    def reinforce_user_memory(
+        self,
+        user_id: int,
+        amount: float,
+    ) -> dict:
+        """Write social valence into a user's neural assembly.
+
+        Short-term valence is encoded in neuronal bias. Long-term memory is a
+        sparse learned-synapse overlay restricted to the identity/memory
+        assembly, so it survives restarts through brain_state.npz.
+        """
+        user_id = int(user_id)
+        amount = max(-1.0, min(1.0, float(amount)))
+        if abs(amount) <= 1e-12:
+            return self.user_memory_diagnostics(user_id)
+
+        identity = self.user_identity_pool(user_id)
+        memory = self.user_memory_pool(user_id)
+        self.activate_user_memory(
+            user_id,
+            0.28 + min(0.72, abs(amount) * 2.0),
+        )
+
+        identity_idx = self._backend_indices(identity)
+        memory_idx = self._backend_indices(memory)
+        bias_delta = np.float32(0.12 * amount)
+        identity_delta = np.float32(0.035 * amount)
+        self.plastic_bias[memory_idx] += bias_delta
+        self.plastic_bias[identity_idx] += identity_delta
+        self.xp.clip(
+            self.plastic_bias,
+            -self.cfg.max_bias,
+            self.cfg.max_bias,
+            out=self.plastic_bias,
+        )
+
+        combined = np.unique(
+            np.concatenate([identity, memory])
+        ).astype(np.int32, copy=False)
+        eligibility = np.full(
+            len(combined),
+            0.62,
+            dtype=np.float32,
+        )
+        identity_set = set(
+            int(i) for i in identity.tolist()
+        )
+        for pos, idx in enumerate(combined):
+            if int(idx) in identity_set:
+                eligibility[pos] = 0.90
+
+        # Small positive contacts should still accumulate; strong rejection
+        # should be memorable after one event, but remains bounded.
+        synaptic_amount = math.copysign(
+            min(
+                1.0,
+                0.22 + abs(amount) * 6.5,
+            ),
+            amount,
+        )
+        self._reinforce_synapses(
+            synaptic_amount,
+            (combined, eligibility),
+        )
+        return self.user_memory_diagnostics(user_id)
+
+    def user_memory_diagnostics(
+        self,
+        user_id: int,
+    ) -> dict:
+        user_id = int(user_id)
+        identity = self.user_identity_pool(user_id)
+        memory = self.user_memory_pool(user_id)
+        identity_idx = self._backend_indices(identity)
+        memory_idx = self._backend_indices(memory)
+
+        identity_activity = self.compute.to_cpu(
+            self.state[identity_idx]
+        ).astype(np.float32, copy=False)
+        memory_activity = self.compute.to_cpu(
+            self.state[memory_idx]
+        ).astype(np.float32, copy=False)
+        memory_bias = self.compute.to_cpu(
+            self.plastic_bias[memory_idx]
+        ).astype(np.float32, copy=False)
+
+        mean_abs_bias = float(
+            np.mean(np.abs(memory_bias))
+            if len(memory_bias)
+            else 0.0
+        )
+        bias_sum_abs = float(
+            np.sum(np.abs(memory_bias))
+        )
+        bias_valence = (
+            float(np.sum(memory_bias)) / bias_sum_abs
+            if bias_sum_abs > 1e-9
+            else 0.0
+        )
+        bias_strength = min(
+            1.0,
+            mean_abs_bias / 0.040,
+        )
+
+        combined = np.unique(
+            np.concatenate([identity, memory])
+        ).astype(np.int32, copy=False)
+        learned = self._synaptic_matrix_cpu[
+            combined
+        ][:, combined].tocsr()
+        base = self.c.matrix[
+            combined
+        ][:, combined].tocsr()
+        sign_base = base.copy()
+        if sign_base.nnz:
+            sign_base.data = np.sign(
+                sign_base.data
+            ).astype(np.float32, copy=False)
+        aligned = learned.multiply(sign_base).tocoo()
+        learned_count = int(learned.nnz)
+
+        if aligned.nnz:
+            aligned_values = np.asarray(
+                aligned.data,
+                dtype=np.float32,
+            )
+            aligned_abs = float(
+                np.sum(np.abs(aligned_values))
+            )
+            synaptic_valence = (
+                float(np.sum(aligned_values))
+                / aligned_abs
+                if aligned_abs > 1e-12
+                else 0.0
+            )
+            mean_abs_delta = float(
+                np.mean(np.abs(aligned_values))
+            )
+        else:
+            synaptic_valence = 0.0
+            mean_abs_delta = 0.0
+
+        synaptic_strength = min(
+            1.0,
+            learned_count / 512.0
+            + mean_abs_delta / 0.010,
+        )
+        evidence = (
+            bias_strength + synaptic_strength
+        )
+        if evidence > 1e-9:
+            neural_affinity = (
+                bias_valence * bias_strength
+                + synaptic_valence * synaptic_strength
+            ) / evidence
+        else:
+            neural_affinity = 0.0
+        neural_affinity = max(
+            -1.0,
+            min(1.0, float(neural_affinity)),
+        )
+        maturity = max(
+            0.0,
+            min(
+                1.0,
+                0.35 * bias_strength
+                + 0.65 * synaptic_strength,
+            ),
+        )
+
+        top_edges: list[dict] = []
+        if learned.nnz:
+            coo = learned.tocoo()
+            order = np.argsort(
+                np.abs(coo.data)
+            )[::-1][:5]
+            for pos in order:
+                local_target = int(coo.row[int(pos)])
+                local_source = int(coo.col[int(pos)])
+                target_idx = int(combined[local_target])
+                source_idx = int(combined[local_source])
+                top_edges.append({
+                    "source": int(
+                        self.c.root_ids[source_idx]
+                    ),
+                    "target": int(
+                        self.c.root_ids[target_idx]
+                    ),
+                    "delta": float(
+                        coo.data[int(pos)]
+                    ),
+                })
+
+        last = self._user_memory_last_activation.get(
+            user_id
+        )
+        return {
+            "user_id": user_id,
+            "neural_affinity": neural_affinity,
+            "maturity": maturity,
+            "identity_neurons": int(len(identity)),
+            "memory_neurons": int(len(memory)),
+            "learned_synapses": learned_count,
+            "mean_abs_synaptic_delta": mean_abs_delta,
+            "mean_abs_bias": mean_abs_bias,
+            "identity_activity": float(
+                np.mean(np.abs(identity_activity))
+                if len(identity_activity)
+                else 0.0
+            ),
+            "memory_activity": float(
+                np.mean(np.abs(memory_activity))
+                if len(memory_activity)
+                else 0.0
+            ),
+            "last_activation_age": (
+                max(0.0, time.time() - last)
+                if last is not None
+                else None
+            ),
+            "top_edges": top_edges,
+        }
+
     def inject_text(self, text: str, author_id: int, mentioned: bool) -> None:
         stripped = text.strip()
         if not stripped:
             return
         mag = min(1.8, 0.25 + len(stripped) / 180.0)
         self.inject("text:any", mag, 128)
-        self.inject(f"user:{author_id}", 0.45 + 0.2 * mentioned, 64)
+        self.activate_user_memory(
+            author_id,
+            0.45 + 0.20 * mentioned,
+        )
         if mentioned:
             self.inject("text:mention-self", 1.25, 128)
         if "?" in stripped:
@@ -1317,7 +1665,7 @@ class FlyBrain:
             64,
         )
         for uid in users[:12]:
-            self.inject(f"voice:user:{uid}", 0.08, 24)
+            self.activate_user_memory(uid, 0.08)
 
     def step(self, ticks: int = 1) -> None:
         for _ in range(max(1, ticks)):
