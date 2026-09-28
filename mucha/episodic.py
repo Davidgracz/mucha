@@ -35,6 +35,10 @@ class VoiceEpisodicMemory:
         learning_rate: float = 0.20,
         database: str | Path | None = None,
         max_persisted_events: int = 10000,
+        consolidation_gain: float = 0.08,
+        forgetting_half_life_days: float = 14.0,
+        forgetting_interval_seconds: int = 300,
+        consolidated_threshold: float = 0.35,
     ):
         self.max_events = max(16, int(max_events))
         self.max_persisted_events = max(
@@ -45,6 +49,32 @@ class VoiceEpisodicMemory:
             0.001,
             min(1.0, float(learning_rate)),
         )
+        self.consolidation_gain = max(
+            0.0,
+            min(1.0, float(consolidation_gain)),
+        )
+        self.forgetting_half_life_days = max(
+            0.25,
+            float(forgetting_half_life_days),
+        )
+        self.forgetting_interval_seconds = max(
+            30,
+            int(forgetting_interval_seconds),
+        )
+        self.consolidated_threshold = max(
+            0.0,
+            min(1.0, float(consolidated_threshold)),
+        )
+        self._last_forgetting_at = time.time()
+        self._last_forgetting_diag: dict = {
+            "ran": False,
+            "factor": 1.0,
+            "elapsed_seconds": 0.0,
+        }
+        self._consolidation: dict[
+            tuple[str, str],
+            dict,
+        ] = {}
         self._values: dict[
             tuple[str, str, str],
             float,
@@ -129,6 +159,23 @@ class VoiceEpisodicMemory:
 
             CREATE INDEX IF NOT EXISTS idx_voice_episodes_scene
             ON voice_episodes(scene_key, action, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS voice_memory_consolidation(
+                scene_key TEXT NOT NULL,
+                action TEXT NOT NULL,
+                strength REAL NOT NULL DEFAULT 0,
+                event_count INTEGER NOT NULL DEFAULT 0,
+                replay_count INTEGER NOT NULL DEFAULT 0,
+                positive_count INTEGER NOT NULL DEFAULT 0,
+                negative_count INTEGER NOT NULL DEFAULT 0,
+                last_reward REAL NOT NULL DEFAULT 0,
+                last_replay REAL NOT NULL DEFAULT 0,
+                updated_at REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY(scene_key, action)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_voice_memory_strength
+            ON voice_memory_consolidation(strength DESC, updated_at DESC);
             """
         )
         self.db.commit()
@@ -149,6 +196,41 @@ class VoiceEpisodicMemory:
             )
             self._values[key] = float(value)
             self._counts[key] = int(count)
+
+        for (
+            scene_key,
+            action,
+            strength,
+            event_count,
+            replay_count,
+            positive_count,
+            negative_count,
+            last_reward,
+            last_replay,
+            updated_at,
+        ) in self.db.execute(
+            """
+            SELECT scene_key, action, strength, event_count,
+                   replay_count, positive_count, negative_count,
+                   last_reward, last_replay, updated_at
+            FROM voice_memory_consolidation
+            """
+        ):
+            self._consolidation[
+                (str(scene_key or ""), str(action))
+            ] = {
+                "strength": max(
+                    0.0,
+                    min(1.0, float(strength)),
+                ),
+                "event_count": int(event_count),
+                "replay_count": int(replay_count),
+                "positive_count": int(positive_count),
+                "negative_count": int(negative_count),
+                "last_reward": float(last_reward),
+                "last_replay": float(last_replay),
+                "updated_at": float(updated_at),
+            }
 
         rows = self.db.execute(
             """
