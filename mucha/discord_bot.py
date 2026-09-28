@@ -5465,6 +5465,9 @@ class MuchaClient(discord.Client):
             if vc is not None and vc.is_connected()
             else None
         )
+        connectome_voice_control = bool(
+            self.cfg.voice.connectome_voice_control_enabled
+        )
 
         if self._is_voice_guild_blocked(guild):
             if vc is not None and vc.is_connected():
@@ -5520,6 +5523,13 @@ class MuchaClient(discord.Client):
             "guild": guild.name,
             "guild_id": guild.id,
             "enabled": self.cfg.voice.enabled,
+            "connectome_voice_control": connectome_voice_control,
+            "decision_source": (
+                "connectome-readout-competition"
+                if connectome_voice_control
+                else "legacy-thresholds"
+            ),
+            "brain_decision": None,
             "current": current.name if current else None,
             "decision": "ANALIZA",
             "reason": "oczekiwanie na wynik",
@@ -5558,7 +5568,8 @@ class MuchaClient(discord.Client):
             humans = [m for m in ch.members if not m.bot]
             disliked_members = self._disliked_members(humans)
             social_blocked = bool(
-                self.cfg.behavior.avoid_disliked_users_on_voice
+                not connectome_voice_control
+                and self.cfg.behavior.avoid_disliked_users_on_voice
                 and disliked_members
                 and not chaser_active
             )
@@ -5688,7 +5699,8 @@ class MuchaClient(discord.Client):
 
         if not channels:
             if (
-                current is not None
+                not connectome_voice_control
+                and current is not None
                 and current_disliked
                 and vc is not None
                 and vc.is_connected()
