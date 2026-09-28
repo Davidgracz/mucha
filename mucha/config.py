@@ -16,6 +16,11 @@ class BrainConfig:
     plasticity_lr: float = 0.0025
     plasticity_decay: float = 0.998
     max_bias: float = 0.35
+    synaptic_plasticity_enabled: bool = True
+    synaptic_plasticity_lr: float = 0.0015
+    synaptic_plasticity_max_delta: float = 0.08
+    synaptic_plasticity_trace_neurons: int = 256
+    synaptic_plasticity_max_edges: int = 40000
     steps_per_event: int = 3
     idle_steps: int = 1
     backend: str = "auto"
