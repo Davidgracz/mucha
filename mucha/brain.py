@@ -72,6 +72,7 @@ class FlyBrain:
         runtime_matrix = self._build_runtime_connectome_matrix()
         self.matrix = self.compute.sparse_from_scipy(runtime_matrix)
         self._runtime_matrix_cpu = runtime_matrix
+        self._runtime_matrix_csc_cpu = runtime_matrix.tocsc()
         self._neuromodulator_effects = {
             "effective_leak": float(cfg.leak),
             "effective_gain": float(cfg.propagation_gain),
@@ -114,6 +115,9 @@ class FlyBrain:
         self._neuro_map_region_types: dict[str, list[dict]] = {}
         self._neuro_map_region_source = "cell_class"
         self._neuro_map_history = deque(maxlen=180)
+        self._signal_flow_history = deque(maxlen=24)
+        self._signal_learning_history = deque(maxlen=24)
+        self._signal_pending_cues: list[dict] = []
         self._action_output_pools: dict[str, np.ndarray] = {}
         self._action_output_seeds: dict[str, np.ndarray] = {}
         self._action_output_info: dict[str, dict] = {}
@@ -1260,12 +1264,241 @@ class FlyBrain:
             return self.compute.asarray(idx, dtype=np.int32)
         return idx
 
+    def _queue_signal_cue(
+        self,
+        key: str,
+        magnitude: float,
+        indices: np.ndarray | Iterable[int],
+        *,
+        kind: str = "sensory",
+        action: str | None = None,
+    ) -> None:
+        """Remember the concrete neurons that seeded the next propagation."""
+        raw = np.asarray(list(indices) if not isinstance(indices, np.ndarray) else indices)
+        raw = raw.astype(np.int32, copy=False).ravel()
+        if not len(raw):
+            return
+        sample = raw[: min(24, len(raw))]
+        self._signal_pending_cues.append({
+            "key": str(key),
+            "kind": str(kind),
+            "action": str(action) if action else None,
+            "magnitude": float(magnitude),
+            "indices": [int(x) for x in sample],
+            "root_ids": [
+                str(int(self.c.root_ids[int(x)]))
+                for x in sample
+            ],
+            "neurons": int(len(raw)),
+        })
+        if len(self._signal_pending_cues) > 16:
+            self._signal_pending_cues = self._signal_pending_cues[-16:]
+
+    def _capture_signal_flow_tick(
+        self,
+        state_before_cpu: np.ndarray,
+        *,
+        propagation_gain: float,
+        cues: list[dict],
+        frame: int,
+        frames: int,
+    ) -> None:
+        """Capture strongest contributions through real directed edges.
+
+        For matrix orientation [post, pre], the contribution of one edge is:
+        propagation_gain * effective_weight(post, pre) * state(pre).
+        The learned sparse synaptic overlay is included in effective_weight.
+        """
+        if not len(state_before_cpu):
+            return
+        abs_state = np.abs(state_before_cpu)
+        source_limit = min(128, len(abs_state))
+        if source_limit >= len(abs_state):
+            sources = np.argsort(abs_state)[::-1]
+        else:
+            part = np.argpartition(abs_state, -source_limit)[-source_limit:]
+            sources = part[np.argsort(abs_state[part])[::-1]]
+        sources = sources[abs_state[sources] > 0.008]
+        if not len(sources):
+            return
+
+        csc = self._runtime_matrix_csc_cpu
+        n = self.c.n_neurons
+        edge_rows: list[dict] = []
+        gain = float(propagation_gain)
+        for source_raw in sources:
+            source = int(source_raw)
+            source_activation = float(state_before_cpu[source])
+            start = int(csc.indptr[source])
+            end = int(csc.indptr[source + 1])
+            if end <= start:
+                continue
+            targets = csc.indices[start:end]
+            base_weights = csc.data[start:end]
+            contributions = np.empty(
+                len(targets),
+                dtype=np.float32,
+            )
+            effective_weights = np.empty(
+                len(targets),
+                dtype=np.float32,
+            )
+            learned_values = np.empty(
+                len(targets),
+                dtype=np.float32,
+            )
+            for pos, (target_raw, base_raw) in enumerate(
+                zip(targets, base_weights)
+            ):
+                target = int(target_raw)
+                base_weight = float(base_raw)
+                learned = float(
+                    self._synaptic_delta_map.get(
+                        target * n + source,
+                        0.0,
+                    )
+                )
+                effective = base_weight + learned
+                learned_values[pos] = np.float32(learned)
+                effective_weights[pos] = np.float32(effective)
+                contributions[pos] = np.float32(
+                    gain * effective * source_activation
+                )
+
+            local_limit = min(8, len(contributions))
+            if local_limit <= 0:
+                continue
+            if local_limit >= len(contributions):
+                local_order = np.argsort(
+                    np.abs(contributions)
+                )[::-1]
+            else:
+                local_part = np.argpartition(
+                    np.abs(contributions),
+                    -local_limit,
+                )[-local_limit:]
+                local_order = local_part[
+                    np.argsort(
+                        np.abs(contributions[local_part])
+                    )[::-1]
+                ]
+            for pos_raw in local_order:
+                pos = int(pos_raw)
+                contribution = float(contributions[pos])
+                if abs(contribution) <= 1e-7:
+                    continue
+                target = int(targets[pos])
+                edge_rows.append({
+                    "source": str(
+                        int(self.c.root_ids[source])
+                    ),
+                    "target": str(
+                        int(self.c.root_ids[target])
+                    ),
+                    "source_index": source,
+                    "target_index": target,
+                    "source_activation": source_activation,
+                    "base_weight": float(base_weights[pos]),
+                    "learned_delta": float(learned_values[pos]),
+                    "effective_weight": float(
+                        effective_weights[pos]
+                    ),
+                    "contribution": contribution,
+                })
+
+        edge_rows.sort(
+            key=lambda row: abs(float(row["contribution"])),
+            reverse=True,
+        )
+        edge_rows = edge_rows[:220]
+
+        scores = {
+            key: float(value)
+            for key, value in self.action_scores().items()
+        }
+        winner = (
+            max(scores, key=scores.get)
+            if scores
+            else "stay"
+        )
+        output_pool = np.asarray(
+            self._action_output_pools.get(
+                winner,
+                np.empty(0, dtype=np.int32),
+            ),
+            dtype=np.int32,
+        )
+        if len(output_pool):
+            out_idx = self._backend_indices(output_pool)
+            out_values = np.abs(
+                self.compute.to_cpu(self.state[out_idx])
+            )
+            keep = min(28, len(output_pool))
+            if keep >= len(output_pool):
+                order = np.argsort(out_values)[::-1]
+            else:
+                part = np.argpartition(
+                    out_values,
+                    -keep,
+                )[-keep:]
+                order = part[
+                    np.argsort(out_values[part])[::-1]
+                ]
+            output_indices = [
+                int(output_pool[int(pos)])
+                for pos in order[:keep]
+            ]
+        else:
+            output_indices = []
+
+        self._signal_flow_history.append({
+            "time": float(time.time()),
+            "tick": int(self.tick_count),
+            "frame": int(frame),
+            "frames": int(frames),
+            "propagation_gain": gain,
+            "cues": [dict(row) for row in cues],
+            "winner": winner,
+            "scores": scores,
+            "output_indices": output_indices,
+            "output_nodes": [
+                str(int(self.c.root_ids[index]))
+                for index in output_indices
+            ],
+            "edges": edge_rows,
+        })
+
+    def signal_flow_snapshot(
+        self,
+        history: int = 12,
+    ) -> dict:
+        history = max(1, min(24, int(history)))
+        flows = list(self._signal_flow_history)[-history:]
+        learning = list(self._signal_learning_history)[-history:]
+        return {
+            "latest": flows[-1] if flows else None,
+            "history": flows,
+            "learning": learning,
+            "captured_frames": len(self._signal_flow_history),
+            "learning_events": len(self._signal_learning_history),
+            "method": (
+                "live edge contribution = propagation_gain × "
+                "(FAFB weight + learned delta) × source activation"
+            ),
+        }
+
     def inject(self, key: str, magnitude: float = 1.0, width: int = 96) -> None:
         idx_cpu = self._subset("sensory:" + key, self.c.sensory, width)
         idx = self._backend_indices(idx_cpu)
         jitter = self.compute.random_uniform(0.75, 1.25, size=len(idx_cpu))
         self.state[idx] += np.float32(magnitude) * jitter
         self.xp.clip(self.state, -3.0, 3.0, out=self.state)
+        self._queue_signal_cue(
+            key,
+            float(magnitude),
+            idx_cpu,
+            kind="sensory",
+        )
 
     @staticmethod
     def _normalize_reach(values: np.ndarray) -> np.ndarray:
@@ -1597,6 +1830,14 @@ class FlyBrain:
         diag = dict(diag)
         diag["magnitude"] = magnitude
         self._last_guided_cue = diag
+        if magnitude > 0.0 and len(pool):
+            self._queue_signal_cue(
+                key,
+                magnitude,
+                pool,
+                kind="action-guided-sensory",
+                action=action,
+            )
         return diag
 
     def _absolute_connectome(self) -> scipy_sparse.csr_matrix:
@@ -1716,6 +1957,18 @@ class FlyBrain:
             out=self.state,
         )
         self._user_memory_last_activation[user_id] = time.time()
+        cue_indices = np.unique(
+            np.concatenate([
+                identity[:12],
+                memory[:12],
+            ])
+        ).astype(np.int32, copy=False)
+        self._queue_signal_cue(
+            f"user-memory:{user_id}",
+            magnitude,
+            cue_indices,
+            kind="user-memory",
+        )
 
     def reinforce_user_memory(
         self,
@@ -2057,9 +2310,24 @@ class FlyBrain:
         return guided
 
     def step(self, ticks: int = 1) -> None:
-        for _ in range(max(1, ticks)):
+        ticks = max(1, int(ticks))
+        trace_cues = [
+            dict(row)
+            for row in self._signal_pending_cues
+        ]
+        self._signal_pending_cues.clear()
+        trace_flow = bool(trace_cues)
+        for frame in range(ticks):
             leak, propagation_gain, noise_sigma = (
                 self._neuromodulation_tick_effects()
+            )
+            state_before_cpu = (
+                self.compute.to_cpu(self.state).astype(
+                    np.float32,
+                    copy=True,
+                )
+                if trace_flow
+                else None
             )
             propagated = self.matrix.dot(self.state).astype(
                 self.xp.float32,
@@ -2090,6 +2358,15 @@ class FlyBrain:
             )
             self.reward_trace *= 0.96
             self.tick_count += 1
+
+            if state_before_cpu is not None:
+                self._capture_signal_flow_tick(
+                    state_before_cpu,
+                    propagation_gain=float(propagation_gain),
+                    cues=trace_cues,
+                    frame=frame + 1,
+                    frames=ticks,
+                )
 
     def mark_language_output(self, text: str) -> None:
         """Leave an eligibility trace for the words Mucha is about to send.
@@ -2168,6 +2445,7 @@ class FlyBrain:
             "total": len(self._synaptic_delta_map),
             "mean_delta": 0.0,
             "max_delta": 0.0,
+            "top_edges": [],
         }
         if (
             not self.cfg.synaptic_plasticity_enabled
@@ -2232,6 +2510,7 @@ class FlyBrain:
         )
         n = self.c.n_neurons
         applied: list[float] = []
+        applied_edges: list[dict] = []
 
         for pos in chosen:
             post = int(idx_cpu[int(sub.row[pos])])
@@ -2267,7 +2546,23 @@ class FlyBrain:
                 self._synaptic_delta_map.pop(key, None)
             else:
                 self._synaptic_delta_map[key] = float(new)
-            applied.append(float(new - old))
+            applied_delta = float(new - old)
+            applied.append(applied_delta)
+            if abs(applied_delta) > 1e-12:
+                applied_edges.append({
+                    "source": str(
+                        int(self.c.root_ids[pre])
+                    ),
+                    "target": str(
+                        int(self.c.root_ids[post])
+                    ),
+                    "source_index": pre,
+                    "target_index": post,
+                    "base_weight": base_weight,
+                    "old_learned_delta": old,
+                    "new_learned_delta": float(new),
+                    "change": applied_delta,
+                })
 
         max_edges = max(
             0,
@@ -2288,11 +2583,16 @@ class FlyBrain:
             return empty
 
         arr = np.asarray(applied, dtype=np.float32)
+        applied_edges.sort(
+            key=lambda row: abs(float(row["change"])),
+            reverse=True,
+        )
         return {
             "changed": int(np.count_nonzero(np.abs(arr) > 1e-12)),
             "total": len(self._synaptic_delta_map),
             "mean_delta": float(np.mean(arr)),
             "max_delta": float(np.max(np.abs(arr))),
+            "top_edges": applied_edges[:20],
         }
 
     def reward(
@@ -2448,11 +2748,28 @@ class FlyBrain:
             "learned_synapses": synaptic_learning["total"],
             "synaptic_mean_delta": synaptic_learning["mean_delta"],
             "synaptic_max_delta": synaptic_learning["max_delta"],
+            "top_synapses": list(
+                synaptic_learning.get("top_edges", [])
+            ),
             "before": before,
             "after": after,
             "impact": impact,
             "top_changed": top_changed,
         }
+        self._signal_learning_history.append({
+            "time": float(time.time()),
+            "tick": int(self.tick_count),
+            "amount": float(amount),
+            "action": action,
+            "changed_neurons": int(nonzero),
+            "changed_synapses": int(
+                synaptic_learning["changed"]
+            ),
+            "top_neurons": list(top_changed),
+            "top_synapses": list(
+                synaptic_learning.get("top_edges", [])
+            ),
+        })
 
         self._session_reward_events += 1
         if amount > 0:
@@ -4118,13 +4435,53 @@ class FlyBrain:
         )
         abs_state = np.abs(state_cpu)
 
-        if count >= self.c.n_neurons:
-            selected = np.argsort(abs_state)[::-1].astype(np.int32)
-        else:
-            part = np.argpartition(abs_state, -count)[-count:]
-            selected = part[
-                np.argsort(abs_state[part])[::-1]
-            ].astype(np.int32)
+        flow_snapshot = self.signal_flow_snapshot()
+        latest_flow = flow_snapshot.get("latest") or {}
+        latest_learning = (
+            flow_snapshot.get("learning", [])[-1]
+            if flow_snapshot.get("learning")
+            else {}
+        )
+        important: list[int] = []
+        important_seen: set[int] = set()
+
+        def add_important(value: int) -> None:
+            index = int(value)
+            if (
+                0 <= index < self.c.n_neurons
+                and index not in important_seen
+                and len(important) < count
+            ):
+                important_seen.add(index)
+                important.append(index)
+
+        for edge in list(latest_flow.get("edges", []))[:120]:
+            add_important(edge.get("source_index", -1))
+            add_important(edge.get("target_index", -1))
+        for cue in list(latest_flow.get("cues", []))[:8]:
+            for index in list(cue.get("indices", []))[:12]:
+                add_important(index)
+        for index in list(
+            latest_flow.get("output_indices", [])
+        )[:28]:
+            add_important(index)
+        for edge in list(
+            latest_learning.get("top_synapses", [])
+        )[:20]:
+            add_important(edge.get("source_index", -1))
+            add_important(edge.get("target_index", -1))
+
+        remaining = max(0, count - len(important))
+        if remaining:
+            active_order = np.argsort(abs_state)[::-1]
+            for index_raw in active_order:
+                add_important(int(index_raw))
+                if len(important) >= count:
+                    break
+        selected = np.asarray(
+            important[:count],
+            dtype=np.int32,
+        )
 
         meta = self.c.neuron_meta or {}
 
@@ -4159,6 +4516,38 @@ class FlyBrain:
             action_influence[action] = np.asarray(
                 sub.sum(axis=0)
             ).ravel().astype(np.float32, copy=False)
+
+        live_flow_in: dict[int, float] = {}
+        live_flow_out: dict[int, float] = {}
+        live_incident: dict[int, list[dict]] = {}
+        for edge in latest_flow.get("edges", []):
+            source_index = int(edge.get("source_index", -1))
+            target_index = int(edge.get("target_index", -1))
+            contribution = float(edge.get("contribution", 0.0))
+            live_flow_out[source_index] = (
+                live_flow_out.get(source_index, 0.0)
+                + abs(contribution)
+            )
+            live_flow_in[target_index] = (
+                live_flow_in.get(target_index, 0.0)
+                + abs(contribution)
+            )
+            live_incident.setdefault(source_index, []).append({
+                "direction": "out",
+                "peer": str(edge.get("target", "")),
+                "contribution": contribution,
+                "effective_weight": float(
+                    edge.get("effective_weight", 0.0)
+                ),
+            })
+            live_incident.setdefault(target_index, []).append({
+                "direction": "in",
+                "peer": str(edge.get("source", "")),
+                "contribution": contribution,
+                "effective_weight": float(
+                    edge.get("effective_weight", 0.0)
+                ),
+            })
 
         nodes: list[dict] = []
         sensory_set = self._sensory_lookup
@@ -4237,6 +4626,31 @@ class FlyBrain:
                 ),
                 "neuropils": neuropils,
                 "system_actions": actions,
+                "incoming_edges": int(
+                    self._runtime_matrix_cpu.indptr[idx + 1]
+                    - self._runtime_matrix_cpu.indptr[idx]
+                ),
+                "outgoing_edges": int(
+                    self._runtime_matrix_csc_cpu.indptr[idx + 1]
+                    - self._runtime_matrix_csc_cpu.indptr[idx]
+                ),
+                "live_flow_in": float(
+                    live_flow_in.get(idx, 0.0)
+                ),
+                "live_flow_out": float(
+                    live_flow_out.get(idx, 0.0)
+                ),
+                "live_flow_edges": sorted(
+                    live_incident.get(idx, []),
+                    key=lambda row: abs(
+                        float(row["contribution"])
+                    ),
+                    reverse=True,
+                )[:8],
+                "decision_output": (
+                    str(self.c.root_ids[idx])
+                    in set(latest_flow.get("output_nodes", []))
+                ),
             })
 
         region_rows: list[dict] = []
@@ -4448,6 +4862,7 @@ class FlyBrain:
                 else 0.0
             ),
             "history_samples": len(history),
+            "signal_flow": flow_snapshot,
         }
 
     def learning_since_start_diagnostics(self) -> dict:
