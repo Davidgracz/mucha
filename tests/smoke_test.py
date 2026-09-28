@@ -28,6 +28,17 @@ def main():
         b.step(5)
         scores = b.action_scores()
         assert 0 <= scores["speak"] <= 1
+        pools = b.action_pool_diagnostics()
+        assert set(pools) == set(b.ACTIONS)
+        assert pools["speak"]["seed_count"] > 0
+        assert pools["voice_move"]["seed_count"] > 0
+        assert pools["voice_leave"]["seed_count"] > 0
+        assert pools["stay"]["seed_count"] > 0
+        assert pools["speak"]["mode"].startswith("annotated")
+        assert not np.array_equal(
+            b._action_output_pools["speak"],
+            b._action_output_pools["voice_leave"],
+        )
         assert 0 <= b.language_word_score("siema") <= 1
         b.mark_language_output("siema mucha dobry tekst")
         output_trace = b.capture_learning_trace(256)
