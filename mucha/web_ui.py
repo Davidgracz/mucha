@@ -454,6 +454,7 @@ let raw={nodes:[],edges:[]},data={nodes:[],edges:[]},points=new Map(),hover=null
 let nodeLimit=18,edgeLimit=16,labelMode="auto",layoutEpoch=0;
 const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 const nfmt=n=>Number(n||0).toLocaleString("pl-PL");
+const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 function resize(){const r=wrap.getBoundingClientRect();dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0)}
@@ -697,8 +698,9 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;border-bottom:1px solid rgba(28,43,59,.58);text-align:left}th{color:#6f879c;font-weight:600}td{color:#b7c6d3}.plus{color:var(--cyan)}.minus{color:var(--pink)}
 .event{font:10px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;color:#9eb0c0;background:#060c12;border:1px solid #162536;border-radius:11px;padding:10px;word-break:break-word}
 .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;color:#7990a4;font-size:9px}.lg{display:inline-flex;align-items:center;gap:5px}.lg i{width:8px;height:8px;border-radius:50%}.sens{background:var(--cyan)}.internal{background:var(--blue)}.mod{background:var(--violet)}.out{background:var(--pink)}
-@media(max-width:1120px){.grid{grid-template-columns:1fr}.graph-wrap{height:560px}.hero{grid-template-columns:repeat(3,1fr)}}
-@media(max-width:760px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.graph-wrap{height:500px}}
+.circuits-card{margin-bottom:12px}.circuits-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.circuit{background:#071019;border:1px solid #172a3b;border-radius:13px;padding:11px;min-width:0;transition:.18s}.circuit.hot{border-color:rgba(85,234,208,.42);box-shadow:0 0 22px rgba(85,234,208,.06)}.circuit-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.circuit-title{font-size:12px;font-weight:850;color:#e8f4ff}.circuit-mode{font-size:8px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:4px 6px;border-radius:999px;border:1px solid #284056;color:#8da5b8;white-space:nowrap}.circuit-mode.bio{color:var(--good);border-color:rgba(86,227,154,.32);background:rgba(86,227,154,.06)}.circuit-mode.fallback{color:var(--warn);border-color:rgba(255,209,102,.28);background:rgba(255,209,102,.05)}.circuit-score{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin:10px 0 7px}.circuit-score .track{height:7px}.circuit-score b{font-size:11px}.circuit-meta{display:flex;gap:9px;flex-wrap:wrap;color:#7790a5;font-size:9px;margin-bottom:7px}.circuit-types{font-size:10px;line-height:1.5;color:#b6c7d5;min-height:30px}.circuit-seeds{margin-top:7px;padding-top:7px;border-top:1px solid rgba(28,43,59,.7);font:9px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#71899d;max-height:54px;overflow:auto}.circuit-activity{margin-top:6px;color:#91a8b9;font-size:9px}.circuit-activity strong{color:var(--cyan)}
+@media(max-width:1120px){.grid{grid-template-columns:1fr}.graph-wrap{height:560px}.hero{grid-template-columns:repeat(3,1fr)}.circuits-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:760px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.graph-wrap{height:500px}.circuits-grid{grid-template-columns:1fr}}
 </style>
 </head>
 <body><main>
@@ -724,6 +726,14 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
  <div class="flowbox"><small>3 • READOUT</small><strong>typed DNs + connectome</strong><p>Znane typy neuronów zstępujących kotwiczą akcje, a prawdziwe połączenia FAFB rozszerzają ich pule.</p></div>
  <div class="arrow">→</div>
  <div class="flowbox"><small>4 • LANGUAGE / ACTION</small><strong>generator + connectome</strong><p>Po rozbudowie słownika connectome może również zmieniać szanse konkretnych słów.</p></div>
+</section>
+
+<section class="card circuits-card">
+ <div class="card-head">
+  <div><h2>Biological Action Circuits</h2><div class="muted" style="margin-top:4px">Biologiczne seedy → rzeczywiste połączenia FAFB → readout akcji Discord.</div></div>
+  <span class="mode">LIVE CIRCUITS</span>
+ </div>
+ <div class="circuits-grid" id="biological-circuits"></div>
 </section>
 
 <section class="grid">
@@ -859,6 +869,29 @@ function renderActions(scores){
  const order=["speak","explore","react","voice_join","voice_move","voice_leave","stay"];
  $("actions").innerHTML=order.map(k=>{const v=clamp(Number(scores[k]||0),0,1);return '<div class="act"><label>'+k+'</label><div class="track"><div class="fill" style="width:'+(v*100).toFixed(1)+'%"></div></div><b>'+v.toFixed(2)+'</b></div>'}).join("");
 }
+function renderBiologicalCircuits(pools,scores){
+ const order=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];
+ const html=order.map(action=>{
+  const p=(pools||{})[action]||{},score=clamp(Number((scores||{})[action]||0),0,1);
+  const bio=String(p.mode||"").startsWith("annotated");
+  const types=(p.seed_types||[]).map(x=>esc(x.name)+" ×"+nfmt(x.count)).join(" • ")||(bio?"typ nieopisany":"brak biologicznych seedów");
+  const seeds=(p.top_seed_activity||[]).slice(0,4).map(x=>{
+   const sign=Number(x.activation||0)>=0?"+":"";
+   return esc(x.type)+" #"+esc(x.root_id)+" "+sign+Number(x.activation||0).toFixed(3)+(x.in_output_pool?"":" [spoza output]");
+  }).join("<br>");
+  const external=Number(p.external_seed_count||0);
+  const mean=Number(p.mean_abs_activation||0),max=Number(p.max_abs_activation||0);
+  return '<div class="circuit '+(score>.58?"hot":"")+'">'+
+   '<div class="circuit-head"><div class="circuit-title">'+esc(action)+'</div><span class="circuit-mode '+(bio?"bio":"fallback")+'">'+esc(p.mode||"—")+'</span></div>'+
+   '<div class="circuit-score"><div class="track"><div class="fill" style="width:'+(score*100).toFixed(1)+'%"></div></div><b>'+score.toFixed(3)+'</b></div>'+
+   '<div class="circuit-meta"><span>seeds <b>'+nfmt(p.seed_count||0)+'</b></span><span>pool <b>'+nfmt(p.pool_size||0)+'</b></span>'+(external?'<span>spoza output <b>'+nfmt(external)+'</b></span>':'')+'</div>'+
+   '<div class="circuit-types">'+types+'</div>'+
+   '<div class="circuit-activity">mean |a| <strong>'+mean.toFixed(4)+'</strong> • max |a| <strong>'+max.toFixed(4)+'</strong></div>'+
+   '<div class="circuit-seeds">'+(seeds||"brak aktywnych seedów do pokazania")+'</div>'+
+  '</div>';
+ }).join("");
+ $("biological-circuits").innerHTML=html;
+}
 function updateModeButton(){
  const b=$("follow-btn");b.textContent="FOLLOW ACTIVITY: "+(followActivity?"ON":"OFF");b.className="follow "+(followActivity?"on":"");
  $("mode-label").textContent=followActivity?"DYNAMIC TOP ACTIVITY":"STABLE WINDOW";
@@ -869,7 +902,7 @@ function render(s,v){
  const d=s.diag||{},ld=s.language_diag||{},cw=ld.connectome_word_control_last||{};
  $("k-neurons").textContent=nfmt(d.neurons);$("k-connections").textContent=nfmt(d.connections);$("k-active").textContent=nfmt(d.active_abs_gt_0_1);$("k-mean").textContent=Number(d.mean_abs||0).toFixed(5);$("k-reward").textContent=Number(d.reward_trace||0).toFixed(3);$("k-backend").textContent=(d.backend||"—")+" • "+(d.device||"");$("k-tick").textContent="tick "+nfmt(d.ticks);$("k-synapses").textContent=nfmt(d.learned_synapses||0);$("k-synapse-delta").textContent="max |Δ| "+Number(d.synaptic_max_abs||0).toFixed(5);
  $("selected").textContent=nfmt(v.selected_neurons);$("edges").textContent=nfmt(v.selected_edges);$("event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";renderActions(s.scores||{});
- const pools=d.action_pools||{};const poolOrder=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];$("action-pool-detail").textContent=poolOrder.map(k=>{const p=pools[k]||{};return k+": "+(p.mode||"—")+" • seeds "+nfmt(p.seed_count||0)+" • pool "+nfmt(p.pool_size||0)}).join("  |  ");
+ const pools=d.action_pools||{};renderBiologicalCircuits(pools,s.scores||{});const poolOrder=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];$("action-pool-detail").textContent=poolOrder.map(k=>{const p=pools[k]||{};return k+": "+(p.mode||"—")+" • seeds "+nfmt(p.seed_count||0)+" • pool "+nfmt(p.pool_size||0)}).join("  |  ");
  $("stable-age").textContent=followActivity?"FOLLOW":Math.round(Number(v.stable_age_seconds||0))+" s / "+Math.round(Number(v.stable_window_seconds||45))+" s";
  $("replacements").textContent=nfmt(v.replacements||0);
  const vocab=Number(ld.word_vocab||0),min=Number(ld.connectome_word_control_min_vocab||1),ready=!!ld.connectome_word_control_ready,pct=clamp(vocab/min*100,0,100);
