@@ -1994,15 +1994,24 @@ class FlyBrain:
                 24,
             )
 
-    def inject_voice_snapshot(self, guild_id: int, channel_id: int, user_ids: Iterable[int]) -> None:
+    def inject_voice_snapshot(
+        self,
+        guild_id: int,
+        channel_id: int,
+        user_ids: Iterable[int],
+        *,
+        sensory_scale: float = 1.0,
+    ) -> None:
+        """Encode a voice scene, with sensory adaptation for repeated scenes."""
         users = list(user_ids)
+        sensory_scale = max(0.05, min(1.0, float(sensory_scale)))
         self.inject(
             f"voice:guild:{guild_id}:channel:{channel_id}",
-            0.18 + 0.12 * min(len(users), 8),
+            (0.18 + 0.12 * min(len(users), 8)) * sensory_scale,
             64,
         )
         for uid in users[:12]:
-            self.activate_user_memory(uid, 0.08)
+            self.activate_user_memory(uid, 0.08 * sensory_scale)
 
     def inject_voice_reward_opportunity(
         self,
@@ -2858,6 +2867,12 @@ class FlyBrain:
         available_humans: int = 0,
         social_drive_level: float = 0.0,
         social_drive_magnitude: float = 1.0,
+        social_fatigue_level: float = 0.0,
+        social_fatigue_magnitude: float = 1.0,
+        habituation_level: float = 0.0,
+        habituation_change_magnitude: float = 1.0,
+        exploration_drive_level: float = 0.0,
+        exploration_drive_magnitude: float = 1.0,
     ) -> dict:
         """Encode voice context as sensory input before motor competition.
 
@@ -2866,6 +2881,10 @@ class FlyBrain:
         real paths from context to the action readouts.
         """
         guided_social_drive = None
+        guided_social_fatigue_move = None
+        guided_social_fatigue_leave = None
+        guided_habituation = None
+        guided_exploration = None
         self.inject(
             "voice:context:connected"
             if connected
@@ -2898,6 +2917,30 @@ class FlyBrain:
             0.0,
             min(4.0, float(social_drive_magnitude)),
         )
+        social_fatigue_level = max(
+            0.0,
+            min(1.0, float(social_fatigue_level)),
+        )
+        social_fatigue_magnitude = max(
+            0.0,
+            min(4.0, float(social_fatigue_magnitude)),
+        )
+        habituation_level = max(
+            0.0,
+            min(1.0, float(habituation_level)),
+        )
+        habituation_change_magnitude = max(
+            0.0,
+            min(4.0, float(habituation_change_magnitude)),
+        )
+        exploration_drive_level = max(
+            0.0,
+            min(1.0, float(exploration_drive_level)),
+        )
+        exploration_drive_magnitude = max(
+            0.0,
+            min(4.0, float(exploration_drive_magnitude)),
+        )
 
         if connected:
             if dwell_progress < 1.0:
@@ -2911,6 +2954,80 @@ class FlyBrain:
                     "voice:context:dwell-complete",
                     0.28 + 0.18 * min(1.0, dwell_progress - 1.0),
                     72,
+                )
+
+            if habituation_level > 0.0:
+                magnitude = (
+                    habituation_change_magnitude
+                    * habituation_level
+                )
+                self.inject(
+                    f"internal:habituation:voice-scene:{guild_id}",
+                    magnitude,
+                    160,
+                )
+                if alternatives > 0:
+                    guided_habituation = (
+                        self.inject_action_guided_sensory(
+                            "voice_move",
+                            f"habituation-change:{guild_id}",
+                            0.45 * magnitude,
+                            width=160,
+                            hops=3,
+                        )
+                    )
+
+            if social_fatigue_level > 0.0:
+                magnitude = (
+                    social_fatigue_magnitude
+                    * social_fatigue_level
+                )
+                self.inject(
+                    f"internal:homeostasis:social-fatigue:{guild_id}",
+                    magnitude,
+                    160,
+                )
+                if alternatives > 0:
+                    guided_social_fatigue_move = (
+                        self.inject_action_guided_sensory(
+                            "voice_move",
+                            f"social-fatigue-move:{guild_id}",
+                            magnitude,
+                            width=208,
+                            hops=3,
+                        )
+                    )
+                guided_social_fatigue_leave = (
+                    self.inject_action_guided_sensory(
+                        "voice_leave",
+                        f"social-fatigue-leave:{guild_id}",
+                        0.62 * magnitude,
+                        width=176,
+                        hops=3,
+                    )
+                )
+
+            if (
+                exploration_drive_level > 0.0
+                and alternatives > 0
+            ):
+                magnitude = (
+                    exploration_drive_magnitude
+                    * exploration_drive_level
+                )
+                self.inject(
+                    f"internal:homeostasis:exploration:{guild_id}",
+                    0.55 * magnitude,
+                    128,
+                )
+                guided_exploration = (
+                    self.inject_action_guided_sensory(
+                        "voice_move",
+                        f"exploration-drive:{guild_id}",
+                        magnitude,
+                        width=208,
+                        hops=3,
+                    )
                 )
         else:
             outside_bucket = min(
@@ -2993,8 +3110,15 @@ class FlyBrain:
         )
         return {
             "social_drive": guided_social_drive,
+            "social_fatigue_move": guided_social_fatigue_move,
+            "social_fatigue_leave": guided_social_fatigue_leave,
+            "habituation": guided_habituation,
+            "exploration_drive": guided_exploration,
             "outside_seconds": outside_seconds,
             "available_humans": available_humans,
+            "social_fatigue_level": social_fatigue_level,
+            "habituation_level": habituation_level,
+            "exploration_drive_level": exploration_drive_level,
         }
 
     def _action_tie_evidence(
