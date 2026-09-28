@@ -535,7 +535,10 @@ class FlyBrain:
             ranked.append((0, -specificity, idx))
             seen.add(idx)
 
-        if len(ranked) < limit:
+        # Only broaden the search when the output pool had no biological
+        # anchor at all. Existing working circuits must not be diluted by broad
+        # whole-brain text matches such as "walking" or "turn".
+        if not ranked:
             for idx in range(self.c.n_neurons):
                 if idx in seen:
                     continue
@@ -544,8 +547,6 @@ class FlyBrain:
                 if not hits:
                     continue
                 specificity = max(len(term) for term in hits)
-                # Full-connectome matches are valid biological anchors, but
-                # direct output-pool matches remain preferred.
                 ranked.append((1, -specificity, idx))
 
         ranked.sort(key=lambda item: (item[0], item[1], item[2]))
