@@ -6013,7 +6013,11 @@ class MuchaClient(discord.Client):
             self._voice_debug[guild.id] = debug
             return
 
-        if current_disliked and not chaser_active:
+        if (
+            current_disliked
+            and not chaser_active
+            and not connectome_voice_control
+        ):
             target, exploration = self._choose_voice_target(
                 guild,
                 channels,
@@ -6064,13 +6068,16 @@ class MuchaClient(discord.Client):
                     debug["reason"] = f"{type(exc).__name__}: {exc}"
 
         if dwell_remaining > 0:
-            debug["decision"] = "ZOSTAJĘ"
-            debug["reason"] = f"minimum dwell: jeszcze {dwell_remaining:.1f} s"
+            debug["decision"] = "MOTOR REFRACTORY • STAY"
+            debug["reason"] = (
+                f"move/leave fizycznie zablokowane jeszcze "
+                f"{dwell_remaining:.1f}s; connectome dostał early-dwell"
+            )
             self._voice_debug[guild.id] = debug
             return
 
         threat_trace = None
-        if threat_active:
+        if threat_active and not connectome_voice_control:
             threat_magnitude = float(self.cfg.voice.threat_magnitude) * threat_level
             async with self._brain_lock:
                 self.brain.inject(
