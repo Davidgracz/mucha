@@ -187,7 +187,10 @@ const groups=[
   ["exploration_drive_ramp_seconds","Eksploracja: ramp","number",5,1,86400,"Czas wzrostu exploration drive od 0 do 100%."],
   ["exploration_drive_max_magnitude","Eksploracja: siła","number",0.05,0,4,"Maksymalna siła bodźca kierowanego przez realne połączenia do voice_move."],
   ["episodic_prediction_enabled","Pamięć epizodyczna / prediction error","bool",0,0,0,"Zapamiętuje wyniki decyzji voice w podobnych kontekstach i oblicza błąd przewidywania nagrody."],
-  ["episodic_memory_size","Pamięć epizodów","number",16,16,5000,"Maksymalna liczba ostatnich epizodów voice trzymanych w pamięci bieżącego procesu."],
+  ["episodic_database","Baza pamięci epizodycznej","text",0,0,0,"Plik SQLite z trwałą pamięcią epizodów i predykcji. Domyślnie state/voice_episodes.sqlite3."],
+  ["episodic_memory_size","Cache ostatnich epizodów","number",16,16,5000,"Ile ostatnich epizodów trzymać dodatkowo w RAM dla szybkiego podglądu."],
+  ["episodic_max_persisted_events","Maks. trwałych epizodów","number",100,16,1000000,"Limit rekordów w SQLite. Najstarsze epizody są usuwane dopiero po przekroczeniu tego limitu."],
+  ["episodic_recall_magnitude","Siła przypomnienia epizodu","number",0.05,0,4,"Dodatnie oczekiwane rewardy z podobnej sceny wracają jako sensoryczny cue przez connectome do właściwego readoutu."],
   ["prediction_learning_rate","Tempo uczenia predykcji","number",0.01,0.001,1,"Jak szybko przewidywana nagroda context+action zbliża się do rzeczywistych wyników."],
   ["prediction_error_scale","Wpływ prediction error na connectome","number",0.01,0,1,"Jaka część błędu przewidywania trafia jako dodatkowa korekta reward/punish do zapisanego śladu neuronalnego."],
   ["prediction_error_max_correction","Limit korekty prediction error","number",0.01,0,0.5,"Maksymalna dodatkowa korekta pojedynczego epizodu."],
@@ -1644,6 +1647,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .drive-fill.warn-fill{background:linear-gradient(90deg,#d79e32,var(--warn))}
 .drive-fill.bad-fill{background:linear-gradient(90deg,#d75252,var(--bad))}
 .voice-note{font-size:11px;color:var(--muted);line-height:1.5;margin-top:8px}
+.memory-list{display:flex;flex-direction:column;gap:6px;margin-top:9px}
+.memory-row{display:grid;grid-template-columns:72px 1fr auto;gap:8px;align-items:center;background:#071019;border:1px solid #172635;border-radius:9px;padding:7px 8px;font-size:10px}
+.memory-row b{color:#cfe1ef}.memory-row span{color:var(--muted);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.memory-row em{font-style:normal;font-variant-numeric:tabular-nums}
 .voice-decision{padding:11px 12px;border-radius:12px;background:#0a1118;border:1px solid #1d2936;font-size:12px;line-height:1.55}
 .voice-decision b{color:var(--accent)}
 .voice-technical{border:1px solid #1d2936;border-radius:12px;background:#0a1118;overflow:hidden}
@@ -2004,6 +2010,15 @@ function renderVoiceDebug(items){
     ).join(" • ")||"—";
     const predErr=v.prediction_error==null?null:Number(v.prediction_error);
     const predClass=predErr==null?"":predErr>0?"ok":predErr<0?"no":"";
+    const memoryRows=(v.episodic_recent||[]).slice(-3).reverse().map(ep=>{
+      const people=(ep.user_names||[]).join(", ")||(ep.user_ids||[]).join(", ")||"—";
+      const place=ep.channel_name||"poza VC";
+      const err=Number(ep.prediction_error||0);
+      return '<div class="memory-row"><b>'+esc(ep.action||"—")+'</b><span>'+esc(place)+' • '+esc(people)+'</span><em class="'+(err>0?"ok":err<0?"no":"")+'">'+(err>=0?"+":"")+err.toFixed(2)+'</em></div>';
+    }).join("")||'<div class="voice-note">Brak zapisanych epizodów.</div>';
+    const recallSummary=Object.entries(v.episodic_recall||{}).map(([k,x])=>
+      k+" "+Number((x||{}).magnitude||0).toFixed(2)+" / "+Number((x||{}).reach_max||0).toFixed(3)
+    ).join(" • ")||"—";
     const currentTime=onVoice
       ? Number(v.dwell_elapsed||0).toFixed(0)+" / "+Number(v.maximum_dwell_seconds||0).toFixed(0)+" s"
       : Number(v.outside_seconds||0).toFixed(0)+" s poza VC";
@@ -2068,8 +2083,12 @@ function renderVoiceDebug(items){
             kpi("Prediction error",predErr==null?"—":predErr.toFixed(3),predClass)+
             kpi("Korekta connectomu",Number(v.prediction_correction_applied||0).toFixed(3))+
             kpi("Epizody",String(Number(v.episodic_memory_size||0)))+
+            kpi("SQLite",v.episodic_persistent?"ON":"OFF",v.episodic_persistent?"ok":"warn")+
+            kpi("Predykcje",String(Number(v.episodic_prediction_count||0)))+
           '</div>'+
           '<div class="voice-note"><b>Expected:</b> '+esc(expected)+'</div>'+
+          '<div class="voice-note"><b>Recall → connectome:</b> '+esc(recallSummary)+'</div>'+
+          '<div class="memory-list">'+memoryRows+'</div>'+
         '</div>'+
 
         '<div class="voice-box">'+
@@ -2117,6 +2136,8 @@ function renderVoiceDebug(items){
         '<div class="voice-technical-body">'+
           '<div class="voice-tech-grid">'+
             kpi("Prediction context",esc(v.prediction_context||"—"))+
+            kpi("Scene key",esc(v.prediction_scene_key||"—"))+
+            kpi("Episodic DB",esc(v.episodic_database||"—"))+
             kpi("neural tie-break",esc(bd.tie_break||"niepotrzebny"))+
             kpi("Tie evidence",esc(tieSummary||"—"))+
             kpi("Homeostasis paths",esc(guided))+
