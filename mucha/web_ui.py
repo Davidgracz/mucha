@@ -158,6 +158,13 @@ const groups=[
  {id:"voice-main",title:"Voice",desc:"Ruch po kanałach i podstawowe zachowanie głosowe.",section:"voice",open:false,fields:[
   ["poll_seconds","Interwał decyzji voice","number",1,1,3600,"Co ile sekund Mucha ocenia sytuację na voice."],
   ["connectome_voice_control_enabled","Voice sterowany connectomem","bool",0,0,0,"Join / stay / move / leave wybiera konkurencja readoutów. Progi voice zostają tylko jako tryb legacy po wyłączeniu tej opcji."],
+  ["social_drive_enabled","Neuralny social drive","bool",0,0,0,"Długi pobyt poza voice przy dostępnych ludziach daje narastający bodziec sensoryczny. Nie wymusza JOIN — decyzję nadal podejmuje connectome."],
+  ["social_drive_start_seconds","Social drive: start","number",5,0,86400,"Po ilu sekundach poza voice zaczyna rosnąć bodziec społeczny, jeśli są dostępni ludzie."],
+  ["social_drive_ramp_seconds","Social drive: ramp","number",5,1,86400,"Ile sekund trwa wzrost od 0 do pełnej siły bodźca."],
+  ["social_drive_max_magnitude","Social drive: siła sensoryczna","number",0.05,0,4,"Maksymalna amplituda bodźca wpuszczanego do sensory neurons. Nie jest bonusem do score JOIN."],
+  ["social_drive_stay_punish","Social drive: nauka przeciw STAY","number",0.005,0,0.5,"Delikatny punish ścieżki STAY, gdy przy silnym social drive connectome nadal wybiera pozostanie poza voice."],
+  ["social_drive_learning_interval_seconds","Social drive: interwał nauki","number",5,5,3600,"Minimalny odstęp między kolejnymi punishami STAY poza voice."],
+  ["social_join_reward","Reward za neuralny JOIN","number",0.01,0,1,"Reward dla ścieżki voice_join po udanym wejściu wybranym przez connectome."],
   ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
   ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie rośnie presja na zmianę kanału."],
   ["move_threshold","Próg move","number",0.01,0,1,"Próg decyzji o zmianie kanału."],
