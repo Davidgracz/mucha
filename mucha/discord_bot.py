@@ -190,6 +190,18 @@ class MuchaClient(discord.Client):
             max_persisted_events=(
                 cfg.voice.episodic_max_persisted_events
             ),
+            consolidation_gain=(
+                cfg.voice.episodic_consolidation_gain
+            ),
+            forgetting_half_life_days=(
+                cfg.voice.episodic_forgetting_half_life_days
+            ),
+            forgetting_interval_seconds=(
+                cfg.voice.episodic_forgetting_interval_seconds
+            ),
+            consolidated_threshold=(
+                cfg.voice.episodic_consolidated_threshold
+            ),
         )
         self._voice_prediction_pending: dict[int, list[dict]] = {}
         self._voice_prediction_corrections: dict[int, list[dict]] = {}
@@ -346,6 +358,15 @@ class MuchaClient(discord.Client):
             "synaptic_plasticity_max_delta",
             "synaptic_plasticity_trace_neurons",
             "synaptic_plasticity_max_edges",
+            "consolidation_enabled",
+            "consolidation_interval_seconds",
+            "bias_forgetting_half_life_hours",
+            "synaptic_forgetting_half_life_hours",
+            "synaptic_consolidation_gain",
+            "synaptic_consolidation_decay_half_life_days",
+            "synaptic_consolidation_protection",
+            "synaptic_prune_threshold",
+            "synaptic_consolidated_threshold",
             "neuromodulation_enabled",
             "neuromodulatory_direct_residual",
             "dopamine_plasticity_gain",
@@ -470,6 +491,10 @@ class MuchaClient(discord.Client):
             "memory_replay_reward_scale",
             "memory_replay_steps",
             "memory_replay_max_age_days",
+            "episodic_consolidation_gain",
+            "episodic_forgetting_half_life_days",
+            "episodic_forgetting_interval_seconds",
+            "episodic_consolidated_threshold",
             "minimum_dwell_seconds",
             "maximum_dwell_seconds",
             "overstay_punish_amount",
@@ -583,6 +608,33 @@ class MuchaClient(discord.Client):
             ),
             ("brain", "synaptic_plasticity_max_edges"): (
                 int, 1000, 250000
+            ),
+            ("brain", "consolidation_enabled"): (
+                bool, None, None
+            ),
+            ("brain", "consolidation_interval_seconds"): (
+                int, 10, 86400
+            ),
+            ("brain", "bias_forgetting_half_life_hours"): (
+                float, 1.0, 8760.0
+            ),
+            ("brain", "synaptic_forgetting_half_life_hours"): (
+                float, 1.0, 8760.0
+            ),
+            ("brain", "synaptic_consolidation_gain"): (
+                float, 0.0, 1.0
+            ),
+            ("brain", "synaptic_consolidation_decay_half_life_days"): (
+                float, 0.25, 3650.0
+            ),
+            ("brain", "synaptic_consolidation_protection"): (
+                float, 0.0, 50.0
+            ),
+            ("brain", "synaptic_prune_threshold"): (
+                float, 0.0, 0.05
+            ),
+            ("brain", "synaptic_consolidated_threshold"): (
+                float, 0.0, 1.0
             ),
             ("brain", "neuromodulation_enabled"): (
                 bool, None, None
@@ -829,6 +881,18 @@ class MuchaClient(discord.Client):
             ),
             ("voice", "memory_replay_max_age_days"): (
                 int, 1, 365
+            ),
+            ("voice", "episodic_consolidation_gain"): (
+                float, 0.0, 1.0
+            ),
+            ("voice", "episodic_forgetting_half_life_days"): (
+                float, 0.25, 3650.0
+            ),
+            ("voice", "episodic_forgetting_interval_seconds"): (
+                int, 30, 86400
+            ),
+            ("voice", "episodic_consolidated_threshold"): (
+                float, 0.0, 1.0
             ),
             ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
             ("voice", "maximum_dwell_seconds"): (int, 1, 86400),
@@ -4638,6 +4702,12 @@ class MuchaClient(discord.Client):
                 else:
                     learning = {}
                 self.brain.step(1)
+                memory_consolidation = (
+                    self.voice_episodes.consolidate_replay(
+                        episode,
+                        replay_reward,
+                    )
+                )
 
                 replayed.append({
                     "time": float(episode.get("time", 0.0)),
@@ -4656,6 +4726,24 @@ class MuchaClient(discord.Client):
                         episode.get("replay_score", 0.0)
                     ),
                     "replay_reward": float(replay_reward),
+                    "memory_strength": float(
+                        memory_consolidation.get(
+                            "strength",
+                            episode.get("memory_strength", 0.0),
+                        )
+                    ),
+                    "memory_status": str(
+                        memory_consolidation.get(
+                            "status",
+                            episode.get("memory_status", "forming"),
+                        )
+                    ),
+                    "memory_replays": int(
+                        memory_consolidation.get(
+                            "replay_count",
+                            episode.get("memory_replays", 0),
+                        )
+                    ),
                     "steps": steps,
                     "guided_mode": str(
                         guided.get("mode", "")
@@ -4720,11 +4808,14 @@ class MuchaClient(discord.Client):
         if self.paused:
             return
         now = time.monotonic()
+        wall_now = time.time()
         await self._maybe_memory_replay(now)
         async with self._brain_lock:
+            self.brain.consolidate_and_forget(now=wall_now)
             self.brain.inject("internal:time", 0.035, 32)
             self.brain.step(self.cfg.brain.idle_steps)
             scores = self.brain.action_scores()
+        self.voice_episodes.apply_forgetting(now=wall_now)
 
         if now - self._last_save >= self.cfg.behavior.save_every_seconds:
             async with self._brain_lock:
