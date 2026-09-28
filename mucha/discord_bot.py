@@ -912,8 +912,78 @@ class MuchaClient(discord.Client):
         normalized = OnlineLanguage.normalize(text).lower()
         return re.findall(r"[^\W_]{3,}", normalized, flags=re.UNICODE)
 
+    def _user_affinity_components(self, user_id: int) -> dict:
+        user_id = int(user_id)
+        legacy = float(
+            self.language.get_user_affinity(user_id)
+        )
+        if not self.cfg.behavior.neural_social_memory_enabled:
+            return {
+                "legacy": legacy,
+                "neural": 0.0,
+                "maturity": 0.0,
+                "weight": 0.0,
+                "effective": legacy,
+                "memory": None,
+            }
+
+        memory = self.brain.user_memory_diagnostics(user_id)
+        maturity = max(
+            0.0,
+            min(1.0, float(memory.get("maturity", 0.0))),
+        )
+        weight = max(
+            0.0,
+            min(
+                1.0,
+                float(self.cfg.behavior.neural_affinity_weight)
+                * maturity,
+            ),
+        )
+        neural = max(
+            -1.0,
+            min(
+                1.0,
+                float(memory.get("neural_affinity", 0.0)),
+            ),
+        )
+        effective = max(
+            -1.0,
+            min(
+                1.0,
+                (1.0 - weight) * legacy
+                + weight * neural,
+            ),
+        )
+        return {
+            "legacy": legacy,
+            "neural": neural,
+            "maturity": maturity,
+            "weight": weight,
+            "effective": effective,
+            "memory": memory,
+        }
+
     def _user_affinity(self, user_id: int) -> float:
-        return self.language.get_user_affinity(int(user_id))
+        return float(
+            self._user_affinity_components(user_id)["effective"]
+        )
+
+    def _write_neural_social_memory(
+        self,
+        user_id: int,
+        affinity_delta: float,
+    ) -> dict | None:
+        if not self.cfg.behavior.neural_social_memory_enabled:
+            return None
+        scaled = float(affinity_delta) * max(
+            0.0,
+            float(self.cfg.behavior.neural_social_learning_scale),
+        )
+        return self.brain.reinforce_user_memory(
+            int(user_id),
+            scaled,
+        )
 
     def _is_disliked_user(self, user_id: int) -> bool:
         return (
@@ -940,11 +1010,17 @@ class MuchaClient(discord.Client):
         amount: float,
         member: discord.abc.User | discord.Member | None = None,
     ) -> None:
-        affinity = (
-            self._user_affinity(member.id)
+        components = (
+            self._user_affinity_components(member.id)
             if member is not None
-            else 0.0
+            else {
+                "effective": 0.0,
+                "legacy": 0.0,
+                "neural": 0.0,
+                "maturity": 0.0,
+            }
         )
+        affinity = float(components["effective"])
         self._social_debug = {
             "event": event,
             "detail": detail,
@@ -957,6 +1033,15 @@ class MuchaClient(discord.Client):
                 else None
             ),
             "affinity": affinity,
+            "legacy_affinity": float(
+                components.get("legacy", affinity)
+            ),
+            "neural_affinity": float(
+                components.get("neural", 0.0)
+            ),
+            "neural_maturity": float(
+                components.get("maturity", 0.0)
+            ),
             "updated_at": time.time(),
         }
 
@@ -1068,6 +1153,11 @@ class MuchaClient(discord.Client):
             max(0.0, abs(float(brain_penalty))) * multiplier,
         )
         async with self._brain_lock:
+            self._write_neural_social_memory(
+                member.id,
+                delta,
+            )
+            new_affinity = self._user_affinity(member.id)
             self.brain.inject(stimulus, 0.60, 128)
             self.brain.inject(
                 f"{stimulus}:user:{member.id}",
@@ -1490,6 +1580,11 @@ class MuchaClient(discord.Client):
             )
 
         async with self._brain_lock:
+            self._write_neural_social_memory(
+                member.id,
+                delta + repeated_bonus,
+            )
+            new_affinity = self._user_affinity(member.id)
             self.brain.inject(stimulus, 0.45, 112)
             self.brain.inject(
                 f"{stimulus}:user:{member.id}",
@@ -1783,6 +1878,13 @@ class MuchaClient(discord.Client):
                 (0.06 + 0.24 * severity) * streak_multiplier,
             )
             async with self._brain_lock:
+                self._write_neural_social_memory(
+                    message.author.id,
+                    affinity_delta,
+                )
+                new_affinity = self._user_affinity(
+                    message.author.id
+                )
                 self.brain.inject(
                     "social:user-told-me-stop",
                     0.55 + 0.65 * severity,
@@ -3370,6 +3472,13 @@ class MuchaClient(discord.Client):
             )
             self.language.reinforce_text(trace.text, amount)
             async with self._brain_lock:
+                self._write_neural_social_memory(
+                    payload.user_id,
+                    affinity_delta,
+                )
+                new_affinity = self._user_affinity(
+                    payload.user_id
+                )
                 if amount < 0 and reaction_streak_count >= 2:
                     self.brain.inject(
                         "social:repeated-rejection",
@@ -3905,6 +4014,44 @@ class MuchaClient(discord.Client):
             row["negative_streak"] = count
             row["negative_multiplier"] = multiplier
 
+        if self.cfg.behavior.neural_social_memory_enabled:
+            async with self._brain_lock:
+                for row in user_affinities[:20]:
+                    components = self._user_affinity_components(
+                        int(row["user_id"])
+                    )
+                    memory = components.get("memory") or {}
+                    row["legacy_affinity"] = float(
+                        components["legacy"]
+                    )
+                    row["neural_affinity"] = float(
+                        components["neural"]
+                    )
+                    row["neural_maturity"] = float(
+                        components["maturity"]
+                    )
+                    row["neural_weight"] = float(
+                        components["weight"]
+                    )
+                    row["effective_affinity"] = float(
+                        components["effective"]
+                    )
+                    row["affinity"] = float(
+                        components["effective"]
+                    )
+                    row["neural_memory"] = memory
+        else:
+            for row in user_affinities:
+                row["legacy_affinity"] = float(
+                    row.get("affinity", 0.0)
+                )
+                row["neural_affinity"] = 0.0
+                row["neural_maturity"] = 0.0
+                row["neural_weight"] = 0.0
+                row["effective_affinity"] = float(
+                    row.get("affinity", 0.0)
+                )
+
         voice_parts = []
         for guild in self.guilds:
             vc = guild.voice_client
@@ -3947,6 +4094,9 @@ class MuchaClient(discord.Client):
                 "familiar_affinity_threshold": self.cfg.behavior.familiar_affinity_threshold,
                 "ignore_disliked_users_text": self.cfg.behavior.ignore_disliked_users_text,
                 "avoid_disliked_users_on_voice": self.cfg.behavior.avoid_disliked_users_on_voice,
+                "neural_social_memory_enabled": self.cfg.behavior.neural_social_memory_enabled,
+                "neural_affinity_weight": self.cfg.behavior.neural_affinity_weight,
+                "neural_social_learning_scale": self.cfg.behavior.neural_social_learning_scale,
             },
             "action_history": self._action_history[-40:],
             "reward_history": self._reward_history[-80:],
@@ -4641,6 +4791,11 @@ class MuchaClient(discord.Client):
                 (0.06 + 0.24 * severity) * streak_multiplier,
             )
             async with self._brain_lock:
+                self._write_neural_social_memory(
+                    member.id,
+                    affinity_delta,
+                )
+                new_affinity = self._user_affinity(member.id)
                 self.brain.inject(
                     "social:user-told-me-stop",
                     0.55 + 0.65 * severity,
