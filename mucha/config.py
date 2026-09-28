@@ -146,6 +146,9 @@ class BehaviorConfig:
     reaction_candidate_sample: int = 64
     save_every_seconds: int = 45
     social_learning_enabled: bool = True
+    neural_social_memory_enabled: bool = True
+    neural_affinity_weight: float = 0.70
+    neural_social_learning_scale: float = 1.00
     social_window_seconds: int = 900
     word_reuse_reward: float = 0.20
     phrase_reuse_reward: float = 0.35
