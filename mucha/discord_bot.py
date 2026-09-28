@@ -5731,9 +5731,42 @@ class MuchaClient(discord.Client):
             self._voice_debug[guild.id] = debug
             return
 
+        alternatives_count = sum(
+            1
+            for ch, _ in channels
+            if current is None or ch.id != current.id
+        )
+        current_humans = (
+            [m for m in current.members if not m.bot]
+            if current is not None
+            else []
+        )
+        disliked_strength = max(
+            (
+                min(1.0, max(0.0, -float(affinity)))
+                for _, affinity in current_disliked
+            ),
+            default=0.0,
+        )
+        min_dwell = max(
+            1.0,
+            float(self.cfg.voice.minimum_dwell_seconds),
+        )
+        dwell_progress = (
+            min(1.5, dwell_elapsed / min_dwell)
+            if current is not None
+            else 0.0
+        )
+        decision_trace = None
+        brain_decision = None
+
         async with self._brain_lock:
             for ch, humans in channels:
-                self.brain.inject_voice_snapshot(guild.id, ch.id, [m.id for m in humans])
+                self.brain.inject_voice_snapshot(
+                    guild.id,
+                    ch.id,
+                    [m.id for m in humans],
+                )
             deadly_duration = max(
                 1.0,
                 float(self.cfg.voice.deadly_channel_seconds),
@@ -5749,11 +5782,62 @@ class MuchaClient(discord.Client):
                     * (0.5 + 0.5 * memory_strength),
                     128,
                 )
-            self.brain.step(2)
-            scores = self.brain.action_scores()
+
+            if connectome_voice_control:
+                self.brain.inject_voice_decision_context(
+                    guild.id,
+                    current.id if current is not None else None,
+                    connected=bool(
+                        vc is not None and vc.is_connected()
+                    ),
+                    dwell_progress=dwell_progress,
+                    overstay_level=threat_level,
+                    human_count=len(current_humans),
+                    disliked_strength=disliked_strength,
+                    alternatives=alternatives_count,
+                )
+                self.brain.step(
+                    max(
+                        2,
+                        int(self.cfg.voice.threat_steps)
+                        if threat_active
+                        else 2,
+                    )
+                )
+                brain_decision = self.brain.voice_action_decision(
+                    connected=bool(
+                        vc is not None and vc.is_connected()
+                    ),
+                    can_join=bool(channels),
+                    can_move=bool(
+                        dwell_remaining <= 0.0
+                        and alternatives_count > 0
+                    ),
+                    can_leave=bool(
+                        dwell_remaining <= 0.0
+                    ),
+                )
+                scores = dict(brain_decision["scores"])
+                decision_trace = self.brain.capture_learning_trace()
+            else:
+                self.brain.step(2)
+                scores = self.brain.action_scores()
+
             affinities = {
                 ch.id: self.brain.channel_affinity(guild.id, ch.id)
                 for ch, _ in channels
+            }
+
+        if brain_decision is not None:
+            debug["brain_decision"] = {
+                "action": brain_decision["action"],
+                "score": brain_decision["score"],
+                "runner_up": brain_decision["runner_up"],
+                "runner_up_score": brain_decision["runner_up_score"],
+                "margin": brain_decision["margin"],
+                "candidates": dict(
+                    brain_decision["candidates"]
+                ),
             }
 
         debug["scores"] = {
