@@ -744,6 +744,21 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
  <div class="circuits-grid" id="biological-circuits"></div>
 </section>
 
+<section class="card circuits-card">
+ <div class="card-head">
+  <div><h2>Neuromodulation v2</h2><div class="muted" style="margin-top:4px">Live poziomy monoamin i ich aktualny wpływ na dynamikę connectomu.</div></div>
+  <span class="mode" id="neuromod-status">—</span>
+ </div>
+ <div class="readout">
+  <div class="mini"><small>Dopamina</small><strong id="neuromod-da">—</strong><div class="muted" id="neuromod-da-n">—</div></div>
+  <div class="mini"><small>Serotonina</small><strong id="neuromod-ser">—</strong><div class="muted" id="neuromod-ser-n">—</div></div>
+  <div class="mini"><small>Octopamina</small><strong id="neuromod-oct">—</strong><div class="muted" id="neuromod-oct-n">—</div></div>
+  <div class="mini"><small>Plasticity gain</small><strong id="neuromod-plasticity">—</strong><div class="muted">dopamina → uczenie</div></div>
+  <div class="mini"><small>Propagation gain</small><strong id="neuromod-gain">—</strong><div class="muted">octopamina → pobudzenie</div></div>
+  <div class="mini"><small>Leak / noise</small><strong id="neuromod-dynamics">—</strong><div class="muted" id="neuromod-residual">—</div></div>
+ </div>
+</section>
+
 <section class="grid">
  <div class="card">
   <div class="card-head">
@@ -911,6 +926,7 @@ function render(s,v){
  $("k-neurons").textContent=nfmt(d.neurons);$("k-connections").textContent=nfmt(d.connections);$("k-active").textContent=nfmt(d.active_abs_gt_0_1);$("k-mean").textContent=Number(d.mean_abs||0).toFixed(5);$("k-reward").textContent=Number(d.reward_trace||0).toFixed(3);$("k-backend").textContent=(d.backend||"—")+" • "+(d.device||"");$("k-tick").textContent="tick "+nfmt(d.ticks);$("k-synapses").textContent=nfmt(d.learned_synapses||0);$("k-synapse-delta").textContent="max |Δ| "+Number(d.synaptic_max_abs||0).toFixed(5);
  $("selected").textContent=nfmt(v.selected_neurons);$("edges").textContent=nfmt(v.selected_edges);$("event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";renderActions(s.scores||{});
  const pools=d.action_pools||{};renderBiologicalCircuits(pools,s.scores||{});const poolOrder=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];$("action-pool-detail").textContent=poolOrder.map(k=>{const p=pools[k]||{};return k+": "+(p.mode||"—")+" • seeds "+nfmt(p.seed_count||0)+" • pool "+nfmt(p.pool_size||0)}).join("  |  ");
+ const nm=d.neuromodulation||{},da=nm.dopamine||{},ser=nm.serotonin||{},oct=nm.octopamine||{};$("neuromod-status").textContent=nm.enabled?"ACTIVE":"OFF";$("neuromod-da").textContent=Number(da.level||0).toFixed(4);$("neuromod-da-n").textContent=nfmt(da.neurons||0)+" neuronów";$("neuromod-ser").textContent=Number(ser.level||0).toFixed(4);$("neuromod-ser-n").textContent=nfmt(ser.neurons||0)+" neuronów";$("neuromod-oct").textContent=Number(oct.level||0).toFixed(4);$("neuromod-oct-n").textContent=nfmt(oct.neurons||0)+" neuronów";$("neuromod-plasticity").textContent="×"+Number(nm.plasticity_gain||1).toFixed(3);$("neuromod-gain").textContent=Number(nm.effective_gain||0).toFixed(4);$("neuromod-dynamics").textContent="leak "+Number(nm.effective_leak||0).toFixed(4)+" • noise "+Number(nm.effective_noise||0).toFixed(4);$("neuromod-residual").textContent="direct residual "+Number(nm.direct_residual||0).toFixed(2);
  $("stable-age").textContent=followActivity?"FOLLOW":Math.round(Number(v.stable_age_seconds||0))+" s / "+Math.round(Number(v.stable_window_seconds||45))+" s";
  $("replacements").textContent=nfmt(v.replacements||0);
  const vocab=Number(ld.word_vocab||0),min=Number(ld.connectome_word_control_min_vocab||1),ready=!!ld.connectome_word_control_ready,pct=clamp(vocab/min*100,0,100);
