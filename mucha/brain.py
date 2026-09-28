@@ -32,11 +32,7 @@ class FlyBrain:
     # speech neuron, but its readout can be anchored to song-related descending
     # neurons instead of a random output subset.
     ACTION_BIOLOGICAL_SEEDS = {
-        "speak": (
-            "pip10", "pmp2", "song", "courtship",
-            "wing extension", "wing motor", "pulse song",
-            "sine song", "vibration",
-        ),
+        "speak": (),
         "react": (
             "adn1", "adn2", "groom", "dnp07", "dnp10",
             "landing", "jump", "giant fiber",
@@ -121,6 +117,11 @@ class FlyBrain:
         self._action_output_pools: dict[str, np.ndarray] = {}
         self._action_output_seeds: dict[str, np.ndarray] = {}
         self._action_output_info: dict[str, dict] = {}
+        self._adaptive_speak_cues = np.empty(0, dtype=np.int32)
+        self._adaptive_speak_structural_score = np.empty(
+            0,
+            dtype=np.float32,
+        )
         self._action_structural_cache: tuple[
             np.ndarray,
             np.ndarray,
@@ -147,6 +148,7 @@ class FlyBrain:
             "top_changed": [],
         }
         self._load_state()
+        self._refresh_adaptive_speak_pool()
         self._learning_session_started_at = time.time()
         self._startup_plastic_bias = (
             self.compute.to_cpu(self.plastic_bias)
@@ -678,6 +680,189 @@ class FlyBrain:
                 break
         return np.asarray(expanded[:width], dtype=np.int32)
 
+    def _build_adaptive_speak_cues(self) -> np.ndarray:
+        """Return the artificial sensory adapter used for text/social input."""
+        pools = [
+            self._subset(
+                "sensory:text:any",
+                self.c.sensory,
+                128,
+            ),
+            self._subset(
+                "sensory:text:mention-self",
+                self.c.sensory,
+                96,
+            ),
+            self._subset(
+                "sensory:text:question",
+                self.c.sensory,
+                48,
+            ),
+            self._subset(
+                "sensory:text:exclamation",
+                self.c.sensory,
+                48,
+            ),
+        ]
+        return np.unique(
+            np.concatenate(pools)
+        ).astype(np.int32, copy=False)
+
+    def _adaptive_speak_structure(
+        self,
+        output: np.ndarray,
+        cues: np.ndarray,
+    ) -> np.ndarray:
+        """Measure real 1-2 hop FAFB reach from Discord sensory cues."""
+        if not len(output) or not len(cues):
+            return np.zeros(len(output), dtype=np.float32)
+
+        absolute = self.c.matrix.copy()
+        absolute.data = np.abs(absolute.data)
+        cue_vector = np.zeros(
+            self.c.n_neurons,
+            dtype=np.float32,
+        )
+        cue_vector[cues] = 1.0
+        hop1 = np.asarray(
+            absolute.dot(cue_vector)
+        ).ravel().astype(np.float32, copy=False)
+        hop2 = np.asarray(
+            absolute.dot(hop1)
+        ).ravel().astype(np.float32, copy=False)
+        return (
+            0.35 * hop1[output]
+            + hop2[output]
+        ).astype(np.float32, copy=False)
+
+    @staticmethod
+    def _unit_scale(values: np.ndarray) -> np.ndarray:
+        values = np.asarray(values, dtype=np.float32)
+        if not len(values):
+            return values
+        lo = float(np.min(values))
+        hi = float(np.max(values))
+        if hi - lo <= 1e-9:
+            return np.zeros_like(values)
+        return (values - lo) / (hi - lo)
+
+    def _refresh_adaptive_speak_pool(
+        self,
+        width: int = 128,
+    ) -> None:
+        """Build a learned communication circuit from activity and reward.
+
+        Discord text is an artificial sensory modality, so there is no claim
+        that one named fly neuron means "speak". Instead the adapter starts
+        from stable text/social sensory populations, propagates through the
+        real FAFB topology and lets reward/plasticity reshape which output
+        neurons become the communication readout.
+        """
+        output = np.asarray(
+            self.c.output,
+            dtype=np.int32,
+        )
+        if not len(output):
+            output = np.arange(
+                self.c.n_neurons,
+                dtype=np.int32,
+            )
+        width = min(max(1, int(width)), len(output))
+        cues = self._build_adaptive_speak_cues()
+
+        if (
+            not len(self._adaptive_speak_structural_score)
+            or len(self._adaptive_speak_structural_score) != len(output)
+        ):
+            self._adaptive_speak_structural_score = (
+                self._adaptive_speak_structure(
+                    output,
+                    cues,
+                )
+            )
+        structural = self._unit_scale(
+            self._adaptive_speak_structural_score
+        )
+
+        state_cpu = self.compute.to_cpu(
+            self.state
+        ).astype(np.float32, copy=False)
+        bias_cpu = self.compute.to_cpu(
+            self.plastic_bias
+        ).astype(np.float32, copy=False)
+        activity = self._unit_scale(
+            np.abs(state_cpu[output])
+        )
+        learned_bias = np.clip(
+            bias_cpu[output]
+            / max(1e-6, float(self.cfg.max_bias)),
+            -1.0,
+            1.0,
+        ).astype(np.float32, copy=False)
+
+        learned_reach = np.zeros(
+            len(output),
+            dtype=np.float32,
+        )
+        if self._synaptic_delta_map and len(cues):
+            learned_abs = self._synaptic_matrix_cpu.copy()
+            learned_abs.data = np.abs(learned_abs.data)
+            cue_vector = np.zeros(
+                self.c.n_neurons,
+                dtype=np.float32,
+            )
+            cue_vector[cues] = 1.0
+            learned_hop = np.asarray(
+                learned_abs.dot(cue_vector)
+            ).ravel().astype(np.float32, copy=False)
+            learned_reach = self._unit_scale(
+                learned_hop[output]
+            )
+
+        score = (
+            1.00 * structural
+            + 0.45 * activity
+            + 0.70 * learned_bias
+            + 0.85 * learned_reach
+        )
+        order = np.argsort(score)[::-1]
+        pool = output[
+            order[:width]
+        ].astype(np.int32, copy=False)
+
+        self._adaptive_speak_cues = cues
+        self._action_output_seeds["speak"] = cues
+        self._action_output_pools["speak"] = pool
+        self._action_output_info["speak"] = {
+            "mode": "adaptive-learned-connectome",
+            "seed_count": int(len(cues)),
+            "pool_size": int(len(pool)),
+            "seed_terms": [
+                "text:any",
+                "mention:self",
+                "question",
+                "exclamation",
+            ],
+            "matched_terms": [],
+            "seed_types": [
+                {
+                    "name": "Discord sensory adapter",
+                    "count": int(len(cues)),
+                }
+            ],
+            "seed_neurons": [],
+            "external_seed_count": int(len(cues)),
+            "seed_kind": "sensory-cues",
+            "structural_mean": float(
+                np.mean(structural) if len(structural) else 0.0
+            ),
+            "learned_reach_mean": float(
+                np.mean(learned_reach)
+                if len(learned_reach)
+                else 0.0
+            ),
+        }
+
     def _seed_display_type(
         self,
         idx: int,
@@ -793,6 +978,10 @@ class FlyBrain:
         self._action_output_info = {}
 
         for action in self.ACTIONS:
+            if action == "speak":
+                self._refresh_adaptive_speak_pool(width)
+                continue
+
             terms = self.ACTION_BIOLOGICAL_SEEDS.get(action, ())
             seeds, matched_terms = self._action_seed_candidates(
                 action,
@@ -904,8 +1093,12 @@ class FlyBrain:
                         "root_id": int(
                             self.c.root_ids[neuron_idx]
                         ),
-                        "type": self._seed_display_type(
-                            neuron_idx
+                        "type": (
+                            "text/social sensory cue"
+                            if action == "speak"
+                            else self._seed_display_type(
+                                neuron_idx
+                            )
                         ),
                         "activation": float(values[int(pos)]),
                         "in_output_pool": bool(
@@ -1477,6 +1670,8 @@ class FlyBrain:
             amount,
             trace,
         )
+        if action == "speak":
+            self._refresh_adaptive_speak_pool()
 
         after = self.action_scores()
         impact = {name: after[name] - before[name] for name in self.ACTIONS}
