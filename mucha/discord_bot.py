@@ -5862,10 +5862,24 @@ class MuchaClient(discord.Client):
 
         if vc is None or not vc.is_connected():
             join = scores["voice_join"]
-            if join < self.cfg.voice.join_threshold:
+            if connectome_voice_control:
+                if (
+                    brain_decision is None
+                    or brain_decision["action"] != "voice_join"
+                ):
+                    debug["decision"] = "ZOSTAJĘ POZA VOICE"
+                    debug["reason"] = (
+                        "connectome winner "
+                        f"{(brain_decision or {}).get('action', 'stay')} • "
+                        f"join {join:.3f}"
+                    )
+                    self._voice_debug[guild.id] = debug
+                    return
+            elif join < self.cfg.voice.join_threshold:
                 debug["decision"] = "NIE WCHODZĘ"
                 debug["reason"] = (
-                    f"voice_join {join:.3f} < próg {self.cfg.voice.join_threshold:.3f}"
+                    f"voice_join {join:.3f} < próg "
+                    f"{self.cfg.voice.join_threshold:.3f}"
                 )
                 self._voice_debug[guild.id] = debug
                 return
@@ -5888,11 +5902,19 @@ class MuchaClient(discord.Client):
                     row.update(extra)
             target_aff = affinities[target.id]
             debug["decision"] = f"JOIN → {target.name}"
-            debug["reason"] = (
-                f"voice_join {join:.3f} ≥ {self.cfg.voice.join_threshold:.3f}; "
-                f"affinity {target_aff:.3f}; eksploracja "
-                f"{exploration.get(target.id, {}).get('exploration_score', target_aff):.3f}"
-            )
+            if connectome_voice_control and brain_decision is not None:
+                debug["reason"] = (
+                    f"CONNECTOME WINNER voice_join {join:.3f}; "
+                    f"margin {brain_decision['margin']:.3f}; "
+                    f"target neural affinity {target_aff:.3f}"
+                )
+            else:
+                debug["reason"] = (
+                    f"voice_join {join:.3f} ≥ "
+                    f"{self.cfg.voice.join_threshold:.3f}; "
+                    f"affinity {target_aff:.3f}; eksploracja "
+                    f"{exploration.get(target.id, {}).get('exploration_score', target_aff):.3f}"
+                )
             try:
                 connect_kwargs = {
                     "self_deaf": not bool(self.cfg.voice.stt_enabled),
@@ -5914,8 +5936,11 @@ class MuchaClient(discord.Client):
                 )
                 self._last_overstay_punish.pop(guild.id, None)
                 self._last_brain_action = f"VOICE JOIN → {target.name}"
-                async with self._brain_lock:
-                    learning_trace = self.brain.capture_learning_trace()
+                if connectome_voice_control and decision_trace is not None:
+                    learning_trace = decision_trace
+                else:
+                    async with self._brain_lock:
+                        learning_trace = self.brain.capture_learning_trace()
                 self._set_reinforceable(
                     guild,
                     "voice_join",
