@@ -5716,6 +5716,7 @@ class MuchaClient(discord.Client):
             "social_join_reward": 0.0,
             "reward_opportunity_channel": None,
             "reward_opportunity_strength": 0.0,
+            "reward_opportunity_effective_strength": 0.0,
             "reward_opportunity_remaining": 0.0,
             "reward_opportunity_found": False,
             "reward_opportunity_reward": 0.0,
@@ -5982,12 +5983,24 @@ class MuchaClient(discord.Client):
                 None,
             )
 
+        opportunity_effective_strength = 0.0
         if reward_opportunity is not None:
             debug["reward_opportunity_channel"] = (
                 reward_opportunity["channel_name"]
             )
             debug["reward_opportunity_strength"] = float(
                 reward_opportunity["strength"]
+            )
+            opportunity_effective_strength = min(
+                4.0,
+                float(reward_opportunity["strength"])
+                * (
+                    1.0
+                    + 0.75 * social_drive_level
+                ),
+            )
+            debug["reward_opportunity_effective_strength"] = (
+                opportunity_effective_strength
             )
             debug["reward_opportunity_remaining"] = max(
                 0.0,
@@ -6072,9 +6085,7 @@ class MuchaClient(discord.Client):
                         human_count=int(
                             reward_opportunity["human_count"]
                         ),
-                        strength=float(
-                            reward_opportunity["strength"]
-                        ),
+                        strength=opportunity_effective_strength,
                     )
                 )
 
@@ -6232,6 +6243,94 @@ class MuchaClient(discord.Client):
                         -punish_amount,
                         "stay",
                         "neural social drive outside voice",
+                        guild,
+                    )
+
+        if (
+            connectome_voice_control
+            and brain_decision is not None
+            and current is None
+            and reward_opportunity is not None
+            and brain_decision["action"] == "stay"
+            and decision_trace is not None
+            and not debug["social_drive_stay_punished"]
+        ):
+            interval = max(
+                5.0,
+                float(
+                    self.cfg.voice.reward_opportunity_stay_punish_interval_seconds
+                ),
+            )
+            last_missed = (
+                self._last_reward_opportunity_stay_punish.get(
+                    guild.id,
+                    0.0,
+                )
+            )
+            if now - last_missed >= interval:
+                cue_scale = max(
+                    0.25,
+                    min(
+                        1.5,
+                        opportunity_effective_strength
+                        / max(
+                            0.25,
+                            float(
+                                self.cfg.voice.reward_opportunity_max_strength
+                            ),
+                        ),
+                    ),
+                )
+                punish_amount = max(
+                    0.0,
+                    min(
+                        0.5,
+                        float(
+                            self.cfg.voice.reward_opportunity_stay_punish
+                        )
+                        * cue_scale,
+                    ),
+                )
+                if punish_amount > 0.0:
+                    async with self._brain_lock:
+                        self.brain.reward(
+                            -punish_amount,
+                            action="stay",
+                            trace=decision_trace,
+                        )
+                        self.brain.step(1)
+                        brain_decision = (
+                            self.brain.voice_action_decision(
+                                connected=False,
+                                can_join=bool(channels),
+                            )
+                        )
+                        scores = dict(
+                            brain_decision["scores"]
+                        )
+                        decision_trace = (
+                            self.brain.capture_learning_trace()
+                        )
+                        affinities = {
+                            ch.id: self.brain.channel_affinity(
+                                guild.id,
+                                ch.id,
+                            )
+                            for ch, _ in channels
+                        }
+                    self._last_reward_opportunity_stay_punish[
+                        guild.id
+                    ] = now
+                    debug[
+                        "reward_opportunity_stay_punished"
+                    ] = True
+                    debug[
+                        "reward_opportunity_stay_punish_amount"
+                    ] = -punish_amount
+                    self._record_reward(
+                        -punish_amount,
+                        "stay",
+                        "ignored neural reward opportunity",
                         guild,
                     )
 
