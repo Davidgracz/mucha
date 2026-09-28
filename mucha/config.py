@@ -66,6 +66,7 @@ class LanguageConfig:
 class VoiceConfig:
     enabled: bool = True
     poll_seconds: int = 15
+    connectome_voice_control_enabled: bool = True
     minimum_dwell_seconds: int = 60
     maximum_dwell_seconds: int = 300
     overstay_punish_amount: float = 0.5
