@@ -104,6 +104,16 @@ class VoiceConfig:
     prediction_error_scale: float = 0.20
     prediction_error_max_correction: float = 0.15
     prediction_max_age_seconds: int = 180
+    prediction_credit_queue_size: int = 8
+    prediction_credit_decay_seconds: float = 60.0
+    memory_replay_enabled: bool = True
+    memory_replay_idle_seconds: int = 180
+    memory_replay_interval_seconds: int = 120
+    memory_replay_batch_size: int = 2
+    memory_replay_magnitude: float = 0.25
+    memory_replay_reward_scale: float = 0.10
+    memory_replay_steps: int = 6
+    memory_replay_max_age_days: int = 14
     minimum_dwell_seconds: int = 60
     maximum_dwell_seconds: int = 300
     overstay_punish_amount: float = 0.5
