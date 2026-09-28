@@ -8,6 +8,7 @@ from collections import Counter, deque
 from typing import Iterable
 
 import numpy as np
+from scipy import sparse as scipy_sparse
 
 from .compute import ComputeBackend
 from .config import BrainConfig
