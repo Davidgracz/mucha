@@ -104,6 +104,19 @@ def main():
             "Stivi",
         }
         assert restored.diagnostics()["persistent"] is True
+        replay_candidates = restored.replay_candidates(
+            limit=4,
+            max_age_seconds=86400,
+        )
+        assert replay_candidates
+        assert replay_candidates[0]["action"] == "voice_move"
+        assert replay_candidates[0]["channel_id"] == 555
+        assert replay_candidates[0]["replay_score"] > 0.0
+        assert replay_candidates[0]["user_ids"] == [11, 22]
+        assert replay_candidates[0]["user_names"] == [
+            "Dawid",
+            "Stivi",
+        ]
         restored.close()
 
         # Voice behavior is now selected by competition between connectome
@@ -416,6 +429,18 @@ def main():
         assert "prediction_learning_rate" in CONFIG_HTML
         assert "prediction_error_scale" in CONFIG_HTML
         assert "prediction_error_max_correction" in CONFIG_HTML
+        assert "prediction_credit_queue_size" in CONFIG_HTML
+        assert "prediction_credit_decay_seconds" in CONFIG_HTML
+        assert "memory_replay_enabled" in CONFIG_HTML
+        assert "memory_replay_idle_seconds" in CONFIG_HTML
+        assert "memory_replay_interval_seconds" in CONFIG_HTML
+        assert "memory_replay_batch_size" in CONFIG_HTML
+        assert "memory_replay_magnitude" in CONFIG_HTML
+        assert "memory_replay_reward_scale" in CONFIG_HTML
+        assert "memory_replay_steps" in CONFIG_HTML
+        assert "memory_replay_max_age_days" in CONFIG_HTML
+        assert "MEMORY REPLAY" in HTML
+        assert "Credit queue" in HTML
         assert "neural tie-break" in HTML
         assert "overstay_punish_amount" in CONFIG_HTML
         assert "overstay_punish_interval_seconds" in CONFIG_HTML
@@ -459,6 +484,11 @@ def main():
         assert "episodic_recall_magnitude" in bot_source
         assert "prediction_scene_key" in bot_source
         assert "prediction_error_max_correction" in bot_source
+        assert "_queue_voice_prediction" in bot_source
+        assert "prediction_credit_decay_seconds" in bot_source
+        assert "_maybe_memory_replay" in bot_source
+        assert "memory_replay_reward_scale" in bot_source
+        assert "replay_candidates" in bot_source
         assert "preferred_channel_id" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
