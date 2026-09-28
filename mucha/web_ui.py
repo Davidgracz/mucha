@@ -1478,6 +1478,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
         <div class="kpi"><small>target action</small><strong id="learn-action">—</strong></div>
         <div class="kpi"><small>zmienione neurony</small><strong id="learn-count">—</strong></div>
         <div class="kpi"><small>max |Δ bias|</small><strong id="learn-max">—</strong></div>
+        <div class="kpi"><small>zmienione synapsy</small><strong id="learn-synapses">—</strong></div>
+        <div class="kpi"><small>uczone synapsy razem</small><strong id="learn-synapses-total">—</strong></div>
       </div>
       <div class="reason" id="learn-summary">Czekam na pierwszy reward…</div>
       <div id="learning-impact"></div>
@@ -1564,6 +1566,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="metric"><span>Max |bias|</span><strong id="bias-max">—</strong></div>
       <div class="metric"><span>Dodatnie neurony</span><strong id="bias-pos">—</strong></div>
       <div class="metric"><span>Ujemne neurony</span><strong id="bias-neg">—</strong></div>
+      <div class="metric"><span>Uczone synapsy</span><strong id="synapse-count">—</strong></div>
+      <div class="metric"><span>Średni |Δ synapsy|</span><strong id="synapse-mean">—</strong></div>
+      <div class="metric"><span>Max |Δ synapsy|</span><strong id="synapse-max">—</strong></div>
       <canvas id="bias-chart" width="520" height="150" aria-label="Histogram plastic bias" style="height:150px;margin-top:12px"></canvas>
     </div>
 
@@ -1798,8 +1803,11 @@ function renderLearning(l){
   $("learn-action").textContent=l.action||"global / brak";
   $("learn-count").textContent=nfmt(l.changed_neurons||0);
   $("learn-max").textContent=Number(l.max_delta||0).toExponential(3);
+  $("learn-synapses").textContent=nfmt(l.changed_synapses||0);
+  $("learn-synapses-total").textContent=nfmt(l.learned_synapses||0);
   $("learn-summary").innerHTML='<b>'+esc(l.action||"brak targetu")+'</b> • średnie Δ bias: '+
-    (Number(l.mean_delta||0)>=0?"+":"")+Number(l.mean_delta||0).toExponential(3);
+    (Number(l.mean_delta||0)>=0?"+":"")+Number(l.mean_delta||0).toExponential(3)+
+    ' • synapsy Δ max: '+Number(l.synaptic_max_delta||0).toExponential(3);
 
   const impact=l.impact||{}, before=l.before||{}, after=l.after||{};
   const maxAbs=Math.max(.001,...Object.values(impact).map(v=>Math.abs(Number(v))));
@@ -1963,6 +1971,9 @@ async function update(){
     $("bias-max").textContent=Number(d.bias_max_abs||0).toExponential(3);
     $("bias-pos").textContent=nfmt(d.bias_positive||0);
     $("bias-neg").textContent=nfmt(d.bias_negative||0);
+    $("synapse-count").textContent=nfmt(d.learned_synapses||0);
+    $("synapse-mean").textContent=Number(d.synaptic_mean_abs||0).toExponential(3);
+    $("synapse-max").textContent=Number(d.synaptic_max_abs||0).toExponential(3);
     drawBiasHistogram(d.bias_hist||{});
     const ld=s.language_diag||{};
     $("language").textContent=nfmt(s.language_tokens)+" znaków / "+nfmt(s.language_unique)+" unikalnych";
