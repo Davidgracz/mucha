@@ -27,10 +27,10 @@ class FlyBrain:
         "speak", "react", "voice_join", "voice_move", "voice_leave", "explore", "stay"
     )
 
-    # These are seed labels with published links to broad fly behaviors.
-    # Discord actions remain an adapter layer: "speak" is not literally a fly
-    # speech neuron, but its readout can be anchored to song-related descending
-    # neurons instead of a random output subset.
+    # These are seed labels for actions that have a defensible broad
+    # motor/behavioral analogue in the fly. "speak" is intentionally empty:
+    # Discord communication has no literal FAFB output neuron and is learned
+    # adaptively from text/social sensory cues plus the real connectome.
     ACTION_BIOLOGICAL_SEEDS = {
         "speak": (),
         "react": (
