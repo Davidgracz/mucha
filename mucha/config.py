@@ -95,6 +95,12 @@ class VoiceConfig:
     exploration_drive_start_seconds: int = 90
     exploration_drive_ramp_seconds: int = 300
     exploration_drive_max_magnitude: float = 1.00
+    episodic_prediction_enabled: bool = True
+    episodic_memory_size: int = 256
+    prediction_learning_rate: float = 0.20
+    prediction_error_scale: float = 0.20
+    prediction_error_max_correction: float = 0.15
+    prediction_max_age_seconds: int = 180
     minimum_dwell_seconds: int = 60
     maximum_dwell_seconds: int = 300
     overstay_punish_amount: float = 0.5
