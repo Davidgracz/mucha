@@ -1729,6 +1729,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="metric"><span>Stan</span><strong id="paused">—</strong></div>
     </div>
 
+    <div class="card span3">
+      <h2>Voice / Zachowanie</h2>
+      <div id="voice-debug"><div class="reason">Czekam na pierwszy cykl voice…</div></div>
+    </div>
+
     <div class="card span2">
       <h2>Aktywność w czasie</h2>
       <canvas id="chart" width="1000" height="220" aria-label="Wykres aktywności mózgu"></canvas>
@@ -1896,11 +1901,6 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="metric"><span>Kolejka</span><strong id="stt-debug-pending">—</strong></div>
       <div class="metric"><span>Ostatnia transkrypcja</span><strong id="stt-debug-text">—</strong></div>
       <div class="reason" id="stt-debug-error">Brak błędów STT.</div>
-    </div>
-
-    <div class="card span3">
-      <h2>Voice Debug</h2>
-      <div id="voice-debug"><div class="reason">Czekam na pierwszy cykl voice…</div></div>
     </div>
 
     <div class="card span3">
