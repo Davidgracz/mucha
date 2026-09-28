@@ -31,10 +31,11 @@ def main():
         pools = b.action_pool_diagnostics()
         assert set(pools) == set(b.ACTIONS)
         assert pools["speak"]["seed_count"] > 0
-        assert pools["speak"]["external_seed_count"] > 0
-        assert pools["speak"]["mode"].startswith("annotated")
+        assert pools["speak"]["mode"] == "adaptive-learned-connectome"
+        assert pools["speak"]["seed_kind"] == "sensory-cues"
         assert pools["speak"]["seed_types"]
         assert pools["speak"]["top_seed_activity"]
+        assert pools["speak"]["pool_size"] > 0
         assert pools["voice_move"]["seed_count"] > 0
         assert pools["voice_leave"]["seed_count"] > 0
         assert pools["stay"]["seed_count"] > 0
@@ -114,8 +115,11 @@ def main():
         assert "/api/neuromap" in NEUROMAP_HTML
         assert "Runtime correlation" in NEUROMAP_HTML
         assert "FOLLOW ACTIVITY" in CONNECTOME_HTML
-        assert "Biological Action Circuits" in CONNECTOME_HTML
+        assert "Action Circuits • biology + learned" in CONNECTOME_HTML
         assert "biological-circuits" in CONNECTOME_HTML
+        assert "connected-outputs" in CONNECTOME_HTML
+        assert "isolated-nodes" in CONNECTOME_HTML
+        assert "Direction arrow" in CONNECTOME_HTML
         assert "Neuromodulation v2" in CONNECTOME_HTML
         assert "neuromod-da" in CONNECTOME_HTML
         assert "Zapisz i zrestartuj Muchę" in CONFIG_HTML
@@ -141,6 +145,10 @@ def main():
         assert len(visual["nodes"]) == visual["selected_neurons"]
         assert visual["total_neurons"] == c.n_neurons
         assert visual["total_connections"] == int(c.matrix.nnz)
+        assert visual["selected_edges"] > 0
+        assert visual["connected_neurons"] > 0
+        assert visual["connected_output_neurons"] > 0
+        assert visual["isolated_neurons"] < visual["selected_neurons"]
         assert visual["mode"] == "stable"
         stable_ids = [node["id"] for node in visual["nodes"]]
         b.step(1)
