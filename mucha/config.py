@@ -46,6 +46,9 @@ class LanguageConfig:
     connectome_word_control_min_vocab: int = 1500
     connectome_word_control_strength: float = 0.35
     connectome_word_control_candidates: int = 24
+    connectome_word_feedback_enabled: bool = True
+    connectome_word_feedback_steps: int = 2
+    connectome_word_feedback_magnitude: float = 0.18
 
 
 @dataclass(slots=True)
