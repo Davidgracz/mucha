@@ -295,6 +295,13 @@ class MuchaClient(discord.Client):
         )
 
     def _dashboard_config_snapshot(self) -> dict:
+        brain_fields = [
+            "synaptic_plasticity_enabled",
+            "synaptic_plasticity_lr",
+            "synaptic_plasticity_max_delta",
+            "synaptic_plasticity_trace_neurons",
+            "synaptic_plasticity_max_edges",
+        ]
         language_fields = [
             "min_chars_before_speaking",
             "min_unique_chars_before_speaking",
@@ -384,6 +391,10 @@ class MuchaClient(discord.Client):
             "random_audio_enabled",
         ]
         data = {
+            "brain": {
+                key: getattr(self.cfg.brain, key)
+                for key in brain_fields
+            },
             "language": {
                 key: getattr(self.cfg.language, key)
                 for key in language_fields
@@ -441,6 +452,21 @@ class MuchaClient(discord.Client):
 
     def _dashboard_update_config(self, payload: dict) -> dict:
         allowed: dict[tuple[str, str], tuple[type, float | None, float | None]] = {
+            ("brain", "synaptic_plasticity_enabled"): (
+                bool, None, None
+            ),
+            ("brain", "synaptic_plasticity_lr"): (
+                float, 0.0, 0.05
+            ),
+            ("brain", "synaptic_plasticity_max_delta"): (
+                float, 0.001, 0.5
+            ),
+            ("brain", "synaptic_plasticity_trace_neurons"): (
+                int, 32, 1024
+            ),
+            ("brain", "synaptic_plasticity_max_edges"): (
+                int, 1000, 250000
+            ),
             ("language", "min_chars_before_speaking"): (int, 100, 1000000),
             ("language", "min_unique_chars_before_speaking"): (int, 5, 500),
             ("language", "max_generated_chars"): (int, 24, 700),
