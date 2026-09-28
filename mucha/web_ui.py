@@ -173,7 +173,19 @@ const groups=[
   ["reward_opportunity_reward","Wartość znalezionej nagrody","number",0.01,0,1,"Reward dla ścieżki voice_join, gdy potencjalna nagroda okaże się prawdziwa."],
   ["reward_opportunity_stay_punish","Kara za zignorowaną możliwość","number",0.005,0,0.5,"Gdy connectome widzi reward opportunity, ale wybiera STAY, kara trafia do śladu STAY zamiast sztucznie podbijać JOIN."],
   ["reward_opportunity_stay_punish_interval_seconds","Interwał kary za ignorowanie","number",5,5,3600,"Minimalny odstęp między kolejnymi karami STAY przy aktywnej możliwości nagrody."],
-  ["motivation_propagation_steps","Ticki propagacji motywacji","number",1,2,12,"Ile kroków connectomu dostaje social drive / reward opportunity zanim zostanie odczytane stay vs voice_join. 4 pozwala przejść ścieżkom 3-hop."],
+  ["motivation_propagation_steps","Ticki propagacji motywacji","number",1,2,12,"Ile kroków connectomu dostają wolne stany motywacyjne zanim zostaną odczytane przez readouty."],
+  ["homeostasis_enabled","Homeostaza voice","bool",0,0,0,"Włącza wolne stany wewnętrzne: zmęczenie społeczne, habituację i potrzebę eksploracji. Stany dają bodźce connectomowi, ale nie wymuszają akcji."],
+  ["social_fatigue_start_seconds","Zmęczenie społeczne: start","number",5,0,86400,"Po ilu sekundach ciągłego pobytu z ludźmi zaczyna narastać social fatigue."],
+  ["social_fatigue_ramp_seconds","Zmęczenie społeczne: ramp","number",5,1,86400,"Czas wzrostu social fatigue od 0 do pełnego poziomu."],
+  ["social_fatigue_max_magnitude","Zmęczenie społeczne: siła","number",0.05,0,4,"Maksymalna siła sensoryczna kierowana przez connectome w stronę MOVE/LEAVE."],
+  ["habituation_enabled","Habituacja sceny VC","bool",0,0,0,"Powtarzający się kanał i ten sam skład osób stopniowo wywołują słabszy bodziec sensoryczny."],
+  ["habituation_half_life_seconds","Habituacja: półczas","number",5,1,86400,"Po tym czasie niezmieniona scena osiąga około 50% poziomu habituacji."],
+  ["habituation_max_suppression","Habituacja: maks. wygaszenie","number",0.01,0,0.95,"Maksymalna część bodźca aktualnego kanału i pamięci osób, która może zostać wygaszona."],
+  ["habituation_change_magnitude","Habituacja: potrzeba zmiany","number",0.05,0,4,"Siła dodatkowego bodźca zmiany środowiska przepuszczanego przez connectome."],
+  ["exploration_drive_enabled","Głód eksploracji VC","bool",0,0,0,"Włącza narastającą potrzebę sprawdzenia innego dostępnego kanału."],
+  ["exploration_drive_start_seconds","Eksploracja: start","number",5,0,86400,"Po ilu sekundach niezmienionej sceny zaczyna rosnąć exploration drive."],
+  ["exploration_drive_ramp_seconds","Eksploracja: ramp","number",5,1,86400,"Czas wzrostu exploration drive od 0 do 100%."],
+  ["exploration_drive_max_magnitude","Eksploracja: siła","number",0.05,0,4,"Maksymalna siła bodźca kierowanego przez realne połączenia do voice_move."],
   ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
   ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie uruchamia się mechanizm overstay/threat."],
   ["overstay_punish_amount","Kara STAY za zbyt długi pobyt","number",0.05,0,1,"Kara ucząca ścieżkę STAY, gdy Mucha po maximum_dwell_seconds nadal zostaje na kanale."],
@@ -1967,7 +1979,12 @@ function renderVoiceDebug(items){
       (onVoice?'<div class="voice-pill"><small>minimum dwell</small><strong>'+Number(v.dwell_remaining??0).toFixed(1)+' s</strong></div>':'')+
       '<div class="voice-pill"><small>poza voice</small><strong>'+Number(v.outside_seconds??0).toFixed(0)+' s</strong></div>'+
       '<div class="voice-pill"><small>ludzie dostępni</small><strong>'+Number(v.available_humans||0)+'</strong></div>'+
-      '<div class="voice-pill"><small>social drive</small><strong class="'+(Number(v.social_drive_level||0)>0?"ok":"")+'">'+(Number(v.social_drive_level||0)*100).toFixed(1)+'%</strong></div>'+
+      '<div class="voice-pill"><small>social need</small><strong class="'+(Number(v.social_drive_level||0)>0?"ok":"")+'">'+(Number(v.social_drive_level||0)*100).toFixed(1)+'%</strong></div>'+
+      '<div class="voice-pill"><small>social fatigue</small><strong class="'+(Number(v.social_fatigue_level||0)>0?"warn":"")+'">'+(Number(v.social_fatigue_level||0)*100).toFixed(1)+'%</strong></div>'+
+      '<div class="voice-pill"><small>habituation</small><strong>'+((Number(v.habituation_level||0)*100).toFixed(1))+'% / tłumienie '+((Number(v.habituation_suppression||0)*100).toFixed(1))+'%</strong></div>'+
+      '<div class="voice-pill"><small>exploration drive</small><strong class="'+(Number(v.exploration_drive_level||0)>0?"ok":"")+'">'+(Number(v.exploration_drive_level||0)*100).toFixed(1)+'%</strong></div>'+
+      '<div class="voice-pill"><small>wiek sceny</small><strong>'+Number(v.voice_scene_age||0).toFixed(0)+' s</strong></div>'+
+      '<div class="voice-pill"><small>homeostasis paths</small><strong>'+esc(Object.entries(v.homeostasis_guided||{}).map(([k,x])=>k+' '+Number((x||{}).reach_max||0).toFixed(3)).join(' • ')||"—")+'</strong></div>'+
       '<div class="voice-pill"><small>STAY punish</small><strong class="'+(v.social_drive_stay_punished?"no":"")+'">'+(v.social_drive_stay_punished?Number(v.social_drive_stay_punish_amount||0).toFixed(3):"nie")+'</strong></div>'+
       '<div class="voice-pill"><small>JOIN reward</small><strong class="'+(Number(v.social_join_reward||0)>0?"ok":"")+'">'+Number(v.social_join_reward||0).toFixed(3)+'</strong></div>'+
       '<div class="voice-pill"><small>reward opportunity</small><strong class="'+(v.reward_opportunity_channel?"ok":"")+'">'+esc(v.reward_opportunity_channel||"—")+'</strong></div>'+
