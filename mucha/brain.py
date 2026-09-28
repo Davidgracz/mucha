@@ -1340,29 +1340,108 @@ class FlyBrain:
             self._guided_sensory_cache[cache_key] = result
             return result
 
-        reverse = self._absolute_connectome().transpose().tocsr()
-        frontier = np.zeros(
+        absolute_reverse = (
+            self._absolute_connectome()
+            .transpose()
+            .tocsr()
+        )
+        signed_reverse = (
+            self.c.matrix
+            .transpose()
+            .tocsr()
+        )
+        structural_frontier = np.zeros(
             self.c.n_neurons,
             dtype=np.float32,
         )
-        frontier[output] = np.float32(
+        signed_frontier = np.zeros_like(
+            structural_frontier
+        )
+        target_value = np.float32(
             1.0 / max(1, len(output))
         )
-        combined = np.zeros_like(frontier)
+        structural_frontier[output] = target_value
+        signed_frontier[output] = target_value
+        structural_combined = np.zeros_like(
+            structural_frontier
+        )
+        signed_combined = np.zeros_like(
+            signed_frontier
+        )
         hop_weights = (0.20, 0.45, 1.0, 0.55)
         for hop in range(hops):
-            frontier = np.asarray(
-                reverse.dot(frontier)
-            ).ravel().astype(np.float32, copy=False)
-            frontier = self._normalize_reach(frontier)
-            combined += np.float32(
-                hop_weights[hop]
-            ) * frontier
+            structural_frontier = np.asarray(
+                absolute_reverse.dot(
+                    structural_frontier
+                )
+            ).ravel().astype(
+                np.float32,
+                copy=False,
+            )
+            structural_frontier = (
+                self._normalize_reach(
+                    structural_frontier
+                )
+            )
 
-        sensory_scores = combined[sensory]
-        positive = np.flatnonzero(
-            sensory_scores > 1e-9
+            signed_frontier = np.asarray(
+                signed_reverse.dot(
+                    signed_frontier
+                )
+            ).ravel().astype(
+                np.float32,
+                copy=False,
+            )
+            signed_peak = float(
+                np.max(
+                    np.abs(signed_frontier)
+                )
+            )
+            if signed_peak > 1e-12:
+                signed_frontier = (
+                    signed_frontier
+                    / np.float32(signed_peak)
+                )
+            else:
+                signed_frontier = (
+                    np.zeros_like(
+                        signed_frontier
+                    )
+                )
+
+            weight = np.float32(
+                hop_weights[hop]
+            )
+            structural_combined += (
+                weight * structural_frontier
+            )
+            signed_combined += (
+                weight * signed_frontier
+            )
+
+        structural_scores = (
+            structural_combined[sensory]
         )
+        signed_scores = signed_combined[sensory]
+        positive = np.flatnonzero(
+            signed_scores > 1e-6
+        )
+        mode = "connectome-guided-excitatory-sensory"
+        if len(positive):
+            sensory_scores = (
+                0.72 * signed_scores
+                + 0.28 * structural_scores
+            ).astype(np.float32, copy=False)
+        else:
+            # Some prepared matrices may not carry transmitter sign. In that
+            # case retain the topologically guided route rather than reverting
+            # immediately to random sensory cells.
+            positive = np.flatnonzero(
+                structural_scores > 1e-9
+            )
+            sensory_scores = structural_scores
+            mode = "connectome-guided-structural-sensory"
+
         if not len(positive):
             fallback = self._subset(
                 f"guided-zero:{action}:{key}",
@@ -1439,7 +1518,7 @@ class FlyBrain:
         diag = {
             "action": action,
             "key": key,
-            "mode": "connectome-guided-sensory",
+            "mode": mode,
             "neurons": int(len(chosen)),
             "hops": hops,
             "reach_mean": float(
@@ -1451,6 +1530,11 @@ class FlyBrain:
                 np.max(reach)
                 if len(reach)
                 else 0.0
+            ),
+            "positive_signed_candidates": int(
+                np.count_nonzero(
+                    signed_scores > 1e-6
+                )
             ),
         }
         result = (chosen, weights, diag)
