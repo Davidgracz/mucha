@@ -28,6 +28,55 @@ def main():
         b.step(5)
         scores = b.action_scores()
         assert 0 <= scores["speak"] <= 1
+
+        # Voice behavior is now selected by competition between connectome
+        # action readouts. The adapter may mask physically impossible actions,
+        # but does not apply join/move/leave thresholds in neural mode.
+        b.inject_voice_decision_context(
+            999,
+            None,
+            connected=False,
+            dwell_progress=0.0,
+            overstay_level=0.0,
+            human_count=2,
+            alternatives=3,
+        )
+        b.step(2)
+        voice_out = b.voice_action_decision(
+            connected=False,
+            can_join=True,
+        )
+        assert voice_out["source"] == "connectome-readout-competition"
+        assert voice_out["action"] in {"voice_join", "stay"}
+        assert set(voice_out["candidates"]) == {"voice_join", "stay"}
+        assert voice_out["margin"] >= 0.0
+
+        b.inject_voice_decision_context(
+            999,
+            12345,
+            connected=True,
+            dwell_progress=1.2,
+            overstay_level=0.7,
+            human_count=3,
+            disliked_strength=0.6,
+            alternatives=2,
+        )
+        b.step(2)
+        voice_in = b.voice_action_decision(
+            connected=True,
+            can_move=True,
+            can_leave=True,
+        )
+        assert voice_in["action"] in {
+            "voice_move",
+            "voice_leave",
+            "stay",
+        }
+        assert set(voice_in["candidates"]) == {
+            "voice_move",
+            "voice_leave",
+            "stay",
+        }
         pools = b.action_pool_diagnostics()
         assert set(pools) == set(b.ACTIONS)
         assert pools["speak"]["seed_count"] > 0
@@ -153,11 +202,16 @@ def main():
         assert "Direction arrow" in CONNECTOME_HTML
         assert "Neuromodulation v2" in CONNECTOME_HTML
         assert "neuromod-da" in CONNECTOME_HTML
+        assert "Path Inspector" in CONNECTOME_HTML
+        assert "path-list" in CONNECTOME_HTML
+        assert "selectAction" in CONNECTOME_HTML
+        assert "action="+ "encodeURIComponent(selectedAction)" in CONNECTOME_HTML
         assert "Zapisz i zrestartuj Muchę" in CONFIG_HTML
         assert "Neuromodulatory v2" in CONFIG_HTML
         assert "dopamine_plasticity_gain" in CONFIG_HTML
         assert "neural_social_memory_enabled" in CONFIG_HTML
         assert "neural_affinity_weight" in CONFIG_HTML
+        assert "connectome_voice_control_enabled" in CONFIG_HTML
         assert "Social Neural Memory" in AFFINITY_HTML
         assert "neural-users" in AFFINITY_HTML
         assert 'const out={brain:{},language:{},behavior:{},voice:{}};' in CONFIG_HTML
@@ -173,6 +227,9 @@ def main():
         assert "HARD_BLOCKED_TEXT_CHANNEL_IDS" in bot_source
         assert "_user_affinity_components" in bot_source
         assert "_write_neural_social_memory" in bot_source
+        assert "voice_action_decision" in bot_source
+        assert "connectome-readout-competition" in bot_source
+        assert "inject_voice_decision_context" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
@@ -209,6 +266,23 @@ def main():
             follow_activity=True,
         )
         assert followed["mode"] == "follow_activity"
+
+        path = b.action_path_snapshot(
+            "voice_move",
+            max_depth=5,
+            max_paths=4,
+        )
+        assert path["action"] == "voice_move"
+        assert path["pool_size"] > 0
+        assert path["paths"]
+        assert path["method"].startswith("live backward beam trace")
+        first_path = path["paths"][0]
+        assert first_path["nodes"]
+        if first_path["edges"]:
+            edge = first_path["edges"][0]
+            assert "base_weight" in edge
+            assert "learned_delta" in edge
+            assert "effective_weight" in edge
 
         # Reward should now change both neuron bias and real existing
         # connectome edges through the sparse learned-synapse overlay.
