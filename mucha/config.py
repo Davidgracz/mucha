@@ -40,7 +40,6 @@ class BrainConfig:
     internal_state_pool_size: int = 192
     internal_state_entry_width: int = 160
     internal_state_recurrent_gain: float = 0.32
-    internal_state_action_bias: float = 0.0
     internal_state_level_gain: float = 4.0
     internal_state_arousal_gain: float = 0.18
     internal_state_stress_gain: float = 0.16
