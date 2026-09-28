@@ -49,6 +49,35 @@ def main():
         assert nm["dopamine"]["neurons"] > 0
         assert nm["serotonin"]["neurons"] > 0
         assert nm["octopamine"]["neurons"] > 0
+        typed_modulators = np.unique(
+            np.concatenate([
+                b._modulator_pools["dopamine"],
+                b._modulator_pools["serotonin"],
+                b._modulator_pools["octopamine"],
+            ])
+        )
+        tested_residual = False
+        for mod_idx in typed_modulators:
+            base_mass = float(
+                np.abs(c.matrix[:, int(mod_idx)]).sum()
+            )
+            if base_mass <= 1e-9:
+                continue
+            runtime_mass = float(
+                np.abs(
+                    b._runtime_matrix_cpu[:, int(mod_idx)]
+                ).sum()
+            )
+            assert np.isclose(
+                runtime_mass,
+                base_mass
+                * cfg.neuromodulatory_direct_residual,
+                rtol=1e-4,
+                atol=1e-7,
+            )
+            tested_residual = True
+            break
+        assert tested_residual
         for name in ("dopamine", "serotonin", "octopamine"):
             pool = b._modulator_pools[name]
             idx = b._backend_indices(pool[:1])
@@ -90,6 +119,8 @@ def main():
         assert "Neuromodulation v2" in CONNECTOME_HTML
         assert "neuromod-da" in CONNECTOME_HTML
         assert "Zapisz i zrestartuj Muchę" in CONFIG_HTML
+        assert "Neuromodulatory v2" in CONFIG_HTML
+        assert "dopamine_plasticity_gain" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
         assert "/api/public/state" in PUBLIC_OVERVIEW_HTML
