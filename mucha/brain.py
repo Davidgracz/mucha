@@ -2802,6 +2802,312 @@ class FlyBrain:
             "top_edges": applied_edges[:20],
         }
 
+    def _synapse_memory_status(
+        self,
+        key: int,
+        *,
+        now: float | None = None,
+    ) -> str:
+        now_value = float(time.time() if now is None else now)
+        strength = max(
+            0.0,
+            min(
+                1.0,
+                float(
+                    self._synaptic_consolidation_map.get(
+                        int(key),
+                        0.0,
+                    )
+                ),
+            ),
+        )
+        touched = float(
+            self._synaptic_last_touched_map.get(
+                int(key),
+                now_value,
+            )
+        )
+        age = max(0.0, now_value - touched)
+        if age <= max(
+            900.0,
+            float(self.cfg.consolidation_interval_seconds) * 3.0,
+        ):
+            return "fresh"
+        if strength >= float(
+            self.cfg.synaptic_consolidated_threshold
+        ):
+            return "consolidated"
+        return "fading"
+
+    def consolidate_and_forget(
+        self,
+        *,
+        now: float | None = None,
+        elapsed_seconds: float | None = None,
+        force: bool = False,
+    ) -> dict:
+        """Time-based forgetting for learned state only.
+
+        The FAFB matrix itself is immutable. Plastic bias and the sparse
+        learned synaptic overlay slowly decay; consolidated synapses receive a
+        longer effective half-life.
+        """
+        enabled = bool(self.cfg.consolidation_enabled)
+        now_value = float(time.time() if now is None else now)
+        if not enabled:
+            self._last_forgetting_diag.update({
+                "enabled": False,
+                "ran": False,
+            })
+            return dict(self._last_forgetting_diag)
+
+        if elapsed_seconds is None:
+            elapsed = max(
+                0.0,
+                now_value - float(self._last_consolidation_time),
+            )
+        else:
+            elapsed = max(0.0, float(elapsed_seconds))
+
+        interval = max(
+            1.0,
+            float(self.cfg.consolidation_interval_seconds),
+        )
+        if not force and elapsed < interval:
+            diag = dict(self._last_forgetting_diag)
+            diag.update({
+                "enabled": True,
+                "ran": False,
+                "elapsed_seconds": elapsed,
+                "next_in_seconds": max(0.0, interval - elapsed),
+            })
+            return diag
+        if elapsed <= 0.0:
+            return dict(self._last_forgetting_diag)
+
+        bias_half_life = max(
+            1.0,
+            float(self.cfg.bias_forgetting_half_life_hours)
+            * 3600.0,
+        )
+        bias_factor = math.pow(
+            0.5,
+            elapsed / bias_half_life,
+        )
+        self.plastic_bias *= np.float32(bias_factor)
+
+        syn_before = len(self._synaptic_delta_map)
+        syn_half_life = max(
+            1.0,
+            float(self.cfg.synaptic_forgetting_half_life_hours)
+            * 3600.0,
+        )
+        consolidation_half_life = max(
+            1.0,
+            float(
+                self.cfg.synaptic_consolidation_decay_half_life_days
+            )
+            * 86400.0,
+        )
+        strength_factor = math.pow(
+            0.5,
+            elapsed / consolidation_half_life,
+        )
+        protection = max(
+            0.0,
+            float(self.cfg.synaptic_consolidation_protection),
+        )
+        threshold = max(
+            0.0,
+            float(self.cfg.synaptic_prune_threshold),
+        )
+
+        pruned = 0
+        changed = False
+        for key in list(self._synaptic_delta_map):
+            old_delta = float(self._synaptic_delta_map[key])
+            old_strength = max(
+                0.0,
+                min(
+                    1.0,
+                    float(
+                        self._synaptic_consolidation_map.get(
+                            key,
+                            0.0,
+                        )
+                    ),
+                ),
+            )
+            strength = old_strength * strength_factor
+            effective_half_life = syn_half_life * (
+                1.0 + protection * strength
+            )
+            decay_factor = math.pow(
+                0.5,
+                elapsed / max(1.0, effective_half_life),
+            )
+            new_delta = old_delta * decay_factor
+
+            self._synaptic_consolidation_map[key] = strength
+            if (
+                abs(new_delta) < threshold
+                and strength < max(
+                    0.05,
+                    0.25
+                    * float(
+                        self.cfg.synaptic_consolidated_threshold
+                    ),
+                )
+            ):
+                self._synaptic_delta_map.pop(key, None)
+                self._synaptic_consolidation_map.pop(key, None)
+                self._synaptic_last_touched_map.pop(key, None)
+                pruned += 1
+                changed = True
+                continue
+
+            if abs(new_delta - old_delta) > 1e-12:
+                self._synaptic_delta_map[key] = float(new_delta)
+                changed = True
+
+        if changed:
+            self._rebuild_synaptic_matrix()
+
+        self._last_consolidation_time = now_value
+        status_counts = {
+            "fresh": 0,
+            "consolidated": 0,
+            "fading": 0,
+        }
+        for key in self._synaptic_delta_map:
+            status_counts[
+                self._synapse_memory_status(
+                    key,
+                    now=now_value,
+                )
+            ] += 1
+
+        self._last_forgetting_diag = {
+            "enabled": True,
+            "ran": True,
+            "time": now_value,
+            "elapsed_seconds": elapsed,
+            "bias_factor": float(bias_factor),
+            "synapses_before": int(syn_before),
+            "synapses_after": int(len(self._synaptic_delta_map)),
+            "pruned_synapses": int(pruned),
+            "fresh_synapses": int(status_counts["fresh"]),
+            "consolidated_synapses": int(
+                status_counts["consolidated"]
+            ),
+            "fading_synapses": int(status_counts["fading"]),
+        }
+        return dict(self._last_forgetting_diag)
+
+    def learned_synapses_snapshot(
+        self,
+        limit: int = 120,
+    ) -> dict:
+        limit = max(1, min(400, int(limit)))
+        now_value = time.time()
+        rows = []
+        n = self.c.n_neurons
+        threshold = float(
+            self.cfg.synaptic_consolidated_threshold
+        )
+        for key, delta in self._synaptic_delta_map.items():
+            strength = max(
+                0.0,
+                min(
+                    1.0,
+                    float(
+                        self._synaptic_consolidation_map.get(
+                            key,
+                            0.0,
+                        )
+                    ),
+                ),
+            )
+            touched = float(
+                self._synaptic_last_touched_map.get(
+                    key,
+                    now_value,
+                )
+            )
+            score = abs(float(delta)) * (
+                1.0 + 1.5 * strength
+            )
+            rows.append(
+                (
+                    score,
+                    int(key),
+                    float(delta),
+                    strength,
+                    touched,
+                )
+            )
+        rows.sort(key=lambda item: item[0], reverse=True)
+        output = []
+        counts = {
+            "fresh": 0,
+            "consolidated": 0,
+            "fading": 0,
+        }
+        for _, key, delta, strength, touched in rows:
+            status = self._synapse_memory_status(
+                key,
+                now=now_value,
+            )
+            counts[status] += 1
+        for _, key, delta, strength, touched in rows[:limit]:
+            post = int(key // n)
+            pre = int(key % n)
+            try:
+                base_weight = float(
+                    self.c.matrix[post, pre]
+                )
+            except (TypeError, ValueError):
+                base_weight = 0.0
+            status = self._synapse_memory_status(
+                key,
+                now=now_value,
+            )
+            output.append({
+                "source": str(int(self.c.root_ids[pre])),
+                "target": str(int(self.c.root_ids[post])),
+                "source_index": pre,
+                "target_index": post,
+                "source_position": {
+                    "x": float(self._neuro_map_coords[pre, 0]),
+                    "y": float(self._neuro_map_coords[pre, 1]),
+                    "z": float(self._neuro_map_coords[pre, 2]),
+                },
+                "target_position": {
+                    "x": float(self._neuro_map_coords[post, 0]),
+                    "y": float(self._neuro_map_coords[post, 1]),
+                    "z": float(self._neuro_map_coords[post, 2]),
+                },
+                "base_weight": base_weight,
+                "learned_delta": delta,
+                "effective_weight": base_weight + delta,
+                "consolidation": strength,
+                "status": status,
+                "age_seconds": max(
+                    0.0,
+                    now_value - touched,
+                ),
+            })
+        return {
+            "total": int(len(rows)),
+            "shown": int(len(output)),
+            "fresh": int(counts["fresh"]),
+            "consolidated": int(counts["consolidated"]),
+            "fading": int(counts["fading"]),
+            "consolidated_threshold": threshold,
+            "edges": output,
+            "forgetting": dict(self._last_forgetting_diag),
+        }
+
     def reward(
         self,
         amount: float,
