@@ -171,6 +171,9 @@ class FlyBrain:
         self._internal_state_entry_weights: dict[str, np.ndarray] = {}
         self._internal_state_info: dict[str, dict] = {}
         self._internal_state_membership: dict[int, tuple[str, ...]] = {}
+        self._internal_state_read_indices = np.empty(0, dtype=np.int32)
+        self._internal_state_read_slices: dict[str, tuple[int, int]] = {}
+        self._internal_attractor_edge_map: dict[int, float] = {}
         self._internal_attractor_matrix_cpu = scipy_sparse.csr_matrix(
             self.c.matrix.shape,
             dtype=np.float32,
@@ -1153,6 +1156,9 @@ class FlyBrain:
         self._internal_state_entry_weights = {}
         self._internal_state_info = {}
         self._internal_state_membership = {}
+        self._internal_state_read_indices = np.empty(0, dtype=np.int32)
+        self._internal_state_read_slices = {}
+        self._internal_attractor_edge_map = {}
 
         n = self.c.n_neurons
         if not self.cfg.internal_states_enabled or n <= 0:
@@ -1462,19 +1468,66 @@ class FlyBrain:
             for idx, names in memberships.items()
         }
 
+        read_parts = []
+        cursor = 0
+        for state_name in self.INTERNAL_STATE_TARGET_ACTIONS:
+            pool = np.asarray(
+                self._internal_state_pools.get(
+                    state_name,
+                    np.empty(0, dtype=np.int32),
+                ),
+                dtype=np.int32,
+            )
+            start = cursor
+            cursor += len(pool)
+            self._internal_state_read_slices[state_name] = (
+                start,
+                cursor,
+            )
+            if len(pool):
+                read_parts.append(pool)
+        if read_parts:
+            self._internal_state_read_indices = np.concatenate(
+                read_parts
+            ).astype(np.int32, copy=False)
+
+        attractor_coo = self._internal_attractor_matrix_cpu.tocoo()
+        self._internal_attractor_edge_map = {
+            int(row) * n + int(col): float(value)
+            for row, col, value in zip(
+                attractor_coo.row,
+                attractor_coo.col,
+                attractor_coo.data,
+            )
+        }
+
     def _internal_state_levels(self) -> dict[str, dict]:
         result: dict[str, dict] = {}
         gain = max(
             0.1,
             float(self.cfg.internal_state_level_gain),
         )
+        if len(self._internal_state_read_indices):
+            read_values = self.compute.to_cpu(
+                self.state[
+                    self._backend_indices(
+                        self._internal_state_read_indices
+                    )
+                ]
+            ).astype(np.float32, copy=False)
+        else:
+            read_values = np.empty(0, dtype=np.float32)
+
         for state_name, pool_cpu in self._internal_state_pools.items():
             if not len(pool_cpu):
                 continue
-            idx = self._backend_indices(pool_cpu)
-            values = self.compute.to_cpu(
-                self.state[idx]
-            ).astype(np.float32, copy=False)
+            start, end = self._internal_state_read_slices.get(
+                state_name,
+                (0, 0),
+            )
+            values = read_values[start:end]
+            if not len(values):
+                continue
             positive = np.maximum(values, 0.0)
             positive_mean = float(np.mean(positive))
             mean = float(np.mean(values))
@@ -2039,13 +2092,20 @@ class FlyBrain:
             ):
                 target = int(target_raw)
                 base_weight = float(base_raw)
+                edge_key = target * n + source
                 learned = float(
                     self._synaptic_delta_map.get(
-                        target * n + source,
+                        edge_key,
                         0.0,
                     )
                 )
-                effective = base_weight + learned
+                attractor_delta = float(
+                    self._internal_attractor_edge_map.get(
+                        edge_key,
+                        0.0,
+                    )
+                )
+                effective = base_weight + learned + attractor_delta
                 learned_values[pos] = np.float32(learned)
                 effective_weights[pos] = np.float32(effective)
                 contributions[pos] = np.float32(
@@ -2097,6 +2157,12 @@ class FlyBrain:
                     "source_activation": source_activation,
                     "base_weight": float(base_weights[pos]),
                     "learned_delta": float(learned_values[pos]),
+                    "attractor_delta": float(
+                        self._internal_attractor_edge_map.get(
+                            target * n + source,
+                            0.0,
+                        )
+                    ),
                     "effective_weight": float(
                         effective_weights[pos]
                     ),
