@@ -132,6 +132,11 @@ class FlyBrain:
             str, tuple[np.ndarray, np.ndarray]
         ] = {}
         self._absolute_connectome_cpu: scipy_sparse.csr_matrix | None = None
+        self._guided_sensory_cache: dict[
+            tuple[str, str, int, int],
+            tuple[np.ndarray, np.ndarray, dict],
+        ] = {}
+        self._last_guided_cue: dict = {}
         self._user_identity_cache: dict[int, np.ndarray] = {}
         self._user_memory_cache: dict[int, np.ndarray] = {}
         self._user_memory_last_activation: dict[int, float] = {}
@@ -1261,6 +1266,254 @@ class FlyBrain:
         jitter = self.compute.random_uniform(0.75, 1.25, size=len(idx_cpu))
         self.state[idx] += np.float32(magnitude) * jitter
         self.xp.clip(self.state, -3.0, 3.0, out=self.state)
+
+    @staticmethod
+    def _normalize_reach(values: np.ndarray) -> np.ndarray:
+        values = np.asarray(
+            values,
+            dtype=np.float32,
+        )
+        if not len(values):
+            return values
+        peak = float(np.max(values))
+        if peak <= 1e-12:
+            return np.zeros_like(values)
+        return values / np.float32(peak)
+
+    def _action_guided_sensory_pool(
+        self,
+        action: str,
+        key: str,
+        *,
+        width: int = 192,
+        hops: int = 3,
+    ) -> tuple[np.ndarray, np.ndarray, dict]:
+        """Choose sensory neurons by real structural reach to an action pool.
+
+        Matrix orientation is [post, pre], so reverse propagation through
+        abs(matrix).T estimates which sensory cells can reach the selected
+        output population in a small number of real FAFB hops.
+        """
+        action = str(action or "").strip()
+        key = str(key or "").strip()
+        width = max(
+            8,
+            min(int(width), max(8, len(self.c.sensory))),
+        )
+        hops = max(1, min(4, int(hops)))
+        cache_key = (action, key, width, hops)
+        cached = self._guided_sensory_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        sensory = np.asarray(
+            self.c.sensory,
+            dtype=np.int32,
+        )
+        output = np.asarray(
+            self._action_output_pools.get(
+                action,
+                np.empty(0, dtype=np.int32),
+            ),
+            dtype=np.int32,
+        )
+        if not len(sensory) or not len(output):
+            fallback = self._subset(
+                f"guided-fallback:{action}:{key}",
+                sensory,
+                width,
+            ).astype(np.int32, copy=False)
+            weights = np.ones(
+                len(fallback),
+                dtype=np.float32,
+            )
+            diag = {
+                "action": action,
+                "key": key,
+                "mode": "fallback-random-sensory",
+                "neurons": int(len(fallback)),
+                "hops": hops,
+                "reach_mean": 0.0,
+                "reach_max": 0.0,
+            }
+            result = (fallback, weights, diag)
+            self._guided_sensory_cache[cache_key] = result
+            return result
+
+        reverse = self._absolute_connectome().transpose().tocsr()
+        frontier = np.zeros(
+            self.c.n_neurons,
+            dtype=np.float32,
+        )
+        frontier[output] = np.float32(
+            1.0 / max(1, len(output))
+        )
+        combined = np.zeros_like(frontier)
+        hop_weights = (0.20, 0.45, 1.0, 0.55)
+        for hop in range(hops):
+            frontier = np.asarray(
+                reverse.dot(frontier)
+            ).ravel().astype(np.float32, copy=False)
+            frontier = self._normalize_reach(frontier)
+            combined += np.float32(
+                hop_weights[hop]
+            ) * frontier
+
+        sensory_scores = combined[sensory]
+        positive = np.flatnonzero(
+            sensory_scores > 1e-9
+        )
+        if not len(positive):
+            fallback = self._subset(
+                f"guided-zero:{action}:{key}",
+                sensory,
+                width,
+            ).astype(np.int32, copy=False)
+            weights = np.ones(
+                len(fallback),
+                dtype=np.float32,
+            )
+            diag = {
+                "action": action,
+                "key": key,
+                "mode": "fallback-zero-reach",
+                "neurons": int(len(fallback)),
+                "hops": hops,
+                "reach_mean": 0.0,
+                "reach_max": 0.0,
+            }
+            result = (fallback, weights, diag)
+            self._guided_sensory_cache[cache_key] = result
+            return result
+
+        candidate_scores = sensory_scores[positive].astype(
+            np.float32,
+            copy=True,
+        )
+        # Tiny stable jitter keeps channel-specific cues from collapsing onto
+        # an identical set when many sensory cells have equal structural reach.
+        rng = np.random.default_rng(
+            self._stable_seed(
+                f"guided:{action}:{key}:{hops}"
+            )
+        )
+        candidate_scores *= rng.uniform(
+            0.985,
+            1.015,
+            size=len(candidate_scores),
+        ).astype(np.float32)
+        k = min(width, len(positive))
+        if k >= len(positive):
+            local_order = np.argsort(
+                candidate_scores
+            )[::-1]
+        else:
+            part = np.argpartition(
+                candidate_scores,
+                -k,
+            )[-k:]
+            local_order = part[
+                np.argsort(candidate_scores[part])[::-1]
+            ]
+        chosen_local = positive[
+            local_order[:k]
+        ]
+        chosen = sensory[
+            chosen_local
+        ].astype(np.int32, copy=False)
+        reach = sensory_scores[
+            chosen_local
+        ].astype(np.float32, copy=False)
+        peak = max(
+            1e-9,
+            float(np.max(reach)),
+        )
+        weights = (
+            0.55
+            + 0.90 * np.clip(
+                reach / peak,
+                0.0,
+                1.0,
+            )
+        ).astype(np.float32, copy=False)
+        diag = {
+            "action": action,
+            "key": key,
+            "mode": "connectome-guided-sensory",
+            "neurons": int(len(chosen)),
+            "hops": hops,
+            "reach_mean": float(
+                np.mean(reach)
+                if len(reach)
+                else 0.0
+            ),
+            "reach_max": float(
+                np.max(reach)
+                if len(reach)
+                else 0.0
+            ),
+        }
+        result = (chosen, weights, diag)
+        self._guided_sensory_cache[cache_key] = result
+        return result
+
+    def inject_action_guided_sensory(
+        self,
+        action: str,
+        key: str,
+        magnitude: float,
+        *,
+        width: int = 192,
+        hops: int = 3,
+    ) -> dict:
+        """Inject only sensory cells structurally able to reach an action."""
+        magnitude = max(
+            0.0,
+            min(4.0, float(magnitude)),
+        )
+        pool, reach_weights, diag = (
+            self._action_guided_sensory_pool(
+                action,
+                key,
+                width=width,
+                hops=hops,
+            )
+        )
+        if magnitude > 0.0 and len(pool):
+            idx = self._backend_indices(pool)
+            jitter = self.compute.random_uniform(
+                0.88,
+                1.12,
+                size=len(pool),
+            )
+            if self.compute.is_gpu:
+                structural = self.compute.asarray(
+                    reach_weights,
+                    dtype=np.float32,
+                )
+            else:
+                structural = reach_weights
+            self.state[idx] += (
+                np.float32(magnitude)
+                * structural
+                * jitter
+            )
+            self.xp.clip(
+                self.state,
+                -3.0,
+                3.0,
+                out=self.state,
+            )
+            self.eligibility[idx] = self.xp.maximum(
+                self.eligibility[idx],
+                np.float32(
+                    min(1.0, 0.25 + 0.45 * magnitude)
+                ),
+            )
+        diag = dict(diag)
+        diag["magnitude"] = magnitude
+        self._last_guided_cue = diag
+        return diag
 
     def _absolute_connectome(self) -> scipy_sparse.csr_matrix:
         if self._absolute_connectome_cpu is None:
