@@ -2125,6 +2125,13 @@ function renderVoiceDebug(items){
       const err=Number(ep.prediction_error||0);
       return '<div class="memory-row"><b>'+esc(ep.action||"—")+'</b><span>'+esc(place)+' • '+esc(people)+'</span><em class="'+(err>0?"ok":err<0?"no":"")+'">'+(err>=0?"+":"")+err.toFixed(2)+'</em></div>';
     }).join("")||'<div class="voice-note">Brak zapisanych epizodów.</div>';
+    const consolidatedRows=(v.episodic_top_memories||[]).slice(0,5).map(m=>{
+      const people=(m.user_names||[]).join(", ")||(m.user_ids||[]).join(", ")||"—";
+      const place=m.channel_name||"poza VC";
+      const strength=clamp(Number(m.strength||0),0,1);
+      const status=String(m.status||"forming");
+      return '<div class="memory-row"><b>'+esc(m.action||"—")+'</b><span>'+esc(place)+' • '+esc(people)+' • '+nfmt(m.event_count||0)+' evt / '+nfmt(m.replay_count||0)+' replay</span><em class="'+(status==="consolidated"?"ok":"")+'">'+(strength*100).toFixed(0)+'%</em></div>';
+    }).join("")||'<div class="voice-note">Brak utrwalanych scen.</div>';
     const recallSummary=Object.entries(v.episodic_recall||{}).map(([k,x])=>
       k+" "+Number((x||{}).magnitude||0).toFixed(2)+" / "+Number((x||{}).reach_max||0).toFixed(3)
     ).join(" • ")||"—";
@@ -2197,10 +2204,15 @@ function renderVoiceDebug(items){
             kpi("Credit queue",String(Number(v.prediction_credit_queue_depth||0)))+
             kpi("Replay",esc(replay.state||"—"),replay.state==="REPLAY"?"ok":"")+
             kpi("Replay count",String(Number(replay.count||0)))+
+            kpi("Memory scenes",String(Number(v.episodic_memory_scenes||0)))+
+            kpi("Consolidated",String(Number(v.episodic_consolidated_scenes||0)),Number(v.episodic_consolidated_scenes||0)>0?"ok":"")+
           '</div>'+
           '<div class="voice-note"><b>Expected:</b> '+esc(expected)+'</div>'+
           '<div class="voice-note"><b>Recall → connectome:</b> '+esc(recallSummary)+'</div>'+
           '<div class="voice-note"><b>MEMORY REPLAY:</b> '+esc(replaySummary)+'</div>'+
+          '<div class="voice-note"><b>Najsilniejsze sceny:</b></div>'+
+          '<div class="memory-list">'+consolidatedRows+'</div>'+
+          '<div class="voice-note"><b>Ostatnie epizody:</b></div>'+
           '<div class="memory-list">'+memoryRows+'</div>'+
         '</div>'+
 
