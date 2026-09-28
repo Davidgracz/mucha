@@ -1397,30 +1397,30 @@ class FlyBrain:
             self._internal_state_entry_pools[state_name] = entry
             self._internal_state_entry_weights[state_name] = weights
 
-            recurrent = self._runtime_matrix_cpu[
+            recurrent_all = self._runtime_matrix_cpu[
                 attractor
             ][:, attractor].tocoo()
-            if recurrent.nnz and recurrent_gain > 0.0:
+            excitatory_mask = recurrent_all.data > 0.0
+            recurrent_rows = recurrent_all.row[excitatory_mask]
+            recurrent_cols = recurrent_all.col[excitatory_mask]
+            recurrent_data = recurrent_all.data[
+                excitatory_mask
+            ].astype(np.float32, copy=False)
+            if len(recurrent_data) and recurrent_gain > 0.0:
                 matrix_rows.append(
-                    attractor[recurrent.row].astype(
+                    attractor[recurrent_rows].astype(
                         np.int32,
                         copy=False,
                     )
                 )
                 matrix_cols.append(
-                    attractor[recurrent.col].astype(
+                    attractor[recurrent_cols].astype(
                         np.int32,
                         copy=False,
                     )
                 )
                 matrix_data.append(
-                    (
-                        recurrent.data.astype(
-                            np.float32,
-                            copy=False,
-                        )
-                        * np.float32(recurrent_gain)
-                    )
+                    recurrent_data * np.float32(recurrent_gain)
                 )
 
             self._internal_state_info[state_name] = {
@@ -1428,10 +1428,10 @@ class FlyBrain:
                 "pool_size": int(len(attractor)),
                 "entry_neurons": int(len(entry)),
                 "target_output_neurons": int(target_count),
-                "recurrent_edges": int(recurrent.nnz),
+                "recurrent_edges": int(len(recurrent_data)),
                 "recurrent_mass": float(
-                    np.sum(np.abs(recurrent.data))
-                    if recurrent.nnz
+                    np.sum(recurrent_data)
+                    if len(recurrent_data)
                     else 0.0
                 ),
                 "mode": "FAFB-recurrent-attractor",
