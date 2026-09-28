@@ -31,6 +31,14 @@ class FlyBrain:
     # motor/behavioral analogue in the fly. "speak" is intentionally empty:
     # Discord communication has no literal FAFB output neuron and is learned
     # adaptively from text/social sensory cues plus the real connectome.
+    INTERNAL_STATE_TARGET_ACTIONS = {
+        "social_need": ("voice_join",),
+        "curiosity": ("explore", "voice_move"),
+        "stress": ("voice_leave", "voice_move"),
+        "satiety": ("stay", "voice_leave"),
+        "arousal": ("react", "speak", "explore"),
+    }
+
     ACTION_BIOLOGICAL_SEEDS = {
         "speak": (),
         "react": (
@@ -158,6 +166,18 @@ class FlyBrain:
         self._user_identity_cache: dict[int, np.ndarray] = {}
         self._user_memory_cache: dict[int, np.ndarray] = {}
         self._user_memory_last_activation: dict[int, float] = {}
+        self._internal_state_pools: dict[str, np.ndarray] = {}
+        self._internal_state_entry_pools: dict[str, np.ndarray] = {}
+        self._internal_state_entry_weights: dict[str, np.ndarray] = {}
+        self._internal_state_info: dict[str, dict] = {}
+        self._internal_state_membership: dict[int, tuple[str, ...]] = {}
+        self._internal_attractor_matrix_cpu = scipy_sparse.csr_matrix(
+            self.c.matrix.shape,
+            dtype=np.float32,
+        )
+        self.internal_attractor_matrix = self.compute.sparse_from_scipy(
+            self._internal_attractor_matrix_cpu
+        )
         self._init_neuro_map_metadata()
         self.last_learning: dict = {
             "amount": 0.0,
@@ -335,6 +355,54 @@ class FlyBrain:
                 float(self.cfg.noise)
                 * (1.0 + 0.70 * octopamine)
                 * max(0.40, 1.0 - 0.35 * serotonin),
+            )
+
+        if self.cfg.internal_states_enabled:
+            internal = self._internal_state_levels()
+            arousal = float(
+                internal.get("arousal", {}).get("level", 0.0)
+            )
+            stress = float(
+                internal.get("stress", {}).get("level", 0.0)
+            )
+            satiety = float(
+                internal.get("satiety", {}).get("level", 0.0)
+            )
+            curiosity = float(
+                internal.get("curiosity", {}).get("level", 0.0)
+            )
+            leak = min(
+                0.997,
+                max(
+                    0.0,
+                    leak
+                    + float(
+                        self.cfg.internal_state_satiety_stability_gain
+                    )
+                    * satiety
+                    - 0.025 * stress,
+                ),
+            )
+            gain = max(
+                0.0,
+                gain
+                * (
+                    1.0
+                    + float(self.cfg.internal_state_arousal_gain)
+                    * arousal
+                    + float(self.cfg.internal_state_stress_gain)
+                    * stress
+                    + 0.06 * curiosity
+                ),
+            )
+            noise = max(
+                0.0,
+                noise
+                * (
+                    1.0
+                    + 0.45 * arousal
+                    + 0.35 * stress
+                ),
             )
         self._neuromodulator_effects = {
             "effective_leak": leak,
@@ -523,6 +591,7 @@ class FlyBrain:
             ]
 
         self._build_action_output_pools()
+        self._build_internal_state_attractors()
 
         # Fixed low-density point cloud gives the eye a stable outline of the
         # whole brain while only active neurons are drawn brightly.
@@ -1069,6 +1138,524 @@ class FlyBrain:
                     )
                 ),
             }
+
+    def _build_internal_state_attractors(self) -> None:
+        """Build persistent internal-state assemblies from real FAFB edges.
+
+        Each assembly is chosen from non-sensory/non-output/non-modulatory
+        neurons that (a) can reach one or more relevant action readouts and
+        (b) are strongly interconnected with nearby candidates. Persistence is
+        created by amplifying only existing recurrent FAFB edges inside the
+        assembly; no synthetic neuron-to-neuron edges are invented.
+        """
+        self._internal_state_pools = {}
+        self._internal_state_entry_pools = {}
+        self._internal_state_entry_weights = {}
+        self._internal_state_info = {}
+        self._internal_state_membership = {}
+
+        n = self.c.n_neurons
+        if not self.cfg.internal_states_enabled or n <= 0:
+            self._internal_attractor_matrix_cpu = scipy_sparse.csr_matrix(
+                self.c.matrix.shape,
+                dtype=np.float32,
+            )
+            self.internal_attractor_matrix = self.compute.sparse_from_scipy(
+                self._internal_attractor_matrix_cpu
+            )
+            return
+
+        mask = np.ones(n, dtype=bool)
+        if len(self.c.sensory):
+            mask[np.asarray(self.c.sensory, dtype=np.int32)] = False
+        if len(self.c.output):
+            mask[np.asarray(self.c.output, dtype=np.int32)] = False
+        if len(self.c.modulatory):
+            mask[np.asarray(self.c.modulatory, dtype=np.int32)] = False
+        internal = np.flatnonzero(mask).astype(np.int32, copy=False)
+        if not len(internal):
+            internal = np.arange(n, dtype=np.int32)
+
+        absolute = self._absolute_connectome()
+        sensory = np.asarray(self.c.sensory, dtype=np.int32)
+        if not len(sensory):
+            sensory = np.arange(n, dtype=np.int32)
+
+        pool_size = max(
+            24,
+            min(
+                int(self.cfg.internal_state_pool_size),
+                len(internal),
+            ),
+        )
+        entry_width = max(
+            16,
+            min(
+                int(self.cfg.internal_state_entry_width),
+                len(sensory),
+            ),
+        )
+        used: set[int] = set()
+        matrix_rows: list[np.ndarray] = []
+        matrix_cols: list[np.ndarray] = []
+        matrix_data: list[np.ndarray] = []
+        recurrent_gain = max(
+            0.0,
+            min(2.0, float(self.cfg.internal_state_recurrent_gain)),
+        )
+
+        for state_name, target_actions in (
+            self.INTERNAL_STATE_TARGET_ACTIONS.items()
+        ):
+            target = np.zeros(n, dtype=np.float32)
+            target_count = 0
+            for action in target_actions:
+                pool = np.asarray(
+                    self._action_output_pools.get(
+                        action,
+                        np.empty(0, dtype=np.int32),
+                    ),
+                    dtype=np.int32,
+                )
+                if not len(pool):
+                    continue
+                target[pool] += np.float32(1.0 / max(1, len(pool)))
+                target_count += len(pool)
+
+            back1 = np.asarray(
+                absolute.transpose().dot(target)
+            ).ravel().astype(np.float32, copy=False)
+            back2 = np.asarray(
+                absolute.transpose().dot(back1)
+            ).ravel().astype(np.float32, copy=False)
+            action_reach = (
+                0.65 * back1 + 0.35 * back2
+            ).astype(np.float32, copy=False)
+            candidate_scores = action_reach[internal].copy()
+            if used:
+                used_mask = np.isin(
+                    internal,
+                    np.fromiter(used, dtype=np.int32),
+                )
+                candidate_scores[used_mask] = 0.0
+
+            candidate_limit = min(
+                len(internal),
+                max(pool_size, pool_size * 5),
+            )
+            positive = np.flatnonzero(candidate_scores > 1e-8)
+            if len(positive):
+                k = min(candidate_limit, len(positive))
+                if k >= len(positive):
+                    local = positive[
+                        np.argsort(candidate_scores[positive])[::-1]
+                    ]
+                else:
+                    part = np.argpartition(
+                        candidate_scores[positive],
+                        -k,
+                    )[-k:]
+                    local = positive[
+                        part[
+                            np.argsort(
+                                candidate_scores[positive][part]
+                            )[::-1]
+                        ]
+                    ]
+                candidates = internal[local[:k]]
+            else:
+                available = np.asarray(
+                    [
+                        idx
+                        for idx in internal.tolist()
+                        if int(idx) not in used
+                    ],
+                    dtype=np.int32,
+                )
+                if not len(available):
+                    available = internal
+                candidates = self._subset(
+                    f"internal-state:{state_name}:fallback",
+                    available,
+                    candidate_limit,
+                )
+
+            sub = absolute[candidates][:, candidates].tocsr()
+            incoming_mass = np.asarray(
+                sub.sum(axis=1)
+            ).ravel().astype(np.float32, copy=False)
+            outgoing_mass = np.asarray(
+                sub.sum(axis=0)
+            ).ravel().astype(np.float32, copy=False)
+            recurrent_mass = np.sqrt(
+                np.maximum(0.0, incoming_mass)
+                * np.maximum(0.0, outgoing_mass)
+            ).astype(np.float32, copy=False)
+
+            reach = action_reach[candidates].astype(
+                np.float32,
+                copy=False,
+            )
+            reach_norm = reach / max(
+                1e-9,
+                float(np.max(reach)) if len(reach) else 1.0,
+            )
+            recurrent_norm = recurrent_mass / max(
+                1e-9,
+                float(np.max(recurrent_mass))
+                if len(recurrent_mass)
+                else 1.0,
+            )
+            jitter_rng = np.random.default_rng(
+                self._stable_seed(
+                    f"internal-state:{state_name}:rank"
+                )
+            )
+            jitter = jitter_rng.uniform(
+                0.0,
+                0.015,
+                size=len(candidates),
+            ).astype(np.float32)
+            combined = (
+                0.62 * reach_norm
+                + 0.38 * recurrent_norm
+                + jitter
+            )
+            choose = min(pool_size, len(candidates))
+            if choose >= len(candidates):
+                order = np.argsort(combined)[::-1]
+            else:
+                part = np.argpartition(
+                    combined,
+                    -choose,
+                )[-choose:]
+                order = part[
+                    np.argsort(combined[part])[::-1]
+                ]
+            attractor = candidates[
+                order[:choose]
+            ].astype(np.int32, copy=False)
+            self._internal_state_pools[state_name] = attractor
+            used.update(int(x) for x in attractor)
+
+            attractor_target = np.zeros(n, dtype=np.float32)
+            attractor_target[attractor] = np.float32(
+                1.0 / max(1, len(attractor))
+            )
+            incoming1 = np.asarray(
+                absolute.transpose().dot(attractor_target)
+            ).ravel().astype(np.float32, copy=False)
+            incoming2 = np.asarray(
+                absolute.transpose().dot(incoming1)
+            ).ravel().astype(np.float32, copy=False)
+            entry_score = (
+                0.72 * incoming1 + 0.28 * incoming2
+            )[sensory].astype(np.float32, copy=False)
+            entry_positive = np.flatnonzero(entry_score > 1e-9)
+            if len(entry_positive):
+                k = min(entry_width, len(entry_positive))
+                if k >= len(entry_positive):
+                    eorder = entry_positive[
+                        np.argsort(entry_score[entry_positive])[::-1]
+                    ]
+                else:
+                    part = np.argpartition(
+                        entry_score[entry_positive],
+                        -k,
+                    )[-k:]
+                    eorder = entry_positive[
+                        part[
+                            np.argsort(
+                                entry_score[entry_positive][part]
+                            )[::-1]
+                        ]
+                    ]
+                entry = sensory[eorder[:k]]
+                weights = entry_score[eorder[:k]]
+                weights = (
+                    0.45
+                    + 0.95
+                    * weights
+                    / max(1e-9, float(np.max(weights)))
+                ).astype(np.float32, copy=False)
+            else:
+                entry = self._subset(
+                    f"internal-state:{state_name}:entry",
+                    sensory,
+                    entry_width,
+                ).astype(np.int32, copy=False)
+                weights = np.ones(
+                    len(entry),
+                    dtype=np.float32,
+                )
+            self._internal_state_entry_pools[state_name] = entry
+            self._internal_state_entry_weights[state_name] = weights
+
+            recurrent = self._runtime_matrix_cpu[
+                attractor
+            ][:, attractor].tocoo()
+            if recurrent.nnz and recurrent_gain > 0.0:
+                matrix_rows.append(
+                    attractor[recurrent.row].astype(
+                        np.int32,
+                        copy=False,
+                    )
+                )
+                matrix_cols.append(
+                    attractor[recurrent.col].astype(
+                        np.int32,
+                        copy=False,
+                    )
+                )
+                matrix_data.append(
+                    (
+                        recurrent.data.astype(
+                            np.float32,
+                            copy=False,
+                        )
+                        * np.float32(recurrent_gain)
+                    )
+                )
+
+            self._internal_state_info[state_name] = {
+                "target_actions": list(target_actions),
+                "pool_size": int(len(attractor)),
+                "entry_neurons": int(len(entry)),
+                "target_output_neurons": int(target_count),
+                "recurrent_edges": int(recurrent.nnz),
+                "recurrent_mass": float(
+                    np.sum(np.abs(recurrent.data))
+                    if recurrent.nnz
+                    else 0.0
+                ),
+                "mode": "FAFB-recurrent-attractor",
+            }
+
+        if matrix_rows:
+            rows = np.concatenate(matrix_rows)
+            cols = np.concatenate(matrix_cols)
+            values = np.concatenate(matrix_data)
+            self._internal_attractor_matrix_cpu = (
+                scipy_sparse.coo_matrix(
+                    (values, (rows, cols)),
+                    shape=self.c.matrix.shape,
+                    dtype=np.float32,
+                )
+                .tocsr()
+                .astype(np.float32)
+            )
+        else:
+            self._internal_attractor_matrix_cpu = scipy_sparse.csr_matrix(
+                self.c.matrix.shape,
+                dtype=np.float32,
+            )
+        self.internal_attractor_matrix = self.compute.sparse_from_scipy(
+            self._internal_attractor_matrix_cpu
+        )
+
+        memberships: dict[int, list[str]] = {}
+        for state_name, pool in self._internal_state_pools.items():
+            for idx in pool:
+                memberships.setdefault(int(idx), []).append(state_name)
+        self._internal_state_membership = {
+            idx: tuple(names)
+            for idx, names in memberships.items()
+        }
+
+    def _internal_state_levels(self) -> dict[str, dict]:
+        result: dict[str, dict] = {}
+        gain = max(
+            0.1,
+            float(self.cfg.internal_state_level_gain),
+        )
+        for state_name, pool_cpu in self._internal_state_pools.items():
+            if not len(pool_cpu):
+                continue
+            idx = self._backend_indices(pool_cpu)
+            values = self.compute.to_cpu(
+                self.state[idx]
+            ).astype(np.float32, copy=False)
+            positive = np.maximum(values, 0.0)
+            positive_mean = float(np.mean(positive))
+            mean = float(np.mean(values))
+            mean_abs = float(np.mean(np.abs(values)))
+            peak = float(np.max(np.abs(values)))
+            level = max(
+                0.0,
+                min(
+                    1.0,
+                    1.0 - math.exp(-gain * positive_mean),
+                ),
+            )
+            info = self._internal_state_info.get(
+                state_name,
+                {},
+            )
+            result[state_name] = {
+                "level": level,
+                "mean": mean,
+                "mean_abs": mean_abs,
+                "peak": peak,
+                "neurons": int(len(pool_cpu)),
+                "entry_neurons": int(
+                    len(
+                        self._internal_state_entry_pools.get(
+                            state_name,
+                            np.empty(0, dtype=np.int32),
+                        )
+                    )
+                ),
+                "recurrent_edges": int(
+                    info.get("recurrent_edges", 0)
+                ),
+                "recurrent_mass": float(
+                    info.get("recurrent_mass", 0.0)
+                ),
+                "target_actions": list(
+                    info.get("target_actions", [])
+                ),
+                "mode": str(
+                    info.get(
+                        "mode",
+                        "FAFB-recurrent-attractor",
+                    )
+                ),
+            }
+        return result
+
+    def internal_state_diagnostics(self) -> dict:
+        states = self._internal_state_levels()
+        dominant = None
+        dominant_level = 0.0
+        if states:
+            dominant = max(
+                states,
+                key=lambda name: float(
+                    states[name].get("level", 0.0)
+                ),
+            )
+            dominant_level = float(
+                states[dominant].get("level", 0.0)
+            )
+        return {
+            "enabled": bool(self.cfg.internal_states_enabled),
+            "recurrent_gain": float(
+                self.cfg.internal_state_recurrent_gain
+            ),
+            "recurrent_edges": int(
+                self._internal_attractor_matrix_cpu.nnz
+            ),
+            "dominant": dominant,
+            "dominant_level": dominant_level,
+            "states": states,
+            "method": (
+                "sensory entry pools → real FAFB paths → internal assemblies; "
+                "persistence amplifies only existing recurrent FAFB edges"
+            ),
+        }
+
+    def inject_internal_state_cue(
+        self,
+        state_name: str,
+        magnitude: float,
+        *,
+        key: str | None = None,
+    ) -> dict:
+        """Drive an internal attractor through its connectivity-selected sensory entry."""
+        state_name = str(state_name)
+        magnitude = max(0.0, min(4.0, float(magnitude)))
+        entry = np.asarray(
+            self._internal_state_entry_pools.get(
+                state_name,
+                np.empty(0, dtype=np.int32),
+            ),
+            dtype=np.int32,
+        )
+        attractor = np.asarray(
+            self._internal_state_pools.get(
+                state_name,
+                np.empty(0, dtype=np.int32),
+            ),
+            dtype=np.int32,
+        )
+        before = self._internal_state_levels().get(
+            state_name,
+            {},
+        )
+        if (
+            self.cfg.internal_states_enabled
+            and magnitude > 0.0
+            and len(entry)
+        ):
+            idx = self._backend_indices(entry)
+            weights_cpu = self._internal_state_entry_weights.get(
+                state_name,
+                np.ones(len(entry), dtype=np.float32),
+            )
+            weights = (
+                self.compute.asarray(
+                    weights_cpu,
+                    dtype=np.float32,
+                )
+                if self.compute.is_gpu
+                else weights_cpu
+            )
+            jitter = self.compute.random_uniform(
+                0.90,
+                1.10,
+                size=len(entry),
+            )
+            self.state[idx] += (
+                np.float32(magnitude)
+                * weights
+                * jitter
+            )
+            self.xp.clip(
+                self.state,
+                -3.0,
+                3.0,
+                out=self.state,
+            )
+            self.eligibility[idx] = self.xp.maximum(
+                self.eligibility[idx],
+                np.float32(
+                    min(1.0, 0.18 + 0.35 * magnitude)
+                ),
+            )
+            cue_key = key or f"internal-state:{state_name}"
+            self._queue_signal_cue(
+                cue_key,
+                magnitude,
+                entry,
+                kind="internal-state-sensory",
+            )
+        info = self._internal_state_info.get(
+            state_name,
+            {},
+        )
+        return {
+            "state": state_name,
+            "magnitude": magnitude,
+            "entry_neurons": int(len(entry)),
+            "attractor_neurons": int(len(attractor)),
+            "recurrent_edges": int(
+                info.get("recurrent_edges", 0)
+            ),
+            "level_before": float(
+                before.get("level", 0.0)
+            ),
+            "target_actions": list(
+                info.get("target_actions", [])
+            ),
+            "mode": str(
+                info.get(
+                    "mode",
+                    "disabled"
+                    if not self.cfg.internal_states_enabled
+                    else "FAFB-recurrent-attractor",
+                )
+            ),
+        }
 
     def action_pool_diagnostics(self) -> dict[str, dict]:
         result: dict[str, dict] = {}
@@ -2471,6 +3058,16 @@ class FlyBrain:
                 propagated = propagated + self.synaptic_matrix.dot(
                     self.state
                 ).astype(self.xp.float32, copy=False)
+            if (
+                self.cfg.internal_states_enabled
+                and self._internal_attractor_matrix_cpu.nnz
+            ):
+                propagated = (
+                    propagated
+                    + self.internal_attractor_matrix.dot(
+                        self.state
+                    ).astype(self.xp.float32, copy=False)
+                )
             noise = self.compute.random_normal(
                 0.0,
                 noise_sigma,
@@ -5165,6 +5762,12 @@ class FlyBrain:
                     str(self.c.root_ids[idx])
                     in set(latest_flow.get("output_nodes", []))
                 ),
+                "internal_states": list(
+                    self._internal_state_membership.get(
+                        idx,
+                        (),
+                    )
+                ),
             })
 
         region_rows: list[dict] = []
@@ -5378,6 +5981,7 @@ class FlyBrain:
             "history_samples": len(history),
             "signal_flow": flow_snapshot,
             "learned_synapses": self.learned_synapses_snapshot(160),
+            "internal_states": self.internal_state_diagnostics(),
         }
 
     def learning_since_start_diagnostics(self) -> dict:
@@ -5530,6 +6134,7 @@ class FlyBrain:
                 )
             ),
             "forgetting": dict(self._last_forgetting_diag),
+            "internal_states": self.internal_state_diagnostics(),
             "action_pools": self.action_pool_diagnostics(),
             "neuromodulation": self.neuromodulator_diagnostics(),
         }
