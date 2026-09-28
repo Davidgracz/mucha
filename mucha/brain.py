@@ -2997,6 +2997,133 @@ class FlyBrain:
             "available_humans": available_humans,
         }
 
+    def _action_tie_evidence(
+        self,
+        action: str,
+        competitors: tuple[str, ...],
+    ) -> dict:
+        """Measure neural evidence beyond the scalar action score.
+
+        For close readouts, prefer neurons unique to the competing action and
+        inspect what the real base+learned connectome would feed into them on
+        the next tick. This avoids Python insertion order deciding behavior.
+        """
+        pool = np.asarray(
+            self._action_output_pools.get(
+                action,
+                np.empty(0, dtype=np.int32),
+            ),
+            dtype=np.int32,
+        )
+        if not len(pool):
+            return {
+                "support": -1e9,
+                "neurons": 0,
+                "unique_neurons": 0,
+                "mean_activation": 0.0,
+                "mean_abs_activation": 0.0,
+                "projected_input": 0.0,
+                "mean_bias": 0.0,
+                "mean_eligibility": 0.0,
+            }
+
+        other_parts = [
+            np.asarray(
+                self._action_output_pools.get(
+                    name,
+                    np.empty(0, dtype=np.int32),
+                ),
+                dtype=np.int32,
+            )
+            for name in competitors
+            if name != action
+        ]
+        if other_parts:
+            other = np.unique(
+                np.concatenate(other_parts)
+            ).astype(np.int32, copy=False)
+            unique = np.setdiff1d(
+                pool,
+                other,
+                assume_unique=False,
+            ).astype(np.int32, copy=False)
+        else:
+            unique = pool
+
+        # A tiny unique set is noisy; fall back to the whole biological pool.
+        evidence_pool = (
+            unique
+            if len(unique) >= 8
+            else pool
+        )
+        state_cpu = self.compute.to_cpu(
+            self.state
+        ).astype(np.float32, copy=False)
+        bias_cpu = self.compute.to_cpu(
+            self.plastic_bias
+        ).astype(np.float32, copy=False)
+        eligibility_cpu = self.compute.to_cpu(
+            self.eligibility
+        ).astype(np.float32, copy=False)
+
+        activation = state_cpu[evidence_pool]
+        bias = bias_cpu[evidence_pool]
+        eligibility = eligibility_cpu[evidence_pool]
+
+        projected = np.asarray(
+            self.c.matrix[
+                evidence_pool,
+                :,
+            ].dot(state_cpu)
+        ).ravel().astype(np.float32, copy=False)
+        if self._synaptic_delta_map:
+            projected += np.asarray(
+                self._synaptic_matrix_cpu[
+                    evidence_pool,
+                    :,
+                ].dot(state_cpu)
+            ).ravel().astype(np.float32, copy=False)
+
+        mean_activation = float(
+            np.mean(activation)
+        )
+        mean_abs_activation = float(
+            np.mean(np.abs(activation))
+        )
+        projected_input = float(
+            np.mean(projected)
+        )
+        mean_bias = float(
+            np.mean(bias)
+        )
+        mean_eligibility = float(
+            np.mean(eligibility)
+        )
+
+        max_bias = max(
+            1e-6,
+            float(self.cfg.max_bias),
+        )
+        # All terms come from current neural state/topology. tanh only brings
+        # very different numeric scales into a comparable range.
+        support = (
+            0.34 * math.tanh(5.0 * mean_activation)
+            + 0.38 * math.tanh(2.5 * projected_input)
+            + 0.16 * math.tanh(mean_bias / max_bias)
+            + 0.08 * min(1.0, mean_eligibility)
+            + 0.04 * math.tanh(4.0 * mean_abs_activation)
+        )
+        return {
+            "support": float(support),
+            "neurons": int(len(evidence_pool)),
+            "unique_neurons": int(len(unique)),
+            "mean_activation": mean_activation,
+            "mean_abs_activation": mean_abs_activation,
+            "projected_input": projected_input,
+            "mean_bias": mean_bias,
+            "mean_eligibility": mean_eligibility,
+        }
+
     def voice_action_decision(
         self,
         *,
@@ -3039,6 +3166,78 @@ class FlyBrain:
             if len(ranked) > 1
             else ("none", 0.0)
         )
+
+        tie_band = 0.0025
+        tie_break = None
+        tie_evidence: dict[str, dict] = {}
+        close_actions = tuple(
+            name
+            for name, score in ranked
+            if float(winner_score) - float(score)
+            <= tie_band
+        )
+        if len(close_actions) > 1:
+            tie_evidence = {
+                name: self._action_tie_evidence(
+                    name,
+                    close_actions,
+                )
+                for name in close_actions
+            }
+            evidence_ranked = sorted(
+                close_actions,
+                key=lambda name: float(
+                    tie_evidence[name]["support"]
+                ),
+                reverse=True,
+            )
+            best = evidence_ranked[0]
+            second = evidence_ranked[1]
+            evidence_margin = (
+                float(tie_evidence[best]["support"])
+                - float(tie_evidence[second]["support"])
+            )
+            if abs(evidence_margin) > 1e-9:
+                winner = best
+                runner_name = second
+                winner_score = candidates[winner]
+                runner_score = candidates[runner_name]
+                tie_break = "neural-evidence"
+            else:
+                # A completely flat network should not silently bias STAY just
+                # because it was inserted first into a Python dict.
+                pick = int(
+                    self.compute.scalar(
+                        self.compute.random_uniform(
+                            0.0,
+                            float(len(evidence_ranked)),
+                            size=1,
+                        )[0]
+                    )
+                )
+                pick = min(
+                    len(evidence_ranked) - 1,
+                    max(0, pick),
+                )
+                winner = evidence_ranked[pick]
+                remaining = [
+                    name
+                    for name in evidence_ranked
+                    if name != winner
+                ]
+                runner_name = (
+                    remaining[0]
+                    if remaining
+                    else "none"
+                )
+                winner_score = candidates[winner]
+                runner_score = (
+                    candidates[runner_name]
+                    if runner_name in candidates
+                    else 0.0
+                )
+                tie_break = "unbiased-flat-neural-fallback"
+
         return {
             "action": winner,
             "score": float(winner_score),
@@ -3048,6 +3247,9 @@ class FlyBrain:
             "candidates": candidates,
             "scores": scores,
             "source": "connectome-readout-competition",
+            "tie_band": tie_band,
+            "tie_break": tie_break,
+            "tie_evidence": tie_evidence,
         }
 
     def action_path_snapshot(
