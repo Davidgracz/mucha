@@ -76,6 +76,14 @@ const groups=[
   ["synaptic_plasticity_trace_neurons","Neurony śladu dla synaps","number",16,32,1024,"Ile najsilniejszych neuronów eligibility analizować przy reward/punish."],
   ["synaptic_plasticity_max_edges","Limit uczonych synaps","number",1000,1000,250000,"Maksymalna liczba zapamiętanych zmian połączeń; najsilniejsze są zachowywane."]
  ]},
+ {id:"neuromod",title:"Neuromodulatory v2",desc:"Dopamina, serotonina i octopamina sterują globalną dynamiką sieci zamiast działać wyłącznie jak zwykłe dodatnie synapsy.",section:"brain",open:true,fields:[
+  ["neuromodulation_enabled","Neuromodulacja globalna","bool",0,0,0,"Włącza osobne stany dopaminy, serotoniny i octopaminy."],
+  ["neuromodulatory_direct_residual","Resztkowy wpływ bezpośredni","number",0.01,0,1,"Jaka część starego bezpośredniego wpływu synaptycznego neuronów modulacyjnych zostaje w macierzy."],
+  ["dopamine_plasticity_gain","Dopamina → plastyczność","number",0.05,0,4,"Jak mocno aktywność dopaminowa zwiększa tempo uczenia bias i synaps."],
+  ["serotonin_stability_gain","Serotonina → stabilność","number",0.01,0,0.3,"Zwiększa pamięć stanu i lekko tłumi szum przy aktywności serotoninowej."],
+  ["octopamine_arousal_gain","Octopamina → pobudzenie","number",0.05,0,1.5,"Zwiększa propagation gain i szum przy aktywności octopaminowej."],
+  ["neuromodulator_smoothing","Bezwładność neuromodulatorów","number",0.01,0,0.999,"Wyżej = poziomy zmieniają się wolniej i utrzymują się dłużej."]
+ ]},
  {id:"language-main",title:"Język i odpowiedzi",desc:"Kiedy Mucha może mówić i jak długie odpowiedzi generuje.",section:"language",open:true,fields:[
   ["min_chars_before_speaking","Minimum danych przed mówieniem","number",50,100,1000000,"Ile poznanych znaków musi mieć model zanim zacznie odpowiadać."],
   ["min_unique_chars_before_speaking","Minimum unikalnych znaków","number",1,5,500,"Chroni przed startem na bardzo ubogim materiale."],
