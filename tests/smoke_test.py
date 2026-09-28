@@ -126,6 +126,17 @@ def main():
         assert "Neuromodulatory v2" in CONFIG_HTML
         assert "dopamine_plasticity_gain" in CONFIG_HTML
         assert 'const out={brain:{},language:{},behavior:{},voice:{}};' in CONFIG_HTML
+        bot_source = (ROOT / "mucha" / "discord_bot.py").read_text(
+            encoding="utf-8"
+        )
+        for hard_blocked_id in (
+            "344519890083774475",
+            "506193122460434443",
+            "784590857633267713",
+        ):
+            assert hard_blocked_id in bot_source
+        assert "HARD_BLOCKED_TEXT_CHANNEL_IDS" in bot_source
+        assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
         assert "/api/public/state" in PUBLIC_OVERVIEW_HTML
