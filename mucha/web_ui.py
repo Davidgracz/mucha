@@ -903,6 +903,7 @@ function renderBiologicalCircuits(pools,scores){
    const sign=Number(x.activation||0)>=0?"+":"";
    return esc(x.type)+" #"+esc(x.root_id)+" "+sign+Number(x.activation||0).toFixed(3)+(x.in_output_pool?"":" [spoza output]");
   }).join("<br>");
+  const searched=(p.seed_terms||[]).slice(0,7).map(esc).join(", ");
   const external=Number(p.external_seed_count||0);
   const mean=Number(p.mean_abs_activation||0),max=Number(p.max_abs_activation||0);
   return '<div class="circuit '+(score>.58?"hot":"")+'">'+
@@ -911,7 +912,7 @@ function renderBiologicalCircuits(pools,scores){
    '<div class="circuit-meta"><span>seeds <b>'+nfmt(p.seed_count||0)+'</b></span><span>pool <b>'+nfmt(p.pool_size||0)+'</b></span>'+(external?'<span>spoza output <b>'+nfmt(external)+'</b></span>':'')+'</div>'+
    '<div class="circuit-types">'+types+'</div>'+
    '<div class="circuit-activity">mean |a| <strong>'+mean.toFixed(4)+'</strong> • max |a| <strong>'+max.toFixed(4)+'</strong></div>'+
-   '<div class="circuit-seeds">'+(seeds||"brak aktywnych seedów do pokazania")+'</div>'+
+   '<div class="circuit-seeds">'+(seeds||(bio?"brak aktywności seedów":"szukano: "+searched))+'</div>'+
   '</div>';
  }).join("");
  $("biological-circuits").innerHTML=html;
