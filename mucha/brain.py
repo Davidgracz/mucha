@@ -2463,6 +2463,438 @@ class FlyBrain:
             )
         return scores
 
+    def inject_voice_decision_context(
+        self,
+        guild_id: int,
+        current_channel_id: int | None,
+        *,
+        connected: bool,
+        dwell_progress: float,
+        overstay_level: float,
+        human_count: int,
+        disliked_strength: float = 0.0,
+        alternatives: int = 0,
+    ) -> None:
+        """Encode voice context as sensory input before motor competition.
+
+        Operational constraints remain outside the brain, but ordinary reasons
+        to stay/move/leave are represented as stimuli so reward can reshape the
+        real paths from context to the action readouts.
+        """
+        self.inject(
+            "voice:context:connected"
+            if connected
+            else "voice:context:disconnected",
+            0.48,
+            96,
+        )
+        if current_channel_id is not None:
+            self.inject(
+                f"voice:context:current:{guild_id}:{current_channel_id}",
+                0.34,
+                72,
+            )
+
+        dwell_progress = max(0.0, min(1.5, float(dwell_progress)))
+        overstay_level = max(0.0, min(1.0, float(overstay_level)))
+        disliked_strength = max(
+            0.0,
+            min(1.0, float(disliked_strength)),
+        )
+        human_count = max(0, int(human_count))
+        alternatives = max(0, int(alternatives))
+
+        if connected:
+            if dwell_progress < 1.0:
+                self.inject(
+                    "voice:context:early-dwell",
+                    0.20 + 0.50 * (1.0 - dwell_progress),
+                    96,
+                )
+            else:
+                self.inject(
+                    "voice:context:dwell-complete",
+                    0.28 + 0.18 * min(1.0, dwell_progress - 1.0),
+                    72,
+                )
+        if overstay_level > 0.0:
+            self.inject(
+                "internal:threat:voice-overstay",
+                0.55 + 1.10 * overstay_level,
+                192,
+            )
+            self.inject(
+                f"voice:threat:guild:{guild_id}",
+                0.42 + 0.70 * overstay_level,
+                128,
+            )
+        if disliked_strength > 0.0:
+            self.inject(
+                "social:voice-disliked-present",
+                0.42 + 0.85 * disliked_strength,
+                144,
+            )
+            self.inject(
+                f"social:voice-disliked-present:guild:{guild_id}",
+                0.32 + 0.62 * disliked_strength,
+                96,
+            )
+
+        crowd_bucket = min(6, human_count)
+        self.inject(
+            f"voice:context:humans:{crowd_bucket}",
+            0.16 + 0.07 * min(human_count, 8),
+            64,
+        )
+        option_bucket = min(6, alternatives)
+        self.inject(
+            f"voice:context:alternatives:{option_bucket}",
+            0.14 + 0.06 * min(alternatives, 8),
+            56,
+        )
+
+    def voice_action_decision(
+        self,
+        *,
+        connected: bool,
+        can_join: bool = True,
+        can_move: bool = True,
+        can_leave: bool = True,
+    ) -> dict:
+        """Let action readouts compete; the adapter only masks impossible acts."""
+        scores = self.action_scores()
+        if connected:
+            candidates = {
+                "stay": float(scores["stay"]),
+            }
+            if can_move:
+                candidates["voice_move"] = float(
+                    scores["voice_move"]
+                )
+            if can_leave:
+                candidates["voice_leave"] = float(
+                    scores["voice_leave"]
+                )
+        else:
+            candidates = {
+                "stay": float(scores["stay"]),
+            }
+            if can_join:
+                candidates["voice_join"] = float(
+                    scores["voice_join"]
+                )
+
+        ranked = sorted(
+            candidates.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        winner, winner_score = ranked[0]
+        runner_name, runner_score = (
+            ranked[1]
+            if len(ranked) > 1
+            else ("none", 0.0)
+        )
+        return {
+            "action": winner,
+            "score": float(winner_score),
+            "runner_up": runner_name,
+            "runner_up_score": float(runner_score),
+            "margin": float(winner_score - runner_score),
+            "candidates": candidates,
+            "scores": scores,
+            "source": "connectome-readout-competition",
+        }
+
+    def action_path_snapshot(
+        self,
+        action: str,
+        *,
+        max_depth: int = 5,
+        max_paths: int = 5,
+        beam_width: int = 24,
+    ) -> dict:
+        """Trace strong live presynaptic routes into one action readout."""
+        action = str(action or "").strip()
+        if action not in self.ACTIONS:
+            return {
+                "action": action,
+                "error": "unknown action",
+                "paths": [],
+            }
+
+        max_depth = max(1, min(7, int(max_depth)))
+        max_paths = max(1, min(8, int(max_paths)))
+        beam_width = max(8, min(64, int(beam_width)))
+        pool = np.asarray(
+            self._action_output_pools.get(
+                action,
+                np.empty(0, dtype=np.int32),
+            ),
+            dtype=np.int32,
+        )
+        if not len(pool):
+            return {
+                "action": action,
+                "error": "empty action pool",
+                "paths": [],
+            }
+
+        state_cpu = self.compute.to_cpu(
+            self.state
+        ).astype(np.float32, copy=False)
+        bias_cpu = self.compute.to_cpu(
+            self.plastic_bias
+        ).astype(np.float32, copy=False)
+        eligibility_cpu = self.compute.to_cpu(
+            self.eligibility
+        ).astype(np.float32, copy=False)
+
+        output_rank = (
+            np.abs(state_cpu[pool])
+            + 0.30 * np.abs(bias_cpu[pool])
+            + 0.12 * eligibility_cpu[pool]
+        )
+        seed_count = min(8, len(pool))
+        if seed_count >= len(pool):
+            seed_order = np.argsort(output_rank)[::-1]
+        else:
+            part = np.argpartition(
+                output_rank,
+                -seed_count,
+            )[-seed_count:]
+            seed_order = part[
+                np.argsort(output_rank[part])[::-1]
+            ]
+        targets = [
+            int(pool[int(pos)])
+            for pos in seed_order[:seed_count]
+        ]
+
+        n = self.c.n_neurons
+        sensory = self._sensory_lookup
+        output = self._output_lookup
+        modulatory = self._modulatory_lookup
+
+        def role(idx: int) -> str:
+            if idx in sensory:
+                return "sensory"
+            if idx in output:
+                return "output"
+            if idx in modulatory:
+                return "modulatory"
+            return "internal"
+
+        def node_row(idx: int) -> dict:
+            meta = self.c.neuron_meta or {}
+            primary_type = ""
+            neuropil = ""
+            arr = meta.get("primary_type")
+            if arr is not None and len(arr) == n:
+                primary_type = str(arr[idx]).strip()
+            arr = meta.get("primary_neuropil")
+            if arr is not None and len(arr) == n:
+                neuropil = str(arr[idx]).strip()
+            return {
+                "id": str(int(self.c.root_ids[idx])),
+                "index": idx,
+                "role": role(idx),
+                "type": primary_type,
+                "neuropil": neuropil,
+                "activation": float(state_cpu[idx]),
+                "bias": float(bias_cpu[idx]),
+                "eligibility": float(eligibility_cpu[idx]),
+            }
+
+        # Beam items move backwards from output toward sensory.
+        beam: list[tuple[float, list[int], list[dict]]] = [
+            (
+                float(
+                    abs(state_cpu[target])
+                    + 0.25 * abs(bias_cpu[target])
+                ),
+                [target],
+                [],
+            )
+            for target in targets
+        ]
+        complete: list[tuple[float, list[int], list[dict]]] = []
+        partial: list[tuple[float, list[int], list[dict]]] = []
+
+        for _depth in range(max_depth):
+            expanded: list[
+                tuple[float, list[int], list[dict]]
+            ] = []
+            for path_score, nodes_rev, edges_rev in beam:
+                target = int(nodes_rev[-1])
+                row = self.c.matrix.getrow(target)
+                if row.nnz == 0:
+                    partial.append(
+                        (path_score, nodes_rev, edges_rev)
+                    )
+                    continue
+
+                sources = row.indices.astype(
+                    np.int32,
+                    copy=False,
+                )
+                base_weights = row.data.astype(
+                    np.float32,
+                    copy=False,
+                )
+                candidate_rows: list[
+                    tuple[float, int, float, float, float]
+                ] = []
+                for source_raw, base_raw in zip(
+                    sources,
+                    base_weights,
+                ):
+                    source = int(source_raw)
+                    if source in nodes_rev:
+                        continue
+                    base_weight = float(base_raw)
+                    delta = float(
+                        self._synaptic_delta_map.get(
+                            target * n + source,
+                            0.0,
+                        )
+                    )
+                    effective = base_weight + delta
+                    importance = (
+                        abs(effective)
+                        * (
+                            0.18
+                            + abs(float(state_cpu[source]))
+                            + 0.35 * float(
+                                eligibility_cpu[source]
+                            )
+                        )
+                    )
+                    candidate_rows.append(
+                        (
+                            importance,
+                            source,
+                            base_weight,
+                            delta,
+                            effective,
+                        )
+                    )
+
+                candidate_rows.sort(
+                    key=lambda item: item[0],
+                    reverse=True,
+                )
+                for (
+                    importance,
+                    source,
+                    base_weight,
+                    delta,
+                    effective,
+                ) in candidate_rows[:10]:
+                    edge = {
+                        "source": str(
+                            int(self.c.root_ids[source])
+                        ),
+                        "target": str(
+                            int(self.c.root_ids[target])
+                        ),
+                        "source_index": source,
+                        "target_index": target,
+                        "base_weight": base_weight,
+                        "learned_delta": delta,
+                        "effective_weight": effective,
+                        "importance": float(importance),
+                    }
+                    next_nodes = nodes_rev + [source]
+                    next_edges = edges_rev + [edge]
+                    next_score = (
+                        path_score
+                        + math.log1p(
+                            max(0.0, importance) * 8.0
+                        )
+                    )
+                    item = (
+                        next_score,
+                        next_nodes,
+                        next_edges,
+                    )
+                    if source in sensory:
+                        complete.append(item)
+                    else:
+                        expanded.append(item)
+
+            complete.sort(
+                key=lambda item: item[0],
+                reverse=True,
+            )
+            if len(complete) >= max_paths:
+                break
+            expanded.sort(
+                key=lambda item: item[0],
+                reverse=True,
+            )
+            beam = expanded[:beam_width]
+            partial.extend(beam[:4])
+            if not beam:
+                break
+
+        chosen = (
+            complete[:max_paths]
+            if complete
+            else sorted(
+                partial,
+                key=lambda item: item[0],
+                reverse=True,
+            )[:max_paths]
+        )
+        paths: list[dict] = []
+        for rank, (
+            path_score,
+            nodes_rev,
+            edges_rev,
+        ) in enumerate(chosen, start=1):
+            nodes_forward = list(reversed(nodes_rev))
+            edges_forward = list(reversed(edges_rev))
+            paths.append({
+                "rank": rank,
+                "complete": bool(
+                    nodes_forward
+                    and nodes_forward[0] in sensory
+                ),
+                "strength": float(path_score),
+                "nodes": [
+                    node_row(idx)
+                    for idx in nodes_forward
+                ],
+                "edges": edges_forward,
+            })
+
+        info = self._action_output_info.get(
+            action,
+            {},
+        )
+        return {
+            "action": action,
+            "score": float(
+                self.action_scores().get(action, 0.0)
+            ),
+            "mode": str(info.get("mode", "unknown")),
+            "pool_size": int(len(pool)),
+            "max_depth": max_depth,
+            "paths": paths,
+            "complete_paths": int(
+                sum(
+                    1
+                    for path in paths
+                    if path["complete"]
+                )
+            ),
+            "method": (
+                "live backward beam trace over real FAFB edges; "
+                "edge weight = base + learned delta"
+            ),
+        }
+
     def channel_affinity(self, guild_id: int, channel_id: int) -> float:
         return self.readout(f"voice-affinity:{guild_id}:{channel_id}", 96)
 
