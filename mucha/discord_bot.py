@@ -191,9 +191,21 @@ class MuchaClient(discord.Client):
                 cfg.voice.episodic_max_persisted_events
             ),
         )
-        self._voice_prediction_pending: dict[int, dict] = {}
-        self._voice_prediction_corrections: dict[int, dict] = {}
+        self._voice_prediction_pending: dict[int, list[dict]] = {}
+        self._voice_prediction_corrections: dict[int, list[dict]] = {}
         self._voice_prediction_last: dict[int, dict] = {}
+        self._last_external_activity = time.monotonic()
+        self._memory_replay_last = 0.0
+        self._memory_replay_count = 0
+        self._memory_replay_recent_keys: list[str] = []
+        self._memory_replay_debug: dict = {
+            "enabled": bool(cfg.voice.memory_replay_enabled),
+            "state": "WAITING",
+            "reason": "startup",
+            "count": 0,
+            "last_at": 0.0,
+            "last": [],
+        }
         self.last_reply: dict[int, float] = {}
         self.last_spontaneous: dict[int, float] = {}
         self.last_text_channel: dict[int, int] = {}
@@ -448,6 +460,16 @@ class MuchaClient(discord.Client):
             "prediction_error_scale",
             "prediction_error_max_correction",
             "prediction_max_age_seconds",
+            "prediction_credit_queue_size",
+            "prediction_credit_decay_seconds",
+            "memory_replay_enabled",
+            "memory_replay_idle_seconds",
+            "memory_replay_interval_seconds",
+            "memory_replay_batch_size",
+            "memory_replay_magnitude",
+            "memory_replay_reward_scale",
+            "memory_replay_steps",
+            "memory_replay_max_age_days",
             "minimum_dwell_seconds",
             "maximum_dwell_seconds",
             "overstay_punish_amount",
@@ -778,6 +800,36 @@ class MuchaClient(discord.Client):
             ("voice", "prediction_max_age_seconds"): (
                 int, 5, 3600
             ),
+            ("voice", "prediction_credit_queue_size"): (
+                int, 1, 64
+            ),
+            ("voice", "prediction_credit_decay_seconds"): (
+                float, 1.0, 3600.0
+            ),
+            ("voice", "memory_replay_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "memory_replay_idle_seconds"): (
+                int, 10, 86400
+            ),
+            ("voice", "memory_replay_interval_seconds"): (
+                int, 30, 86400
+            ),
+            ("voice", "memory_replay_batch_size"): (
+                int, 1, 8
+            ),
+            ("voice", "memory_replay_magnitude"): (
+                float, 0.0, 1.5
+            ),
+            ("voice", "memory_replay_reward_scale"): (
+                float, 0.0, 0.5
+            ),
+            ("voice", "memory_replay_steps"): (
+                int, 1, 24
+            ),
+            ("voice", "memory_replay_max_age_days"): (
+                int, 1, 365
+            ),
             ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
             ("voice", "maximum_dwell_seconds"): (int, 1, 86400),
             ("voice", "overstay_punish_amount"): (float, 0.0, 1.0),
@@ -1065,6 +1117,29 @@ class MuchaClient(discord.Client):
         if len(self._action_history) > 80:
             del self._action_history[:-80]
 
+    def _queue_voice_prediction(
+        self,
+        guild_id: int,
+        pending: dict,
+    ) -> None:
+        guild_id = int(guild_id)
+        now = time.monotonic()
+        max_age = max(
+            5.0,
+            float(self.cfg.voice.prediction_max_age_seconds),
+        )
+        queue = [
+            item
+            for item in self._voice_prediction_pending.get(guild_id, [])
+            if now - float(item.get("time", 0.0)) <= max_age
+        ]
+        queue.append(pending)
+        queue_size = max(
+            1,
+            int(self.cfg.voice.prediction_credit_queue_size),
+        )
+        self._voice_prediction_pending[guild_id] = queue[-queue_size:]
+
     def _record_reward(
         self,
         amount: float,
@@ -1085,94 +1160,149 @@ class MuchaClient(discord.Client):
             del self._reward_history[:-120]
 
         if (
-            guild is not None
-            and action in {
+            guild is None
+            or action not in {
                 "stay",
                 "voice_join",
                 "voice_move",
                 "voice_leave",
             }
-            and self.cfg.voice.episodic_prediction_enabled
+            or not self.cfg.voice.episodic_prediction_enabled
         ):
-            pending = self._voice_prediction_pending.get(guild.id)
-            if pending is not None:
-                age = max(
-                    0.0,
-                    time.monotonic()
-                    - float(pending.get("time", 0.0)),
-                )
-                if (
-                    str(pending.get("action")) == str(action)
-                    and age <= float(
-                        self.cfg.voice.prediction_max_age_seconds
-                    )
-                ):
-                    episode = self.voice_episodes.observe(
-                        guild_id=guild.id,
-                        context=str(pending["context"]),
-                        action=str(action),
-                        actual_reward=float(amount),
-                        source=source,
-                        predicted_reward=float(
-                            pending.get("predicted_reward", 0.0)
-                        ),
-                        channel_id=pending.get("channel_id"),
-                        channel_name=str(
-                            pending.get("channel_name", "")
-                        ),
-                        user_ids=list(
-                            pending.get("user_ids", [])
-                        ),
-                        user_names=list(
-                            pending.get("user_names", [])
-                        ),
-                        scene_key=str(
-                            pending.get("scene_key", "")
-                        ),
-                    )
-                    self._voice_prediction_last[guild.id] = episode
-                    error = float(episode["prediction_error"])
-                    limit = max(
+            return
+
+        queue = list(
+            self._voice_prediction_pending.get(guild.id, [])
+        )
+        if not queue:
+            return
+
+        now = time.monotonic()
+        max_age = max(
+            5.0,
+            float(self.cfg.voice.prediction_max_age_seconds),
+        )
+        decay = max(
+            1.0,
+            float(self.cfg.voice.prediction_credit_decay_seconds),
+        )
+        valid: list[tuple[dict, float, float]] = []
+        for pending in queue:
+            age = max(
+                0.0,
+                now - float(pending.get("time", 0.0)),
+            )
+            if age > max_age:
+                continue
+            action_match = (
+                1.0
+                if str(pending.get("action")) == str(action)
+                else 0.35
+            )
+            weight = action_match * math.exp(-age / decay)
+            if weight > 1e-6:
+                valid.append((pending, age, weight))
+
+        if not valid:
+            self._voice_prediction_pending.pop(guild.id, None)
+            return
+
+        total_weight = sum(item[2] for item in valid)
+        correction_queue = self._voice_prediction_corrections.setdefault(
+            guild.id,
+            [],
+        )
+        last_episode = None
+        for pending, age, raw_weight in valid:
+            credit_share = raw_weight / max(1e-9, total_weight)
+            pending_action = str(pending.get("action", action))
+            episode = self.voice_episodes.observe(
+                guild_id=guild.id,
+                context=str(pending["context"]),
+                action=pending_action,
+                actual_reward=float(amount),
+                source=(
+                    f"{source} • temporal-credit "
+                    f"{credit_share:.3f}"
+                ),
+                predicted_reward=float(
+                    pending.get("predicted_reward", 0.0)
+                ),
+                channel_id=pending.get("channel_id"),
+                channel_name=str(
+                    pending.get("channel_name", "")
+                ),
+                user_ids=list(
+                    pending.get("user_ids", [])
+                ),
+                user_names=list(
+                    pending.get("user_names", [])
+                ),
+                scene_key=str(
+                    pending.get("scene_key", "")
+                ),
+            )
+            episode["credit_share"] = float(credit_share)
+            episode["decision_age_seconds"] = float(age)
+            last_episode = episode
+
+            error = float(episode["prediction_error"])
+            limit = max(
+                0.0,
+                min(
+                    0.5,
+                    float(
+                        self.cfg.voice
+                        .prediction_error_max_correction
+                    ),
+                ),
+            )
+            correction = max(
+                -limit,
+                min(
+                    limit,
+                    error
+                    * max(
                         0.0,
-                        min(
-                            0.5,
-                            float(
-                                self.cfg.voice
-                                .prediction_error_max_correction
-                            ),
+                        float(
+                            self.cfg.voice
+                            .prediction_error_scale
                         ),
                     )
-                    correction = max(
-                        -limit,
-                        min(
-                            limit,
-                            error
-                            * max(
-                                0.0,
-                                float(
-                                    self.cfg.voice
-                                    .prediction_error_scale
-                                ),
-                            ),
-                        ),
-                    )
-                    if (
-                        abs(correction) > 1e-9
-                        and pending.get("trace") is not None
-                    ):
-                        self._voice_prediction_corrections[
-                            guild.id
-                        ] = {
-                            "amount": correction,
-                            "action": str(action),
-                            "trace": pending["trace"],
-                            "prediction_error": error,
-                            "source": source,
-                        }
-                    self._voice_prediction_pending.pop(
-                        guild.id,
-                        None,
-                    )
+                    * credit_share,
+                ),
+            )
+            if (
+                abs(correction) > 1e-9
+                and pending.get("trace") is not None
+            ):
+                correction_queue.append({
+                    "amount": correction,
+                    "action": pending_action,
+                    "trace": pending["trace"],
+                    "prediction_error": error,
+                    "credit_share": credit_share,
+                    "decision_age_seconds": age,
+                    "source": source,
+                })
+
+        if last_episode is not None:
+            self._voice_prediction_last[guild.id] = last_episode
+
+        max_corrections = max(
+            2,
+            int(self.cfg.voice.prediction_credit_queue_size) * 2,
+        )
+        if correction_queue:
+            self._voice_prediction_corrections[guild.id] = (
+                correction_queue[-max_corrections:]
+            )
+        else:
+            self._voice_prediction_corrections.pop(guild.id, None)
+
+        # A reward event closes the current temporal-credit window. New
+        # decisions made after it start a fresh causal chain.
+        self._voice_prediction_pending.pop(guild.id, None)
 
     def _set_reinforceable(
         self,
@@ -3342,11 +3472,13 @@ class MuchaClient(discord.Client):
         guild_id: int,
         channel: discord.VoiceChannel,
     ) -> None:
-        pending = self._voice_prediction_pending.get(
-            int(guild_id)
+        queue = self._voice_prediction_pending.get(
+            int(guild_id),
+            [],
         )
-        if pending is None:
+        if not queue:
             return
+        pending = queue[-1]
         humans = [
             member
             for member in channel.members
@@ -3641,6 +3773,7 @@ class MuchaClient(discord.Client):
     async def on_message(self, message: discord.Message):
         if message.guild is None or message.author.id == self.user.id:
             return
+        self._last_external_activity = time.monotonic()
         if message.content.startswith(self.cfg.discord.command_prefix):
             await self._admin_command(message)
             return
@@ -4061,6 +4194,7 @@ class MuchaClient(discord.Client):
             )
 
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
+        self._last_external_activity = time.monotonic()
         if self.paused:
             return
         if self.user and member.id == self.user.id:
@@ -4297,17 +4431,291 @@ class MuchaClient(discord.Client):
             )
             self._ensure_chaser_scream_loop(member.guild)
 
+    async def _maybe_memory_replay(
+        self,
+        now: float | None = None,
+    ) -> None:
+        now = time.monotonic() if now is None else float(now)
+        self._memory_replay_debug["enabled"] = bool(
+            self.cfg.voice.memory_replay_enabled
+        )
+        if (
+            not self.cfg.voice.memory_replay_enabled
+            or not self.cfg.voice.episodic_prediction_enabled
+        ):
+            self._memory_replay_debug.update({
+                "state": "OFF",
+                "reason": "disabled",
+            })
+            return
+
+        idle_seconds = max(
+            10.0,
+            float(self.cfg.voice.memory_replay_idle_seconds),
+        )
+        quiet_for = max(
+            0.0,
+            now - float(self._last_external_activity),
+        )
+        if quiet_for < idle_seconds:
+            self._memory_replay_debug.update({
+                "state": "WAITING",
+                "reason": "activity",
+                "quiet_for": quiet_for,
+            })
+            return
+
+        interval = max(
+            30.0,
+            float(self.cfg.voice.memory_replay_interval_seconds),
+        )
+        since_last = max(0.0, now - self._memory_replay_last)
+        if self._memory_replay_last > 0.0 and since_last < interval:
+            self._memory_replay_debug.update({
+                "state": "WAITING",
+                "reason": "interval",
+                "quiet_for": quiet_for,
+                "next_in": interval - since_last,
+            })
+            return
+
+        if any(
+            vc is not None and vc.is_connected()
+            for vc in self.voice_clients
+        ):
+            self._memory_replay_debug.update({
+                "state": "WAITING",
+                "reason": "voice-connected",
+                "quiet_for": quiet_for,
+            })
+            return
+
+        if any(
+            self._chaser_panic_remaining(guild.id, now) > 0.0
+            for guild in self.guilds
+        ):
+            self._memory_replay_debug.update({
+                "state": "WAITING",
+                "reason": "chaser-panic",
+                "quiet_for": quiet_for,
+            })
+            return
+
+        batch_size = max(
+            1,
+            min(8, int(self.cfg.voice.memory_replay_batch_size)),
+        )
+        candidates = self.voice_episodes.replay_candidates(
+            limit=max(12, batch_size * 8),
+            max_age_seconds=max(
+                86400.0,
+                float(self.cfg.voice.memory_replay_max_age_days)
+                * 86400.0,
+            ),
+        )
+        if not candidates:
+            self._memory_replay_debug.update({
+                "state": "WAITING",
+                "reason": "no-episodes",
+                "quiet_for": quiet_for,
+            })
+            return
+
+        recent = set(self._memory_replay_recent_keys)
+        selected = []
+        for episode in candidates:
+            key = (
+                f"{float(episode.get('time', 0.0)):.6f}:"
+                f"{episode.get('guild_id')}:"
+                f"{episode.get('action')}:"
+                f"{episode.get('scene_key')}"
+            )
+            if key in recent:
+                continue
+            row = dict(episode)
+            row["_replay_key"] = key
+            selected.append(row)
+            if len(selected) >= batch_size:
+                break
+        if not selected:
+            recent.clear()
+            self._memory_replay_recent_keys.clear()
+            for episode in candidates[:batch_size]:
+                row = dict(episode)
+                row["_replay_key"] = (
+                    f"{float(row.get('time', 0.0)):.6f}:"
+                    f"{row.get('guild_id')}:"
+                    f"{row.get('action')}:"
+                    f"{row.get('scene_key')}"
+                )
+                selected.append(row)
+
+        magnitude = max(
+            0.0,
+            min(1.5, float(self.cfg.voice.memory_replay_magnitude)),
+        )
+        reward_scale = max(
+            0.0,
+            min(
+                0.5,
+                float(self.cfg.voice.memory_replay_reward_scale),
+            ),
+        )
+        steps = max(
+            1,
+            min(24, int(self.cfg.voice.memory_replay_steps)),
+        )
+        replayed = []
+
+        async with self._brain_lock:
+            for episode in selected:
+                guild_id = int(episode.get("guild_id") or 0)
+                channel_id = episode.get("channel_id")
+                user_ids = [
+                    int(x)
+                    for x in episode.get("user_ids", [])
+                ]
+                action = str(episode.get("action") or "stay")
+
+                if channel_id is not None:
+                    self.brain.inject_voice_snapshot(
+                        guild_id,
+                        int(channel_id),
+                        user_ids,
+                        sensory_scale=max(
+                            0.05,
+                            min(1.0, magnitude),
+                        ),
+                    )
+                else:
+                    self.brain.inject(
+                        f"memory-replay:outside:guild:{guild_id}",
+                        0.35 * magnitude,
+                        64,
+                    )
+                    for user_id in user_ids[:12]:
+                        self.brain.activate_user_memory(
+                            user_id,
+                            0.10 * magnitude,
+                        )
+
+                guided = self.brain.inject_action_guided_sensory(
+                    action,
+                    (
+                        "memory-replay:"
+                        f"{guild_id}:"
+                        f"{episode.get('scene_key', '')}"
+                    ),
+                    magnitude,
+                    width=176,
+                    hops=3,
+                )
+                self.brain.step(steps)
+                trace = self.brain.capture_learning_trace()
+
+                actual = float(episode.get("actual_reward", 0.0))
+                error = float(
+                    episode.get("prediction_error", 0.0)
+                )
+                replay_signal = max(
+                    -1.0,
+                    min(1.0, 0.65 * actual + 0.35 * error),
+                )
+                replay_reward = replay_signal * reward_scale
+                if abs(replay_reward) > 1e-9:
+                    learning = self.brain.reward(
+                        replay_reward,
+                        action=action,
+                        trace=trace,
+                    )
+                else:
+                    learning = {}
+                self.brain.step(1)
+
+                replayed.append({
+                    "time": float(episode.get("time", 0.0)),
+                    "guild_id": guild_id,
+                    "channel_id": channel_id,
+                    "channel_name": str(
+                        episode.get("channel_name", "")
+                    ),
+                    "user_names": list(
+                        episode.get("user_names", [])
+                    ),
+                    "action": action,
+                    "actual_reward": actual,
+                    "prediction_error": error,
+                    "replay_score": float(
+                        episode.get("replay_score", 0.0)
+                    ),
+                    "replay_reward": float(replay_reward),
+                    "steps": steps,
+                    "guided_mode": str(
+                        guided.get("mode", "")
+                    ),
+                    "guided_neurons": int(
+                        guided.get("neurons", 0)
+                    ),
+                    "guided_reach_max": float(
+                        guided.get("reach_max", 0.0)
+                    ),
+                    "changed_neurons": int(
+                        learning.get("changed", 0)
+                    ),
+                })
+
+        for episode in selected:
+            self._memory_replay_recent_keys.append(
+                str(episode["_replay_key"])
+            )
+        self._memory_replay_recent_keys = (
+            self._memory_replay_recent_keys[-12:]
+        )
+        self._memory_replay_last = now
+        self._memory_replay_count += len(replayed)
+        self._memory_replay_debug.update({
+            "state": "REPLAY",
+            "reason": "idle-memory-consolidation",
+            "quiet_for": quiet_for,
+            "last_at": time.time(),
+            "count": self._memory_replay_count,
+            "batch": len(replayed),
+            "last": replayed,
+        })
+        self._last_brain_event = (
+            f"MEMORY REPLAY • {len(replayed)} episode(s)"
+        )
+        if replayed:
+            last = replayed[-1]
+            self._last_brain_action = (
+                "REPLAY → "
+                f"{last['action']} "
+                f"{last['replay_reward']:+.3f}"
+            )
+            guild = self.get_guild(int(last["guild_id"]))
+            self._record_action(
+                "memory_replay",
+                (
+                    f"{last['action']} • "
+                    f"{last['channel_name'] or 'poza VC'} • "
+                    f"reward {last['replay_reward']:+.3f} • "
+                    f"{steps} tick"
+                ),
+                guild,
+            )
+
     @tasks.loop(seconds=5)
     async def idle_loop(self):
         await self.wait_until_ready()
         if self.paused:
             return
+        now = time.monotonic()
+        await self._maybe_memory_replay(now)
         async with self._brain_lock:
             self.brain.inject("internal:time", 0.035, 32)
             self.brain.step(self.cfg.brain.idle_steps)
             scores = self.brain.action_scores()
 
-        now = time.monotonic()
         if now - self._last_save >= self.cfg.behavior.save_every_seconds:
             async with self._brain_lock:
                 self.brain.save()
@@ -4630,6 +5038,7 @@ class MuchaClient(discord.Client):
             "paused": self.paused,
             "voice_debug": list(self._voice_debug.values()),
             "episodic_memory": self.voice_episodes.diagnostics(),
+            "memory_replay": dict(self._memory_replay_debug),
             "audio_debug": dict(self._audio_debug),
             "stt_debug": dict(self._stt_debug),
             "reaction_debug": reaction_debug,
@@ -6527,6 +6936,13 @@ class MuchaClient(discord.Client):
                 last_prediction.get("prediction_error", 0.0)
             )
         debug["episodic_memory_size"] = self.voice_episodes.size()
+        debug["prediction_credit_queue_depth"] = len(
+            self._voice_prediction_pending.get(guild.id, [])
+        )
+        debug["prediction_correction_queue_depth"] = len(
+            self._voice_prediction_corrections.get(guild.id, [])
+        )
+        debug["memory_replay"] = dict(self._memory_replay_debug)
         disliked_strength = max(
             (
                 min(1.0, max(0.0, -float(affinity)))
@@ -6549,24 +6965,32 @@ class MuchaClient(discord.Client):
         voice_context_diag = None
 
         async with self._brain_lock:
-            correction = self._voice_prediction_corrections.pop(
+            corrections = self._voice_prediction_corrections.pop(
                 guild.id,
-                None,
+                [],
             )
-            if correction is not None:
-                self.brain.reward(
-                    float(correction["amount"]),
-                    action=str(correction["action"]),
-                    trace=correction["trace"],
+            if corrections:
+                total_correction = 0.0
+                for correction in corrections:
+                    self.brain.reward(
+                        float(correction["amount"]),
+                        action=str(correction["action"]),
+                        trace=correction["trace"],
+                    )
+                    total_correction += float(correction["amount"])
+                self.brain.step(
+                    max(1, min(3, len(corrections)))
                 )
-                self.brain.step(1)
                 debug["prediction_correction_applied"] = float(
-                    correction["amount"]
+                    total_correction
+                )
+                debug["prediction_corrections_applied"] = int(
+                    len(corrections)
                 )
                 self._last_brain_event = (
-                    "PREDICTION ERROR • "
-                    f"{correction['action']} "
-                    f"{float(correction['prediction_error']):+.3f}"
+                    "PREDICTION ERROR • temporal credit • "
+                    f"{len(corrections)} traces • "
+                    f"{total_correction:+.3f}"
                 )
 
             for ch, humans in channels:
@@ -6772,7 +7196,7 @@ class MuchaClient(discord.Client):
                     seen_members = {}
                     for member in prediction_members:
                         seen_members[int(member.id)] = member
-                    self._voice_prediction_pending[guild.id] = {
+                    self._queue_voice_prediction(guild.id, {
                         "time": now,
                         "context": prediction_context,
                         "scene_key": prediction_scene_key,
@@ -6796,7 +7220,7 @@ class MuchaClient(discord.Client):
                             seen_members[user_id].display_name
                             for user_id in sorted(seen_members)
                         ],
-                    }
+                    })
             else:
                 self.brain.step(2)
                 scores = self.brain.action_scores()
