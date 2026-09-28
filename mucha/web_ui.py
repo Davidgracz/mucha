@@ -1172,7 +1172,7 @@ main{max-width:1740px;margin:auto;padding:22px}
 h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px}
 .nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#b9cad9;text-decoration:none;border:1px solid var(--line);background:#0a131c;padding:8px 11px;border-radius:10px;font-size:12px}
 .nav a:hover{border-color:#36536e;color:white}.nav a.active{background:linear-gradient(90deg,var(--cyan),#7be7d6);color:#03110d;border-color:var(--cyan);font-weight:850}
-.hero{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}.kpi,.card{background:linear-gradient(180deg,rgba(11,18,27,.96),rgba(7,13,20,.96));border:1px solid var(--line);border-radius:16px;box-shadow:0 16px 50px rgba(0,0,0,.18)}
+.hero{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}.kpi,.card{background:linear-gradient(180deg,rgba(11,18,27,.96),rgba(7,13,20,.96));border:1px solid var(--line);border-radius:16px;box-shadow:0 16px 50px rgba(0,0,0,.18)}
 .kpi{padding:13px 14px}.kpi small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.11em;margin-bottom:5px}.kpi strong{font-size:18px}.kpi em{display:block;color:#8da0b2;font-size:10px;font-style:normal;margin-top:4px}
 .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px;padding:10px 12px;border:1px solid var(--line);border-radius:14px;background:rgba(8,15,23,.9)}
 .toolgroup{display:flex;gap:7px;align-items:center;flex-wrap:wrap}.toolgroup span{font-size:9px;color:#758ba0;text-transform:uppercase;letter-spacing:.1em;margin-right:3px}
@@ -1187,7 +1187,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 .tooltip{position:absolute;z-index:5;display:none;pointer-events:none;min-width:230px;max-width:320px;padding:10px 11px;border-radius:11px;background:rgba(4,9,14,.96);border:1px solid #2b4760;box-shadow:0 16px 45px rgba(0,0,0,.45);font-size:10px;line-height:1.5}.tooltip b{font-size:11px}.tooltip .mut{color:#7890a4}.tooltip .acc{color:var(--cyan)}
 .side{display:flex;flex-direction:column;gap:12px}.now{display:grid;grid-template-columns:1fr 1fr;gap:8px}.mini{padding:10px;border:1px solid #172636;background:#071019;border-radius:11px}.mini small{display:block;color:#71889c;font-size:9px;text-transform:uppercase;letter-spacing:.1em}.mini strong{display:block;margin-top:4px;font-size:12px;word-break:break-word}
 .actions{display:flex;flex-direction:column;gap:7px}.act{display:grid;grid-template-columns:86px 1fr 40px;gap:8px;align-items:center;font-size:10px}.track{height:7px;background:#050b11;border:1px solid #172637;border-radius:999px;overflow:hidden}.fill{height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));border-radius:999px;box-shadow:0 0 12px rgba(85,234,208,.2)}
-.regions{display:flex;flex-direction:column;gap:6px;max-height:310px;overflow:auto}.region{display:grid;grid-template-columns:1fr 72px 44px;gap:8px;align-items:center;padding:8px;border:1px solid #172637;background:#071019;border-radius:10px;cursor:pointer}.region:hover,.region.on{border-color:#34536c;background:#091722}.region b{font-size:10px}.region small{color:#70879b;font-size:9px}.rtrack{height:6px;background:#050b11;border:1px solid #162536;border-radius:999px;overflow:hidden}.rfill{height:100%;background:linear-gradient(90deg,var(--violet),var(--pink));border-radius:999px}
+.signal-list{display:flex;flex-direction:column;gap:6px;max-height:240px;overflow:auto}.signal-row{display:grid;grid-template-columns:54px 1fr 62px;gap:7px;align-items:center;padding:7px;border:1px solid #172637;background:#071019;border-radius:9px;font-size:9px}.signal-row b{font-size:9px}.signal-row span{color:#8298aa;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.signal-row em{text-align:right;font-style:normal;font-variant-numeric:tabular-nums}.signal-row.pos em{color:var(--cyan)}.signal-row.neg em{color:var(--pink)}.signal-summary{display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:8px}.signal-summary div{padding:8px;border:1px solid #172637;background:#071019;border-radius:9px}.signal-summary small{display:block;color:#6f879b;font-size:8px;text-transform:uppercase;letter-spacing:.08em}.signal-summary b{display:block;margin-top:4px;font-size:11px}.flow-cue{display:inline-flex;gap:4px;align-items:center;margin:3px 4px 0 0;padding:4px 6px;border:1px solid #244057;border-radius:999px;background:#07131d;color:#9db2c4;font-size:8px}.learn-row{padding:7px;border:1px solid rgba(255,119,183,.18);background:rgba(255,119,183,.04);border-radius:9px;margin-top:6px;font-size:9px;color:#9fb1c1}.flow-note{color:#71879a;font-size:9px;line-height:1.5;margin-top:7px}.regions{display:flex;flex-direction:column;gap:6px;max-height:310px;overflow:auto}.region{display:grid;grid-template-columns:1fr 72px 44px;gap:8px;align-items:center;padding:8px;border:1px solid #172637;background:#071019;border-radius:10px;cursor:pointer}.region:hover,.region.on{border-color:#34536c;background:#091722}.region b{font-size:10px}.region small{color:#70879b;font-size:9px}.rtrack{height:6px;background:#050b11;border:1px solid #162536;border-radius:999px;overflow:hidden}.rfill{height:100%;background:linear-gradient(90deg,var(--violet),var(--pink));border-radius:999px}
 .inspector{min-height:230px}.empty{color:#71879a;font-size:11px;line-height:1.55;padding:10px 0}.ins-title{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.ins-title strong{font-size:14px;word-break:break-all}.role{padding:4px 7px;border-radius:999px;font-size:8px;font-weight:850;letter-spacing:.08em;border:1px solid #274056;color:#a8bac9}
 .meta{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.meta div{padding:8px;background:#071019;border:1px solid #172637;border-radius:9px}.meta small{display:block;color:#6f879b;font-size:8px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:3px}.meta b{font-size:10px;word-break:break-word}
 .effects{margin-top:9px;padding:9px;background:#061019;border:1px solid #172637;border-radius:10px}.effects small{display:block;color:#71899e;font-size:8px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px}.effect{display:grid;grid-template-columns:80px 1fr auto;gap:7px;align-items:center;font-size:9px;margin-top:5px}.effect .efill{height:6px;background:#08141f;border-radius:999px;overflow:hidden}.effect .efill i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan))}
@@ -1199,7 +1199,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 </head>
 <body><main>
 <div class="top">
- <div class="brand"><div class="logo">🧠</div><div><h1>Fly Brain Neuro-map</h1><div class="sub">Aktywność przestrzenna, nazwane neuropile, typy neuronów i runtime korelacje z zachowaniem Muchy.</div></div></div>
+ <div class="brand"><div class="logo">🧠</div><div><h1>Fly Brain Neuro-map</h1><div class="sub">Neuro-map 2.0: aktywność przestrzenna, realny przepływ po krawędziach FAFB, plastyczność i runtime korelacje z zachowaniem Muchy.</div></div></div>
  <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a class="active" href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
 </div>
 
@@ -1209,12 +1209,13 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
  <div class="kpi"><small>Aktywne |a| &gt; .1</small><strong id="active">—</strong><em>cały runtime</em></div>
  <div class="kpi"><small>Najaktywniejszy region</small><strong id="top-region">—</strong><em id="top-region-detail">—</em></div>
  <div class="kpi"><small>Dominujący readout</small><strong id="dominant">—</strong><em id="dominant-score">—</em></div>
+ <div class="kpi"><small>Live signal flow</small><strong id="flow-edge-count">—</strong><em id="flow-frame">brak klatki</em></div>
 </section>
 
 <div class="toolbar">
  <div class="toolgroup"><span>Projekcja</span><button class="btn proj on" data-proj="xy">XY</button><button class="btn proj" data-proj="xz">XZ</button><button class="btn proj" data-proj="yz">YZ</button></div>
  <div class="toolgroup"><span>Warstwa</span><button class="btn role on" data-role="all">ALL</button><button class="btn role" data-role="sensory">SENSORY</button><button class="btn role" data-role="internal">INTERNAL</button><button class="btn role" data-role="modulatory">MODULATORY</button><button class="btn role" data-role="output">OUTPUT</button></div>
- <div class="toolgroup"><span>Widok</span><button class="btn on" id="regions-btn">REGION HEAT</button><button class="btn on" id="trail-btn">ACTIVITY TRAIL</button><span class="badge" id="region-source">REGIONS</span><span class="badge" id="coord-badge">COORDINATES</span></div>
+ <div class="toolgroup"><span>Widok</span><button class="btn on" id="regions-btn">REGION HEAT</button><button class="btn on" id="trail-btn">ACTIVITY TRAIL</button><button class="btn on" id="flow-btn">SIGNAL FLOW</button><button class="btn on" id="follow-btn">FOLLOW DECISION</button><span class="badge" id="region-source">REGIONS</span><span class="badge" id="coord-badge">COORDINATES</span></div>
 </div>
 
 <section class="grid">
@@ -1225,7 +1226,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
    <div class="map-title" id="map-title">XY PROJECTION</div>
    <div class="tooltip" id="tip"></div>
   </div>
-  <div class="legend"><span><i class="sens"></i> sensory</span><span><i class="internal"></i> internal</span><span><i class="mod"></i> modulatory</span><span><i class="out"></i> output</span><span>• halo = aktywny region • kliknij region po prawej, aby go odizolować</span></div>
+  <div class="legend"><span><i class="sens"></i> sensory</span><span><i class="internal"></i> internal</span><span><i class="mod"></i> modulatory</span><span><i class="out"></i> output</span><span>• animowana kropka = kierunek realnego wkładu sygnału • przerywana linia = wkład ujemny • pierścień = output wygrywającego readoutu</span></div>
  </div>
 
  <div class="side">
@@ -1233,6 +1234,8 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
    <div class="now"><div class="mini"><small>bodziec</small><strong id="event">—</strong></div><div class="mini"><small>akcja</small><strong id="last-action">—</strong></div></div>
    <div class="actions" id="actions" style="margin-top:10px"></div>
   </div>
+
+  <div class="card"><div class="card-head"><h2>⚡ Live signal flow</h2><span class="badge" id="flow-winner">czekam</span></div><div id="signal-flow" class="empty">Pierwsza klatka pojawi się po następnym bodźcu i propagacji connectomu.</div></div>
 
   <div class="card"><div class="card-head"><h2>Najaktywniejsze neuropile / rejony</h2><span class="badge" id="region-filter">ALL</span></div><div class="regions" id="regions"></div><div class="note" id="region-note">—</div></div>
 
@@ -1246,7 +1249,8 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 const $=id=>document.getElementById(id);
 const canvas=$("brain"),ctx=canvas.getContext("2d"),wrap=$("map-wrap"),tip=$("tip");
 const colors={sensory:"#55ead0",internal:"#6ba6ff",modulatory:"#b68bff",output:"#ff77b7"};
-let projection="xy",roleFilter="all",showRegions=true,showTrail=true,data=null,hover=null,selected=null,selectedRegion="",lastFetch=0;
+const actionColors={speak:"#b68bff",react:"#ff9f6b",voice_join:"#55ead0",voice_move:"#6ba6ff",voice_leave:"#ff77b7",explore:"#7fd1ff",stay:"#ffd166"};
+let projection="xy",roleFilter="all",showRegions=true,showTrail=true,showFlow=true,followDecision=true,data=null,hover=null,selected=null,selectedRegion="",lastFetch=0;
 const trail=new Map(),mouse={x:0,y:0,inside:false};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),nfmt=n=>Number(n||0).toLocaleString("pl-PL");
 const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
