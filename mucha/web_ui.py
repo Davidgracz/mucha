@@ -75,7 +75,16 @@ const groups=[
   ["synaptic_plasticity_lr","Tempo uczenia synaps","number",0.0001,0,0.05,"Jak mocno pojedynczy reward/punish zmienia aktywne połączenia."],
   ["synaptic_plasticity_max_delta","Maks. zmiana synapsy","number",0.005,0.001,0.5,"Limit odchylenia uczonej wagi od bazowej wagi FAFB."],
   ["synaptic_plasticity_trace_neurons","Neurony śladu dla synaps","number",16,32,1024,"Ile najsilniejszych neuronów eligibility analizować przy reward/punish."],
-  ["synaptic_plasticity_max_edges","Limit uczonych synaps","number",1000,1000,250000,"Maksymalna liczba zapamiętanych zmian połączeń; najsilniejsze są zachowywane."]
+  ["synaptic_plasticity_max_edges","Limit uczonych synaps","number",1000,1000,250000,"Maksymalna liczba zapamiętanych zmian połączeń; najsilniejsze są zachowywane."],
+  ["consolidation_enabled","Konsolidacja + zapominanie","bool",0,0,0,"Włącza czasowy decay wyłącznie dla nauczonych biasów i synaptic delta. Bazowy connectome FAFB nie jest zmieniany."],
+  ["consolidation_interval_seconds","Interwał konsolidacji","number",10,10,86400,"Jak często wykonywać czasowe zapominanie i porządkowanie śladów."],
+  ["bias_forgetting_half_life_hours","Półokres plastic bias","number",1,1,8760,"Po ilu godzinach nieutrwalony plastic bias spada o połowę wskutek czasowego zapominania."],
+  ["synaptic_forgetting_half_life_hours","Półokres learned synapse","number",1,1,8760,"Bazowy półokres zaniku synaptic delta przed ochroną wynikającą z konsolidacji."],
+  ["synaptic_consolidation_gain","Tempo konsolidacji synaps","number",0.01,0,1,"Jak szybko spójne kolejne rewardy zwiększają consolidation strength synapsy."],
+  ["synaptic_consolidation_decay_half_life_days","Półokres consolidation strength","number",0.25,0.25,3650,"Jak wolno zanika sama odporność utrwalonego śladu."],
+  ["synaptic_consolidation_protection","Ochrona utrwalonych synaps","number",0.1,0,50,"Mnożnik wydłużający półokres learned synapse wraz ze wzrostem consolidation strength."],
+  ["synaptic_prune_threshold","Próg usuwania śladu","number",0.00001,0,0.05,"Bardzo słabe i nieutrwalone synaptic delta poniżej tego progu są usuwane."],
+  ["synaptic_consolidated_threshold","Próg CONSOLIDATED","number",0.01,0,1,"Od jakiej siły pamięci learned synapse jest oznaczana jako utrwalona."]
  ]},
  {id:"neuromod",title:"Neuromodulatory v2",desc:"Dopamina, serotonina i octopamina sterują globalną dynamiką sieci zamiast działać wyłącznie jak zwykłe dodatnie synapsy.",section:"brain",open:true,fields:[
   ["neuromodulation_enabled","Neuromodulacja globalna","bool",0,0,0,"Włącza osobne stany dopaminy, serotoniny i octopaminy."],
@@ -206,6 +215,10 @@ const groups=[
   ["memory_replay_reward_scale","Replay: siła uczenia","number",0.01,0,0.5,"Mała część oryginalnego reward/prediction error używana do ponownej plastyczności."],
   ["memory_replay_steps","Replay: ticki connectomu","number",1,1,24,"Liczba kroków propagacji realnego connectome przed ponownym rewardem."],
   ["memory_replay_max_age_days","Replay: maks. wiek wspomnienia","number",1,1,365,"Jak stare epizody mogą wracać podczas konsolidacji."],
+  ["episodic_consolidation_gain","Tempo utrwalania wspomnień","number",0.01,0,1,"Jak szybko powtarzane doświadczenia i MEMORY REPLAY zwiększają siłę pamięci sceny."],
+  ["episodic_forgetting_half_life_days","Półokres pamięci epizodycznej","number",0.25,0.25,3650,"Jak szybko bez ponownego wzmacniania zanikają expected reward i consolidation strength scen."],
+  ["episodic_forgetting_interval_seconds","Interwał zapominania pamięci","number",30,30,86400,"Jak często stosować czasowy decay pamięci epizodycznej."],
+  ["episodic_consolidated_threshold","Próg utrwalonej sceny","number",0.01,0,1,"Od jakiej siły scena jest traktowana jako skonsolidowane wspomnienie."],
   ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
   ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie uruchamia się mechanizm overstay/threat."],
   ["overstay_punish_amount","Kara STAY za zbyt długi pobyt","number",0.05,0,1,"Kara ucząca ścieżkę STAY, gdy Mucha po maximum_dwell_seconds nadal zostaje na kanale."],
@@ -1215,7 +1228,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 <div class="toolbar">
  <div class="toolgroup"><span>Projekcja</span><button class="btn proj on" data-proj="xy">XY</button><button class="btn proj" data-proj="xz">XZ</button><button class="btn proj" data-proj="yz">YZ</button></div>
  <div class="toolgroup"><span>Warstwa</span><button class="btn role on" data-role="all">ALL</button><button class="btn role" data-role="sensory">SENSORY</button><button class="btn role" data-role="internal">INTERNAL</button><button class="btn role" data-role="modulatory">MODULATORY</button><button class="btn role" data-role="output">OUTPUT</button></div>
- <div class="toolgroup"><span>Widok</span><button class="btn on" id="regions-btn">REGION HEAT</button><button class="btn on" id="trail-btn">ACTIVITY TRAIL</button><button class="btn on" id="flow-btn">SIGNAL FLOW</button><button class="btn on" id="follow-btn">FOLLOW DECISION</button><span class="badge" id="region-source">REGIONS</span><span class="badge" id="coord-badge">COORDINATES</span></div>
+ <div class="toolgroup"><span>Widok</span><button class="btn on" id="regions-btn">REGION HEAT</button><button class="btn on" id="trail-btn">ACTIVITY TRAIL</button><button class="btn on" id="flow-btn">SIGNAL FLOW</button><button class="btn on" id="learned-btn">LEARNED SYNAPSES</button><button class="btn on" id="follow-btn">FOLLOW DECISION</button><span class="badge" id="region-source">REGIONS</span><span class="badge" id="coord-badge">COORDINATES</span></div>
 </div>
 
 <section class="grid">
@@ -1226,7 +1239,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
    <div class="map-title" id="map-title">XY PROJECTION</div>
    <div class="tooltip" id="tip"></div>
   </div>
-  <div class="legend"><span><i class="sens"></i> sensory</span><span><i class="internal"></i> internal</span><span><i class="mod"></i> modulatory</span><span><i class="out"></i> output</span><span>• animowana kropka = kierunek realnego wkładu sygnału • przerywana linia flow = wkład ujemny • żółta/różowa krótko-kreskowana = synapsa zmieniona przez reward/punish • pierścień = output wygrywającego readoutu</span></div>
+  <div class="legend"><span><i class="sens"></i> sensory</span><span><i class="internal"></i> internal</span><span><i class="mod"></i> modulatory</span><span><i class="out"></i> output</span><span>• animowana kropka = kierunek live flow • learned: żółty = FRESH, turkus = CONSOLIDATED, różowy = FADING • krótko-kreskowana = synapsa zmieniona przez ostatni reward/punish • pierścień = output wygrywającego readoutu</span></div>
  </div>
 
  <div class="side">
@@ -1250,7 +1263,7 @@ const $=id=>document.getElementById(id);
 const canvas=$("brain"),ctx=canvas.getContext("2d"),wrap=$("map-wrap"),tip=$("tip");
 const colors={sensory:"#55ead0",internal:"#6ba6ff",modulatory:"#b68bff",output:"#ff77b7"};
 const actionColors={speak:"#b68bff",react:"#ff9f6b",voice_join:"#55ead0",voice_move:"#6ba6ff",voice_leave:"#ff77b7",explore:"#7fd1ff",stay:"#ffd166"};
-let projection="xy",roleFilter="all",showRegions=true,showTrail=true,showFlow=true,followDecision=true,flowReplayTick=null,data=null,hover=null,selected=null,selectedRegion="",lastFetch=0;
+let projection="xy",roleFilter="all",showRegions=true,showTrail=true,showFlow=true,showLearned=true,followDecision=true,flowReplayTick=null,data=null,hover=null,selected=null,selectedRegion="",lastFetch=0;
 const trail=new Map(),mouse={x:0,y:0,inside:false};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),nfmt=n=>Number(n||0).toLocaleString("pl-PL");
 const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
@@ -1295,6 +1308,15 @@ function flowNodeSet(){
  for(const cue of (f.cues||[]))for(const id of (cue.root_ids||[]))ids.add(String(id));
  return ids
 }
+function drawLearnedSynapses(w,h){
+ if(!data||!showLearned)return;const learned=data.learned_synapses||{},rows=learned.edges||[];if(!rows.length)return;
+ const nodes=new Map((data.nodes||[]).map(n=>[String(n.id),n])),maxD=Math.max(.000001,...rows.map(e=>Math.abs(Number(e.learned_delta||0))));
+ ctx.save();ctx.globalCompositeOperation="source-over";
+ for(const e of rows.slice(0,160)){const a=nodes.get(String(e.source))||e.source_position,b=nodes.get(String(e.target))||e.target_position;if(!a||!b)continue;const p1=point(a,w,h,26),p2=point(b,w,h,26),q=clamp(Math.abs(Number(e.learned_delta||0))/maxD,0,1),status=String(e.status||"fading"),tone=status==="consolidated"?"#55ead0":status==="fresh"?"#ffd166":"#ff77b7";
+  ctx.strokeStyle=tone;ctx.globalAlpha=status==="fading"?.12:(.18+q*.38);ctx.lineWidth=.45+q*1.45;ctx.setLineDash(status==="fading"?[2,5]:[]);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke()
+ }
+ ctx.setLineDash([]);ctx.globalAlpha=1;ctx.restore()
+}
 function drawSignalFlow(w,h){
  if(!data||!showFlow)return;const f=currentFlow();if(!f||!(f.edges||[]).length)return;
  const nodes=new Map((data.nodes||[]).map(n=>[String(n.id),n]));
@@ -1325,7 +1347,7 @@ function liveFlowRows(n){
 function renderSignalFlow(){
  const root=$("signal-flow"),snap=data&&data.signal_flow?data.signal_flow:{},f=currentFlow(),learning=(snap.learning||[]).slice(-1)[0]||null;
  if(!f){$("flow-winner").textContent="BRAK";$("flow-edge-count").textContent="0";$("flow-frame").textContent="brak klatki";root.className="empty";root.textContent="Pierwsza klatka pojawi się po następnym bodźcu i propagacji connectomu.";return}
- const edges=f.edges||[],cues=f.cues||[],top=edges.slice(0,7),history=(snap.history||[]).slice(-20).reverse();
+ const edges=f.edges||[],cues=f.cues||[],top=edges.slice(0,7),history=(snap.history||[]).slice(-20).reverse(),learned=data.learned_synapses||{};
  $("flow-live-btn").classList.toggle("on",flowReplayTick===null);
  $("flow-live-btn").textContent=flowReplayTick===null?"LIVE":"WRÓĆ LIVE";
  $("flow-winner").textContent=String(f.winner||"—").toUpperCase();$("flow-edge-count").textContent=nfmt(edges.length);$("flow-frame").textContent=(flowReplayTick===null?"LIVE • ":"REPLAY • ")+"tick "+nfmt(f.tick)+" • "+nfmt(f.frame)+"/"+nfmt(f.frames);
@@ -1333,7 +1355,8 @@ function renderSignalFlow(){
  const edgeHtml=top.map(e=>'<div class="signal-row '+(Number(e.contribution||0)>=0?"pos":"neg")+'"><b>'+esc(String(e.source).slice(-6))+'</b><span>→ '+esc(String(e.target).slice(-6))+(Math.abs(Number(e.learned_delta||0))>1e-9?' • learned '+Number(e.learned_delta).toExponential(1):'')+'</span><em>'+(Number(e.contribution||0)>=0?"+":"")+Number(e.contribution||0).toFixed(4)+'</em></div>').join("")||'<div class="note">Brak silnych krawędzi w tej klatce.</div>';
  const histHtml=history.map(x=>'<div class="signal-row flow-history '+(Number(x.tick)===Number(flowReplayTick)?"on":"")+'" data-flow-tick="'+Number(x.tick)+'"><b>▶ #'+nfmt(x.tick)+'</b><span>'+esc((x.cues&&x.cues[0]?x.cues[0].key:"propagation"))+'</span><em>'+esc(x.winner||"—")+'</em></div>').join("");
  const learnHtml=learning?'<div class="learn-row"><b>Ostatnia plastyczność:</b> reward '+(Number(learning.amount||0)>=0?"+":"")+Number(learning.amount||0).toFixed(3)+' • '+nfmt(learning.changed_neurons)+' neuronów • '+nfmt(learning.changed_synapses)+' synaps'+((learning.top_synapses||[]).length?' • top Δ '+Number(learning.top_synapses[0].change||0).toExponential(2):'')+'</div>':'<div class="learn-row">Brak reward/punish od startu tej sesji.</div>';
- root.className="";root.innerHTML='<div class="signal-summary"><div><small>readout</small><b style="color:'+(actionColors[f.winner]||"#fff")+'">'+esc(f.winner||"—")+'</b></div><div><small>gain</small><b>'+Number(f.propagation_gain||0).toFixed(3)+'</b></div><div><small>edges</small><b>'+nfmt(edges.length)+'</b></div></div><div>'+cueHtml+'</div><div class="flow-note">'+esc(snap.method||"")+'</div><div class="signal-list" style="margin-top:8px">'+edgeHtml+'</div>'+learnHtml+'<div class="effects"><small>Historia — kliknij, aby odtworzyć przepływ</small><div class="signal-list">'+histHtml+'</div></div>';
+ const learnedHtml='<div class="learn-row"><b>Learned synapses:</b> '+nfmt(learned.total||0)+' • <span style="color:#ffd166">FRESH '+nfmt(learned.fresh||0)+'</span> • <span style="color:#55ead0">CONSOLIDATED '+nfmt(learned.consolidated||0)+'</span> • <span style="color:#ff77b7">FADING '+nfmt(learned.fading||0)+'</span></div>';
+ root.className="";root.innerHTML='<div class="signal-summary"><div><small>readout</small><b style="color:'+(actionColors[f.winner]||"#fff")+'">'+esc(f.winner||"—")+'</b></div><div><small>gain</small><b>'+Number(f.propagation_gain||0).toFixed(3)+'</b></div><div><small>edges</small><b>'+nfmt(edges.length)+'</b></div></div><div>'+cueHtml+'</div><div class="flow-note">'+esc(snap.method||"")+'</div><div class="signal-list" style="margin-top:8px">'+edgeHtml+'</div>'+learnHtml+learnedHtml+'<div class="effects"><small>Historia — kliknij, aby odtworzyć przepływ</small><div class="signal-list">'+histHtml+'</div></div>';
  root.querySelectorAll("[data-flow-tick]").forEach(el=>el.onclick=()=>{flowReplayTick=Number(el.dataset.flowTick);renderSignalFlow()})
 }
 function drawNodes(w,h){
@@ -1351,7 +1374,7 @@ function drawNodes(w,h){
 function draw(){
  requestAnimationFrame(draw);const r=wrap.getBoundingClientRect(),w=r.width,h=r.height;ctx.clearRect(0,0,w,h);
  const grad=ctx.createRadialGradient(w*.5,h*.5,20,w*.5,h*.5,Math.max(w,h)*.55);grad.addColorStop(0,"rgba(34,67,91,.07)");grad.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
- drawReference(w,h);drawRegions(w,h);drawSignalFlow(w,h);drawNodes(w,h)
+ drawReference(w,h);drawRegions(w,h);drawLearnedSynapses(w,h);drawSignalFlow(w,h);drawNodes(w,h)
 }
 function renderActions(scores){
  const order=["speak","explore","react","voice_join","voice_move","voice_leave","stay"];
@@ -1417,6 +1440,7 @@ document.querySelectorAll(".role").forEach(b=>b.onclick=()=>{roleFilter=b.datase
 $("regions-btn").onclick=()=>{showRegions=!showRegions;$("regions-btn").classList.toggle("on",showRegions)};
 $("trail-btn").onclick=()=>{showTrail=!showTrail;$("trail-btn").classList.toggle("on",showTrail);if(!showTrail)trail.clear()};
 $("flow-btn").onclick=()=>{showFlow=!showFlow;$("flow-btn").classList.toggle("on",showFlow)};
+$("learned-btn").onclick=()=>{showLearned=!showLearned;$("learned-btn").classList.toggle("on",showLearned)};
 $("follow-btn").onclick=()=>{followDecision=!followDecision;$("follow-btn").classList.toggle("on",followDecision)};
 $("flow-live-btn").onclick=()=>{flowReplayTick=null;renderSignalFlow()};
 
