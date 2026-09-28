@@ -125,6 +125,7 @@ def main():
         assert "Zapisz i zrestartuj Muchę" in CONFIG_HTML
         assert "Neuromodulatory v2" in CONFIG_HTML
         assert "dopamine_plasticity_gain" in CONFIG_HTML
+        assert 'const out={brain:{},language:{},behavior:{},voice:{}};' in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
         assert "/api/public/state" in PUBLIC_OVERVIEW_HTML
