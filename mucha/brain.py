@@ -91,6 +91,20 @@ class FlyBrain:
         self.eligibility = self.compute.zeros(n, dtype=np.float32)
         self.plastic_bias = self.compute.zeros(n, dtype=np.float32)
         self._synaptic_delta_map: dict[int, float] = {}
+        self._synaptic_consolidation_map: dict[int, float] = {}
+        self._synaptic_last_touched_map: dict[int, float] = {}
+        self._last_consolidation_time = time.time()
+        self._last_forgetting_diag: dict = {
+            "enabled": bool(cfg.consolidation_enabled),
+            "ran": False,
+            "elapsed_seconds": 0.0,
+            "bias_factor": 1.0,
+            "synapses_before": 0,
+            "synapses_after": 0,
+            "pruned_synapses": 0,
+            "consolidated_synapses": 0,
+            "fading_synapses": 0,
+        }
         self._synaptic_matrix_cpu = scipy_sparse.csr_matrix(
             self.c.matrix.shape,
             dtype=np.float32,
@@ -1193,11 +1207,61 @@ class FlyBrain:
                 pre = pre[order]
                 delta = delta[order]
             n = self.c.n_neurons
+            keys = [
+                int(r) * n + int(col)
+                for r, col in zip(post, pre)
+            ]
             self._synaptic_delta_map = {
-                int(r) * n + int(col): float(value)
-                for r, col, value in zip(post, pre, delta)
+                key: float(value)
+                for key, value in zip(keys, delta)
+            }
+            if (
+                "synaptic_consolidation" in data
+                and len(data["synaptic_consolidation"]) >= len(valid)
+            ):
+                raw_consolidation = np.asarray(
+                    data["synaptic_consolidation"],
+                    dtype=np.float32,
+                )[valid]
+                if max_edges and len(raw_consolidation) > max_edges:
+                    raw_consolidation = raw_consolidation[order]
+            else:
+                raw_consolidation = np.zeros(
+                    len(keys),
+                    dtype=np.float32,
+                )
+            if (
+                "synaptic_last_touched" in data
+                and len(data["synaptic_last_touched"]) >= len(valid)
+            ):
+                raw_touched = np.asarray(
+                    data["synaptic_last_touched"],
+                    dtype=np.float64,
+                )[valid]
+                if max_edges and len(raw_touched) > max_edges:
+                    raw_touched = raw_touched[order]
+            else:
+                raw_touched = np.full(
+                    len(keys),
+                    time.time(),
+                    dtype=np.float64,
+                )
+            self._synaptic_consolidation_map = {
+                key: max(0.0, min(1.0, float(value)))
+                for key, value in zip(keys, raw_consolidation)
+            }
+            self._synaptic_last_touched_map = {
+                key: float(value)
+                for key, value in zip(keys, raw_touched)
             }
             self._rebuild_synaptic_matrix()
+        if "last_consolidation_time" in data:
+            try:
+                self._last_consolidation_time = float(
+                    data["last_consolidation_time"]
+                )
+            except (TypeError, ValueError):
+                self._last_consolidation_time = time.time()
         if "reward_trace" in data:
             self.reward_trace = float(data["reward_trace"])
         if "tick_count" in data:
@@ -1219,6 +1283,28 @@ class FlyBrain:
                 dtype=np.float32,
                 count=len(syn_items),
             )
+            syn_consolidation = np.fromiter(
+                (
+                    self._synaptic_consolidation_map.get(
+                        int(item[0]),
+                        0.0,
+                    )
+                    for item in syn_items
+                ),
+                dtype=np.float32,
+                count=len(syn_items),
+            )
+            syn_last_touched = np.fromiter(
+                (
+                    self._synaptic_last_touched_map.get(
+                        int(item[0]),
+                        time.time(),
+                    )
+                    for item in syn_items
+                ),
+                dtype=np.float64,
+                count=len(syn_items),
+            )
             syn_post = (
                 syn_keys // self.c.n_neurons
             ).astype(np.int32, copy=False)
@@ -1229,6 +1315,8 @@ class FlyBrain:
             syn_post = np.empty(0, dtype=np.int32)
             syn_pre = np.empty(0, dtype=np.int32)
             syn_delta = np.empty(0, dtype=np.float32)
+            syn_consolidation = np.empty(0, dtype=np.float32)
+            syn_last_touched = np.empty(0, dtype=np.float64)
 
         np.savez_compressed(
             tmp,
@@ -1238,6 +1326,17 @@ class FlyBrain:
             synaptic_post=syn_post,
             synaptic_pre=syn_pre,
             synaptic_delta=syn_delta.astype(np.float32, copy=False),
+            synaptic_consolidation=syn_consolidation.astype(
+                np.float32,
+                copy=False,
+            ),
+            synaptic_last_touched=syn_last_touched.astype(
+                np.float64,
+                copy=False,
+            ),
+            last_consolidation_time=np.float64(
+                self._last_consolidation_time
+            ),
             reward_trace=np.float32(self.reward_trace),
             tick_count=np.int64(self.tick_count),
         )
