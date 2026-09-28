@@ -217,6 +217,7 @@ class MuchaClient(discord.Client):
         }
         self._last_overstay_punish: dict[int, float] = {}
         self._last_social_drive_punish: dict[int, float] = {}
+        self._voice_reward_opportunity: dict[int, dict] = {}
         self._deadly_voice_until: dict[tuple[int, int], float] = {}
         self._voice_last_visit: dict[tuple[int, int], float] = {}
         self._chaser_follow_state: dict[tuple[int, int], dict] = {}
@@ -2975,6 +2976,83 @@ class MuchaClient(discord.Client):
         now = time.monotonic() if now is None else now
         self._voice_last_visit[(int(guild_id), int(channel_id))] = now
 
+    def _voice_reward_opportunity_for(
+        self,
+        guild_id: int,
+        candidates: list[
+            tuple[discord.VoiceChannel, list[discord.Member]]
+        ],
+        now: float,
+    ) -> dict | None:
+        if not self.cfg.voice.reward_opportunity_enabled:
+            self._voice_reward_opportunity.pop(int(guild_id), None)
+            return None
+
+        social_candidates = [
+            (channel, humans)
+            for channel, humans in candidates
+            if humans
+        ]
+        if not social_candidates:
+            self._voice_reward_opportunity.pop(int(guild_id), None)
+            return None
+
+        valid_ids = {
+            int(channel.id)
+            for channel, _ in social_candidates
+        }
+        current = self._voice_reward_opportunity.get(
+            int(guild_id)
+        )
+        if (
+            current is not None
+            and float(current.get("expires_at", 0.0)) > now
+            and int(current.get("channel_id", 0)) in valid_ids
+        ):
+            return current
+
+        channel, humans = self.random.choice(
+            social_candidates
+        )
+        low = max(
+            0.0,
+            min(
+                4.0,
+                float(
+                    self.cfg.voice.reward_opportunity_min_strength
+                ),
+            ),
+        )
+        high = max(
+            low,
+            min(
+                4.0,
+                float(
+                    self.cfg.voice.reward_opportunity_max_strength
+                ),
+            ),
+        )
+        ttl = max(
+            10.0,
+            float(
+                self.cfg.voice.reward_opportunity_ttl_seconds
+            ),
+        )
+        opportunity = {
+            "channel_id": int(channel.id),
+            "channel_name": str(channel.name),
+            "human_count": int(len(humans)),
+            "strength": float(
+                self.random.uniform(low, high)
+            ),
+            "created_at": now,
+            "expires_at": now + ttl,
+        }
+        self._voice_reward_opportunity[
+            int(guild_id)
+        ] = opportunity
+        return opportunity
+
     def _voice_exploration_score(
         self,
         guild_id: int,
@@ -3007,6 +3085,7 @@ class MuchaClient(discord.Client):
         affinities: dict[int, float],
         now: float,
         current_id: int | None = None,
+        preferred_channel_id: int | None = None,
     ) -> tuple[discord.VoiceChannel | None, dict[int, dict]]:
         scored: list[tuple[discord.VoiceChannel, float]] = []
         debug_scores: dict[int, dict] = {}
@@ -3031,6 +3110,15 @@ class MuchaClient(discord.Client):
 
         if not scored:
             return None, debug_scores
+
+        if preferred_channel_id is not None:
+            preferred_channel_id = int(preferred_channel_id)
+            for channel, _score in scored:
+                if int(channel.id) == preferred_channel_id:
+                    debug_scores[channel.id][
+                        "reward_opportunity"
+                    ] = True
+                    return channel, debug_scores
 
         # Softmax-like sampling: affinity still matters, but fresh/rarely visited
         # channels can win instead of repeatedly selecting the same deterministic max.
