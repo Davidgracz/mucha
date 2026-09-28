@@ -54,6 +54,7 @@ connectome_word_feedback_magnitude = 0.18
 [voice]
 enabled = true
 poll_seconds = 15
+connectome_voice_control_enabled = true
 minimum_dwell_seconds = 60
 maximum_dwell_seconds = 300
 overstay_punish_amount = 0.5
