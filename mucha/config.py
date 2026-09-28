@@ -80,6 +80,8 @@ class VoiceConfig:
     reward_opportunity_max_strength: float = 1.35
     reward_opportunity_success_chance: float = 0.55
     reward_opportunity_reward: float = 0.18
+    reward_opportunity_stay_punish: float = 0.025
+    reward_opportunity_stay_punish_interval_seconds: int = 45
     minimum_dwell_seconds: int = 60
     maximum_dwell_seconds: int = 300
     overstay_punish_amount: float = 0.5
