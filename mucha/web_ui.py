@@ -196,6 +196,16 @@ const groups=[
   ["prediction_error_scale","Wpływ prediction error na connectome","number",0.01,0,1,"Jaka część błędu przewidywania trafia jako dodatkowa korekta reward/punish do zapisanego śladu neuronalnego."],
   ["prediction_error_max_correction","Limit korekty prediction error","number",0.01,0,0.5,"Maksymalna dodatkowa korekta pojedynczego epizodu."],
   ["prediction_max_age_seconds","Maks. wiek oczekiwanego wyniku","number",5,5,3600,"Jak długo po decyzji reward/punish może zostać przypisany do jej przewidywanego wyniku."],
+  ["prediction_credit_queue_size","Kolejka temporal credit","number",1,1,64,"Ile ostatnich decyzji voice może współdzielić późniejszy reward/punish."],
+  ["prediction_credit_decay_seconds","Zanik temporal credit","number",1,1,3600,"Stała czasowa zaniku kredytu. Nowsze decyzje dostają większy udział."],
+  ["memory_replay_enabled","MEMORY REPLAY","bool",0,0,0,"Po okresie ciszy odtwarza ważne epizody jako słabe bodźce i ponownie przepuszcza je przez connectome."],
+  ["memory_replay_idle_seconds","Replay: cisza przed startem","number",10,10,86400,"Minimalny czas bez nowych wiadomości i zmian voice przed konsolidacją pamięci."],
+  ["memory_replay_interval_seconds","Replay: interwał","number",10,30,86400,"Minimalny odstęp pomiędzy kolejnymi sesjami replay."],
+  ["memory_replay_batch_size","Replay: epizody na sesję","number",1,1,8,"Liczba wspomnień reaktywowanych w jednej sesji."],
+  ["memory_replay_magnitude","Replay: siła bodźca","number",0.01,0,1.5,"Siła reaktywacji sceny i action-guided sensory cue."],
+  ["memory_replay_reward_scale","Replay: siła uczenia","number",0.01,0,0.5,"Mała część oryginalnego reward/prediction error używana do ponownej plastyczności."],
+  ["memory_replay_steps","Replay: ticki connectomu","number",1,1,24,"Liczba kroków propagacji realnego connectome przed ponownym rewardem."],
+  ["memory_replay_max_age_days","Replay: maks. wiek wspomnienia","number",1,1,365,"Jak stare epizody mogą wracać podczas konsolidacji."],
   ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
   ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie uruchamia się mechanizm overstay/threat."],
   ["overstay_punish_amount","Kara STAY za zbyt długi pobyt","number",0.05,0,1,"Kara ucząca ścieżkę STAY, gdy Mucha po maximum_dwell_seconds nadal zostaje na kanale."],
@@ -2011,6 +2021,11 @@ function renderVoiceDebug(items){
     ).join(" • ")||"—";
     const predErr=v.prediction_error==null?null:Number(v.prediction_error);
     const predClass=predErr==null?"":predErr>0?"ok":predErr<0?"no":"";
+    const replay=v.memory_replay||{};
+    const replayLast=(replay.last||[]).slice(-1)[0]||null;
+    const replaySummary=replayLast
+      ? (String(replayLast.action||"—")+" • "+String(replayLast.channel_name||"poza VC")+" • reward "+Number(replayLast.replay_reward||0).toFixed(3)+" • "+Number(replayLast.steps||0)+" tick • "+Number(replayLast.changed_synapses||0)+" synaps")
+      : (replay.reason||"brak replay");
     const memoryRows=(v.episodic_recent||[]).slice(-3).reverse().map(ep=>{
       const people=(ep.user_names||[]).join(", ")||(ep.user_ids||[]).join(", ")||"—";
       const place=ep.channel_name||"poza VC";
@@ -2086,9 +2101,13 @@ function renderVoiceDebug(items){
             kpi("Epizody",String(Number(v.episodic_memory_size||0)))+
             kpi("SQLite",v.episodic_persistent?"ON":"OFF",v.episodic_persistent?"ok":"warn")+
             kpi("Predykcje",String(Number(v.episodic_prediction_count||0)))+
+            kpi("Credit queue",String(Number(v.prediction_credit_queue_depth||0)))+
+            kpi("Replay",esc(replay.state||"—"),replay.state==="REPLAY"?"ok":"")+
+            kpi("Replay count",String(Number(replay.count||0)))+
           '</div>'+
           '<div class="voice-note"><b>Expected:</b> '+esc(expected)+'</div>'+
           '<div class="voice-note"><b>Recall → connectome:</b> '+esc(recallSummary)+'</div>'+
+          '<div class="voice-note"><b>MEMORY REPLAY:</b> '+esc(replaySummary)+'</div>'+
           '<div class="memory-list">'+memoryRows+'</div>'+
         '</div>'+
 
@@ -2139,6 +2158,8 @@ function renderVoiceDebug(items){
             kpi("Prediction context",esc(v.prediction_context||"—"))+
             kpi("Scene key",esc(v.prediction_scene_key||"—"))+
             kpi("Episodic DB",esc(v.episodic_database||"—"))+
+            kpi("Temporal queue",Number(v.prediction_credit_queue_depth||0)+" / corrections "+Number(v.prediction_correction_queue_depth||0))+
+            kpi("Replay reason",esc(replay.reason||"—"))+
             kpi("neural tie-break",esc(bd.tie_break||"niepotrzebny"))+
             kpi("Tie evidence",esc(tieSummary||"—"))+
             kpi("Homeostasis paths",esc(guided))+
