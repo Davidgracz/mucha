@@ -31,10 +31,13 @@ def main():
         pools = b.action_pool_diagnostics()
         assert set(pools) == set(b.ACTIONS)
         assert pools["speak"]["seed_count"] > 0
+        assert pools["speak"]["external_seed_count"] > 0
+        assert pools["speak"]["mode"].startswith("annotated")
+        assert pools["speak"]["seed_types"]
+        assert pools["speak"]["top_seed_activity"]
         assert pools["voice_move"]["seed_count"] > 0
         assert pools["voice_leave"]["seed_count"] > 0
         assert pools["stay"]["seed_count"] > 0
-        assert pools["speak"]["mode"].startswith("annotated")
         assert not np.array_equal(
             b._action_output_pools["speak"],
             b._action_output_pools["voice_leave"],
@@ -63,6 +66,8 @@ def main():
         assert "/api/neuromap" in NEUROMAP_HTML
         assert "Runtime correlation" in NEUROMAP_HTML
         assert "FOLLOW ACTIVITY" in CONNECTOME_HTML
+        assert "Biological Action Circuits" in CONNECTOME_HTML
+        assert "biological-circuits" in CONNECTOME_HTML
         assert "Zapisz i zrestartuj Muchę" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
