@@ -4,6 +4,8 @@ import tempfile
 import subprocess
 import sys
 
+import numpy as np
+
 ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
@@ -82,8 +84,35 @@ def main():
             follow_activity=True,
         )
         assert followed["mode"] == "follow_activity"
-        b.reward(1)
+
+        # Reward should now change both neuron bias and real existing
+        # connectome edges through the sparse learned-synapse overlay.
+        coo = c.matrix.tocoo()
+        edge_pos = next(
+            (
+                i
+                for i, (row, col) in enumerate(zip(coo.row, coo.col))
+                if int(row) != int(col)
+            ),
+            0,
+        )
+        edge_trace = (
+            np.asarray(
+                [coo.row[edge_pos], coo.col[edge_pos]],
+                dtype=np.int32,
+            ),
+            np.asarray([1.0, 1.0], dtype=np.float32),
+        )
+        learning = b.reward(
+            1,
+            action="speak",
+            trace=edge_trace,
+        )
+        assert learning["changed_synapses"] >= 1
+        assert learning["learned_synapses"] >= 1
         b.save()
+        reloaded = FlyBrain(c, cfg)
+        assert reloaded.diagnostics()["learned_synapses"] >= 1
 
         lang = OnlineLanguage(
             td / "lang.sqlite3",
