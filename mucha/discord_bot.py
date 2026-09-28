@@ -385,6 +385,7 @@ class MuchaClient(discord.Client):
         ]
         voice_fields = [
             "poll_seconds",
+            "connectome_voice_control_enabled",
             "minimum_dwell_seconds",
             "maximum_dwell_seconds",
             "move_threshold",
@@ -593,6 +594,9 @@ class MuchaClient(discord.Client):
             ("behavior", "ignore_disliked_users_text"): (bool, None, None),
             ("behavior", "avoid_disliked_users_on_voice"): (bool, None, None),
             ("voice", "poll_seconds"): (int, 1, 3600),
+            ("voice", "connectome_voice_control_enabled"): (
+                bool, None, None
+            ),
             ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
             ("voice", "maximum_dwell_seconds"): (int, 1, 86400),
             ("voice", "move_threshold"): (float, 0.0, 1.0),
