@@ -4660,7 +4660,10 @@ class MuchaClient(discord.Client):
                         guided.get("reach_max", 0.0)
                     ),
                     "changed_neurons": int(
-                        learning.get("changed", 0)
+                        learning.get("changed_neurons", 0)
+                    ),
+                    "changed_synapses": int(
+                        learning.get("changed_synapses", 0)
                     ),
                 })
 
