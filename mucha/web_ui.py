@@ -173,6 +173,7 @@ const groups=[
   ["reward_opportunity_reward","Wartość znalezionej nagrody","number",0.01,0,1,"Reward dla ścieżki voice_join, gdy potencjalna nagroda okaże się prawdziwa."],
   ["reward_opportunity_stay_punish","Kara za zignorowaną możliwość","number",0.005,0,0.5,"Gdy connectome widzi reward opportunity, ale wybiera STAY, kara trafia do śladu STAY zamiast sztucznie podbijać JOIN."],
   ["reward_opportunity_stay_punish_interval_seconds","Interwał kary za ignorowanie","number",5,5,3600,"Minimalny odstęp między kolejnymi karami STAY przy aktywnej możliwości nagrody."],
+  ["motivation_propagation_steps","Ticki propagacji motywacji","number",1,2,12,"Ile kroków connectomu dostaje social drive / reward opportunity zanim zostanie odczytane stay vs voice_join. 4 pozwala przejść ścieżkom 3-hop."],
   ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
   ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie rośnie presja na zmianę kanału."],
   ["move_threshold","Próg move","number",0.01,0,1,"Próg decyzji o zmianie kanału."],
