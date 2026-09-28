@@ -1097,6 +1097,9 @@ class FlyBrain:
 
     def step(self, ticks: int = 1) -> None:
         for _ in range(max(1, ticks)):
+            leak, propagation_gain, noise_sigma = (
+                self._neuromodulation_tick_effects()
+            )
             propagated = self.matrix.dot(self.state).astype(
                 self.xp.float32,
                 copy=False,
@@ -1105,16 +1108,25 @@ class FlyBrain:
                 propagated = propagated + self.synaptic_matrix.dot(
                     self.state
                 ).astype(self.xp.float32, copy=False)
-            noise = self.compute.random_normal(0.0, self.cfg.noise, size=self.state.shape)
+            noise = self.compute.random_normal(
+                0.0,
+                noise_sigma,
+                size=self.state.shape,
+            )
             x = (
-                self.cfg.leak * self.state
-                + self.cfg.propagation_gain * propagated
+                np.float32(leak) * self.state
+                + np.float32(propagation_gain) * propagated
                 + self.plastic_bias
                 + noise
             )
             self.state[...] = self.xp.tanh(x)
-            self.eligibility[...] = 0.94 * self.eligibility + 0.06 * self.xp.abs(self.state)
-            self.plastic_bias *= np.float32(self.cfg.plasticity_decay)
+            self.eligibility[...] = (
+                0.94 * self.eligibility
+                + 0.06 * self.xp.abs(self.state)
+            )
+            self.plastic_bias *= np.float32(
+                self.cfg.plasticity_decay
+            )
             self.reward_trace *= 0.96
             self.tick_count += 1
 
@@ -1248,7 +1260,11 @@ class FlyBrain:
         else:
             chosen = nonzero
 
-        lr = max(0.0, float(self.cfg.synaptic_plasticity_lr))
+        lr = max(
+            0.0,
+            float(self.cfg.synaptic_plasticity_lr)
+            * self._plasticity_gain(),
+        )
         max_delta = max(
             1e-6,
             float(self.cfg.synaptic_plasticity_max_delta),
@@ -1336,12 +1352,22 @@ class FlyBrain:
             idx_cpu, elig_cpu = trace
             idx = self._backend_indices(idx_cpu)
             elig = self.compute.asarray(elig_cpu, dtype=np.float32)
-            delta = (self.cfg.plasticity_lr * amount * elig).astype(self.xp.float32)
+            delta = (
+                self.cfg.plasticity_lr
+                * self._plasticity_gain()
+                * amount
+                * elig
+            ).astype(self.xp.float32)
             self.plastic_bias[idx] += delta
             changed_idx_cpu = idx_cpu.astype(np.int32, copy=False)
             changed_delta_cpu = self.compute.to_cpu(delta).astype(np.float32, copy=False)
         else:
-            delta = (self.cfg.plasticity_lr * amount * self.eligibility).astype(self.xp.float32)
+            delta = (
+                self.cfg.plasticity_lr
+                * self._plasticity_gain()
+                * amount
+                * self.eligibility
+            ).astype(self.xp.float32)
             self.plastic_bias += delta
             abs_delta = self.xp.abs(delta)
             k = min(4096, self.c.n_neurons)
@@ -1357,7 +1383,12 @@ class FlyBrain:
             if out_cpu is None or not len(out_cpu):
                 out_cpu = self._structural_action_fallback(action, 128)
             out = self._backend_indices(out_cpu)
-            action_delta = np.float32(self.cfg.plasticity_lr * amount * 8.0)
+            action_delta = np.float32(
+                self.cfg.plasticity_lr
+                * self._plasticity_gain()
+                * amount
+                * 8.0
+            )
             self.plastic_bias[out] += action_delta
             self.state[out] += np.float32(0.12 * amount)
 
@@ -1373,9 +1404,34 @@ class FlyBrain:
             out=self.plastic_bias,
         )
 
-        if len(self.c.modulatory):
+        if self.cfg.neuromodulation_enabled:
+            # Reward valence still comes from signed reward_trace. Monoamine
+            # pools control learning/arousal globally; this is an engineering
+            # adapter over biological transmitter classes, not a claim that a
+            # single fly monoamine universally encodes one valence.
+            magnitude = np.float32(0.35 * abs(amount))
+            da_pool = self._modulator_pools["dopamine"]
+            if len(da_pool):
+                da = self._backend_indices(da_pool)
+                self.state[da] += magnitude
+            if amount < 0.0:
+                oct_pool = self._modulator_pools["octopamine"]
+                if len(oct_pool):
+                    oct_idx = self._backend_indices(oct_pool)
+                    self.state[oct_idx] += np.float32(
+                        0.25 * abs(amount)
+                    )
+            ser_pool = self._modulator_pools["serotonin"]
+            if len(ser_pool):
+                ser = self._backend_indices(ser_pool)
+                self.state[ser] += np.float32(
+                    0.08 * abs(amount)
+                )
+        elif len(self.c.modulatory):
             idx_cpu = self._subset(
-                "reward:modulatory", self.c.modulatory, min(128, len(self.c.modulatory))
+                "reward:modulatory",
+                self.c.modulatory,
+                min(128, len(self.c.modulatory)),
             )
             idx = self._backend_indices(idx_cpu)
             self.state[idx] += np.float32(0.35 * amount)
@@ -2617,4 +2673,5 @@ class FlyBrain:
             "synaptic_mean_abs": synaptic_mean_abs,
             "synaptic_max_abs": synaptic_max_abs,
             "action_pools": self.action_pool_diagnostics(),
+            "neuromodulation": self.neuromodulator_diagnostics(),
         }
