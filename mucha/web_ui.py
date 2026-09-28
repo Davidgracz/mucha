@@ -852,6 +852,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
     <div class="mini"><small>ostatnia podmiana</small><strong id="replacements">—</strong></div>
     <div class="mini"><small>voice policy</small><strong id="voice-policy">—</strong></div>
     <div class="mini"><small>voice winner / margin</small><strong id="voice-winner">—</strong></div>
+    <div class="mini"><small>social drive</small><strong id="voice-social-drive">—</strong></div>
    </div>
   </div>
   <div class="card"><div class="card-head"><h2>Najaktywniejsze neurony</h2></div>
@@ -1068,7 +1069,7 @@ function render(s,v){
  const nm=d.neuromodulation||{},da=nm.dopamine||{},ser=nm.serotonin||{},oct=nm.octopamine||{};$("neuromod-status").textContent=nm.enabled?"ACTIVE":"OFF";$("neuromod-da").textContent=Number(da.level||0).toFixed(4);$("neuromod-da-n").textContent=nfmt(da.neurons||0)+" neuronów";$("neuromod-ser").textContent=Number(ser.level||0).toFixed(4);$("neuromod-ser-n").textContent=nfmt(ser.neurons||0)+" neuronów";$("neuromod-oct").textContent=Number(oct.level||0).toFixed(4);$("neuromod-oct-n").textContent=nfmt(oct.neurons||0)+" neuronów";$("neuromod-plasticity").textContent="×"+Number(nm.plasticity_gain||1).toFixed(3);$("neuromod-gain").textContent=Number(nm.effective_gain||0).toFixed(4);$("neuromod-dynamics").textContent="leak "+Number(nm.effective_leak||0).toFixed(4)+" • noise "+Number(nm.effective_noise||0).toFixed(4);$("neuromod-residual").textContent="direct residual "+Number(nm.direct_residual||0).toFixed(2);
  $("stable-age").textContent=followActivity?"FOLLOW":Math.round(Number(v.stable_age_seconds||0))+" s / "+Math.round(Number(v.stable_window_seconds||45))+" s";
  $("replacements").textContent=nfmt(v.replacements||0);
- const voiceDbg=(s.voice_debug||[])[0]||{},voiceBd=voiceDbg.brain_decision||{};$("voice-policy").textContent=voiceDbg.connectome_voice_control?"CONNECTOME":"LEGACY";$("voice-winner").textContent=voiceDbg.connectome_voice_control?((voiceBd.action||"—")+" / "+(voiceBd.margin==null?"—":Number(voiceBd.margin).toFixed(3))):"progi";
+ const voiceDbg=(s.voice_debug||[])[0]||{},voiceBd=voiceDbg.brain_decision||{};$("voice-policy").textContent=voiceDbg.connectome_voice_control?"CONNECTOME":"LEGACY";$("voice-winner").textContent=voiceDbg.connectome_voice_control?((voiceBd.action||"—")+" / "+(voiceBd.margin==null?"—":Number(voiceBd.margin).toFixed(3))):"progi";$("voice-social-drive").textContent=(Number(voiceDbg.social_drive_level||0)*100).toFixed(1)+"% • "+nfmt(voiceDbg.available_humans||0)+" ludzi";
  const vocab=Number(ld.word_vocab||0),min=Number(ld.connectome_word_control_min_vocab||1),ready=!!ld.connectome_word_control_ready,pct=clamp(vocab/min*100,0,100);
  $("word-vocab").textContent=nfmt(vocab)+" / "+nfmt(min);$("word-progress").style.width=pct.toFixed(1)+"%";$("word-badge").textContent=ready?"AKTYWNY":"UCZY SŁOWNIK";$("word-badge").className="badge "+(ready?"on":"wait");
  $("word-eval").textContent=nfmt(cw.evaluated||0);$("word-detail").textContent="Siła wpływu: "+Number(ld.connectome_word_control_strength||0).toFixed(2)+" • średni ostatni score: "+Number(cw.mean_score||.5).toFixed(3)+" • feedback słów: "+nfmt(cw.feedback_words||0)+" • generator: "+(ld.last_generator||"—");
@@ -1936,6 +1937,11 @@ function renderVoiceDebug(items){
       '<div class="voice-pill"><small>stay</small><strong>'+Number(s.stay??0).toFixed(3)+'</strong></div>'+
       '<div class="voice-pill"><small>czas na kanale / limit</small><strong>'+Number(v.dwell_elapsed??0).toFixed(0)+' / '+Number(v.maximum_dwell_seconds??0).toFixed(0)+' s</strong></div>'+
       '<div class="voice-pill"><small>minimum dwell</small><strong>'+Number(v.dwell_remaining??0).toFixed(1)+' s</strong></div>'+
+      '<div class="voice-pill"><small>poza voice</small><strong>'+Number(v.outside_seconds??0).toFixed(0)+' s</strong></div>'+
+      '<div class="voice-pill"><small>ludzie dostępni</small><strong>'+Number(v.available_humans||0)+'</strong></div>'+
+      '<div class="voice-pill"><small>social drive</small><strong class="'+(Number(v.social_drive_level||0)>0?"ok":"")+'">'+(Number(v.social_drive_level||0)*100).toFixed(1)+'%</strong></div>'+
+      '<div class="voice-pill"><small>STAY punish</small><strong class="'+(v.social_drive_stay_punished?"no":"")+'">'+(v.social_drive_stay_punished?Number(v.social_drive_stay_punish_amount||0).toFixed(3):"nie")+'</strong></div>'+
+      '<div class="voice-pill"><small>JOIN reward</small><strong class="'+(Number(v.social_join_reward||0)>0?"ok":"")+'">'+Number(v.social_join_reward||0).toFixed(3)+'</strong></div>'+
       '<div class="voice-pill"><small>overstay</small><strong class="'+(overstay>0?"no":"ok")+'">'+overstay.toFixed(0)+' s</strong></div>'+
       '<div class="voice-pill"><small>kara w tym cyklu</small><strong class="'+(punished?"no":"")+'">'+(punished?Number(v.overstay_punish_amount||0).toFixed(2):"nie")+'</strong></div>'+
       '<div class="voice-pill"><small>THREAT</small><strong class="'+(v.threat_active?"no":"ok")+'">'+(Number(v.threat_level||0)*100).toFixed(0)+'%</strong></div>'+
