@@ -1,6 +1,7 @@
 from pathlib import Path
 import shutil
 import tempfile
+import time
 import subprocess
 import sys
 
@@ -137,6 +138,34 @@ def main():
             "Dawid",
             "Stivi",
         ]
+        strength_before_replay = float(
+            replay_candidates[0]["memory_strength"]
+        )
+        consolidated_memory = restored.consolidate_replay(
+            replay_candidates[0],
+            0.12,
+        )
+        assert consolidated_memory["replay_count"] >= 1
+        assert (
+            consolidated_memory["strength"]
+            > strength_before_replay
+        )
+        top_memories = restored.consolidation_summary(4)
+        assert top_memories
+        assert top_memories[0]["scene_key"] == scene_key
+        strength_before_forgetting = float(
+            top_memories[0]["strength"]
+        )
+        forgetting_diag = restored.apply_forgetting(
+            now=time.time() + 14 * 86400,
+            force=True,
+        )
+        assert forgetting_diag["ran"] is True
+        assert forgetting_diag["factor"] < 1.0
+        assert (
+            restored.consolidation_summary(1)[0]["strength"]
+            < strength_before_forgetting
+        )
         restored.close()
 
         # Voice behavior is now selected by competition between connectome
@@ -459,6 +488,15 @@ def main():
         assert "memory_replay_reward_scale" in CONFIG_HTML
         assert "memory_replay_steps" in CONFIG_HTML
         assert "memory_replay_max_age_days" in CONFIG_HTML
+        assert "episodic_consolidation_gain" in CONFIG_HTML
+        assert "episodic_forgetting_half_life_days" in CONFIG_HTML
+        assert "consolidation_enabled" in CONFIG_HTML
+        assert "synaptic_consolidation_gain" in CONFIG_HTML
+        assert "synaptic_consolidation_protection" in CONFIG_HTML
+        assert "LEARNED SYNAPSES" in NEUROMAP_HTML
+        assert "drawLearnedSynapses" in NEUROMAP_HTML
+        assert "CONSOLIDATED" in NEUROMAP_HTML
+        assert "FADING" in NEUROMAP_HTML
         assert "MEMORY REPLAY" in HTML
         assert "Credit queue" in HTML
         assert "SIGNAL FLOW" in NEUROMAP_HTML
@@ -524,6 +562,11 @@ def main():
         assert "signal_flow_snapshot" in brain_source
         assert "effective_weight" in brain_source
         assert "top_synapses" in brain_source
+        assert "consolidate_and_forget" in brain_source
+        assert "learned_synapses_snapshot" in brain_source
+        assert "_synaptic_consolidation_map" in brain_source
+        assert "consolidate_replay" in bot_source
+        assert "apply_forgetting" in bot_source
         assert "preferred_channel_id" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
@@ -590,6 +633,7 @@ def main():
         assert "outgoing_edges" in neuro["nodes"][0]
         assert "live_flow_in" in neuro["nodes"][0]
         assert "live_flow_out" in neuro["nodes"][0]
+        assert "learned_synapses" in neuro
 
         # Reward should now change both neuron bias and real existing
         # connectome edges through the sparse learned-synapse overlay.
@@ -620,9 +664,54 @@ def main():
         assert "source" in learning["top_synapses"][0]
         assert "target" in learning["top_synapses"][0]
         assert "change" in learning["top_synapses"][0]
+        assert "consolidation" in learning["top_synapses"][0]
+
+        learned_before = b.learned_synapses_snapshot(20)
+        assert learned_before["total"] >= 1
+        first_strength = max(
+            edge["consolidation"]
+            for edge in learned_before["edges"]
+        )
+        for _ in range(8):
+            b.reward(
+                1,
+                action="speak",
+                trace=edge_trace,
+            )
+        learned_repeated = b.learned_synapses_snapshot(20)
+        repeated_strength = max(
+            edge["consolidation"]
+            for edge in learned_repeated["edges"]
+        )
+        assert repeated_strength > first_strength
+
+        strongest_before = max(
+            abs(edge["learned_delta"])
+            for edge in learned_repeated["edges"]
+        )
+        forgetting = b.consolidate_and_forget(
+            elapsed_seconds=7 * 86400,
+            force=True,
+        )
+        assert forgetting["ran"] is True
+        assert forgetting["bias_factor"] < 1.0
+        learned_after = b.learned_synapses_snapshot(20)
+        assert learned_after["total"] >= 1
+        strongest_after = max(
+            abs(edge["learned_delta"])
+            for edge in learned_after["edges"]
+        )
+        assert strongest_after < strongest_before
+
         b.save()
         reloaded = FlyBrain(c, cfg)
         assert reloaded.diagnostics()["learned_synapses"] >= 1
+        reloaded_learned = reloaded.learned_synapses_snapshot(20)
+        assert reloaded_learned["edges"]
+        assert max(
+            edge["consolidation"]
+            for edge in reloaded_learned["edges"]
+        ) > 0.0
 
         lang = OnlineLanguage(
             td / "lang.sqlite3",
