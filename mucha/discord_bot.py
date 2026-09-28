@@ -394,6 +394,12 @@ class MuchaClient(discord.Client):
             "social_drive_stay_punish",
             "social_drive_learning_interval_seconds",
             "social_join_reward",
+            "reward_opportunity_enabled",
+            "reward_opportunity_ttl_seconds",
+            "reward_opportunity_min_strength",
+            "reward_opportunity_max_strength",
+            "reward_opportunity_success_chance",
+            "reward_opportunity_reward",
             "minimum_dwell_seconds",
             "maximum_dwell_seconds",
             "move_threshold",
@@ -624,6 +630,24 @@ class MuchaClient(discord.Client):
                 int, 5, 3600
             ),
             ("voice", "social_join_reward"): (
+                float, 0.0, 1.0
+            ),
+            ("voice", "reward_opportunity_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "reward_opportunity_ttl_seconds"): (
+                int, 10, 3600
+            ),
+            ("voice", "reward_opportunity_min_strength"): (
+                float, 0.0, 4.0
+            ),
+            ("voice", "reward_opportunity_max_strength"): (
+                float, 0.0, 4.0
+            ),
+            ("voice", "reward_opportunity_success_chance"): (
+                float, 0.0, 1.0
+            ),
+            ("voice", "reward_opportunity_reward"): (
                 float, 0.0, 1.0
             ),
             ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
