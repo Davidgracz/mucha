@@ -386,6 +386,13 @@ class MuchaClient(discord.Client):
         voice_fields = [
             "poll_seconds",
             "connectome_voice_control_enabled",
+            "social_drive_enabled",
+            "social_drive_start_seconds",
+            "social_drive_ramp_seconds",
+            "social_drive_max_magnitude",
+            "social_drive_stay_punish",
+            "social_drive_learning_interval_seconds",
+            "social_join_reward",
             "minimum_dwell_seconds",
             "maximum_dwell_seconds",
             "move_threshold",
@@ -596,6 +603,27 @@ class MuchaClient(discord.Client):
             ("voice", "poll_seconds"): (int, 1, 3600),
             ("voice", "connectome_voice_control_enabled"): (
                 bool, None, None
+            ),
+            ("voice", "social_drive_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "social_drive_start_seconds"): (
+                int, 0, 86400
+            ),
+            ("voice", "social_drive_ramp_seconds"): (
+                int, 1, 86400
+            ),
+            ("voice", "social_drive_max_magnitude"): (
+                float, 0.0, 4.0
+            ),
+            ("voice", "social_drive_stay_punish"): (
+                float, 0.0, 0.5
+            ),
+            ("voice", "social_drive_learning_interval_seconds"): (
+                int, 5, 3600
+            ),
+            ("voice", "social_join_reward"): (
+                float, 0.0, 1.0
             ),
             ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
             ("voice", "maximum_dwell_seconds"): (int, 1, 86400),
