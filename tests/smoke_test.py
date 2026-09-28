@@ -57,6 +57,25 @@ def main():
                 - state_before_social_drive
             )
         ) > 0.25
+
+        state_before_opportunity = b.compute.to_cpu(
+            b.state
+        ).copy()
+        b.inject_voice_reward_opportunity(
+            999,
+            55555,
+            human_count=3,
+            strength=1.1,
+        )
+        state_after_opportunity = b.compute.to_cpu(
+            b.state
+        )
+        assert np.max(
+            np.abs(
+                state_after_opportunity
+                - state_before_opportunity
+            )
+        ) > 0.20
         b.step(2)
         voice_out = b.voice_action_decision(
             connected=False,
@@ -220,6 +239,7 @@ def main():
         assert "neuromod-da" in CONNECTOME_HTML
         assert "Path Inspector" in CONNECTOME_HTML
         assert "voice-social-drive" in CONNECTOME_HTML
+        assert "voice-reward-opportunity" in CONNECTOME_HTML
         assert "path-list" in CONNECTOME_HTML
         assert "selectAction" in CONNECTOME_HTML
         assert "&action=" in CONNECTOME_HTML
@@ -235,6 +255,9 @@ def main():
         assert "social_drive_max_magnitude" in CONFIG_HTML
         assert "social_drive_stay_punish" in CONFIG_HTML
         assert "social_join_reward" in CONFIG_HTML
+        assert "reward_opportunity_enabled" in CONFIG_HTML
+        assert "reward_opportunity_success_chance" in CONFIG_HTML
+        assert "reward_opportunity_reward" in CONFIG_HTML
         assert "Social Neural Memory" in AFFINITY_HTML
         assert "neural-users" in AFFINITY_HTML
         assert 'const out={brain:{},language:{},behavior:{},voice:{}};' in CONFIG_HTML
@@ -256,6 +279,9 @@ def main():
         assert "_last_social_drive_punish" in bot_source
         assert "neural social drive outside voice" in bot_source
         assert "neural social drive join" in bot_source
+        assert "_voice_reward_opportunity_for" in bot_source
+        assert "random voice reward opportunity" in bot_source
+        assert "preferred_channel_id" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
