@@ -31,6 +31,46 @@ def main():
         scores = b.action_scores()
         assert 0 <= scores["speak"] <= 1
 
+        internal = b.internal_state_diagnostics()
+        assert internal["enabled"] is True
+        assert set(internal["states"]) == {
+            "social_need",
+            "curiosity",
+            "stress",
+            "satiety",
+            "arousal",
+        }
+        assert internal["recurrent_edges"] > 0
+        for name, row in internal["states"].items():
+            assert row["neurons"] > 0
+            assert row["entry_neurons"] > 0
+            assert row["target_actions"]
+            assert row["mode"] == "FAFB-recurrent-attractor"
+
+        attractor_edges = b._internal_attractor_matrix_cpu.tocoo()
+        assert attractor_edges.nnz > 0
+        for row, col, value in zip(
+            attractor_edges.row[:64],
+            attractor_edges.col[:64],
+            attractor_edges.data[:64],
+        ):
+            assert value > 0.0
+            assert b._runtime_matrix_cpu[int(row), int(col)] > 0.0
+
+        curiosity_entry = b._internal_state_entry_pools["curiosity"]
+        assert len(curiosity_entry) > 0
+        assert set(curiosity_entry).issubset(set(c.sensory.tolist()))
+        cue_diag = b.inject_internal_state_cue(
+            "curiosity",
+            1.0,
+            key="smoke:internal:curiosity",
+        )
+        assert cue_diag["entry_neurons"] > 0
+        assert cue_diag["attractor_neurons"] > 0
+        b.step(4)
+        curiosity_after = b.internal_state_diagnostics()
+        assert curiosity_after["states"]["curiosity"]["mean_abs"] > 0.0
+
         b.inject("signal-flow-smoke", 1.0, 64)
         b.step(2)
         signal_flow = b.signal_flow_snapshot()
@@ -291,6 +331,10 @@ def main():
         assert homeostasis_diag["social_fatigue_leave"] is not None
         assert homeostasis_diag["habituation"] is not None
         assert homeostasis_diag["exploration_drive"] is not None
+        assert "internal_state_cues" in homeostasis_diag
+        assert "satiety" in homeostasis_diag["internal_state_cues"]
+        assert "curiosity" in homeostasis_diag["internal_state_cues"]
+        assert "stress" in homeostasis_diag["internal_state_cues"]
         state_after_homeostasis = b.compute.to_cpu(
             b.state
         )
@@ -493,6 +537,15 @@ def main():
         assert "consolidation_enabled" in CONFIG_HTML
         assert "synaptic_consolidation_gain" in CONFIG_HTML
         assert "synaptic_consolidation_protection" in CONFIG_HTML
+        assert "internal_states_enabled" in CONFIG_HTML
+        assert "internal_state_pool_size" in CONFIG_HTML
+        assert "internal_state_recurrent_gain" in CONFIG_HTML
+        assert "internal_state_arousal_gain" in CONFIG_HTML
+        assert "Internal states / attractors" in CONFIG_HTML
+        assert "ATTRACTORS" in NEUROMAP_HTML
+        assert "renderInternalStates" in NEUROMAP_HTML
+        assert "drawAttractors" in NEUROMAP_HTML
+        assert "SOCIAL NEED" in NEUROMAP_HTML
         assert "LEARNED SYNAPSES" in NEUROMAP_HTML
         assert "drawLearnedSynapses" in NEUROMAP_HTML
         assert "CONSOLIDATED" in NEUROMAP_HTML
@@ -565,6 +618,10 @@ def main():
         assert "consolidate_and_forget" in brain_source
         assert "learned_synapses_snapshot" in brain_source
         assert "_synaptic_consolidation_map" in brain_source
+        assert "_build_internal_state_attractors" in brain_source
+        assert "inject_internal_state_cue" in brain_source
+        assert "internal_state_diagnostics" in brain_source
+        assert "_internal_attractor_edge_map" in brain_source
         assert "consolidate_replay" in bot_source
         assert "apply_forgetting" in bot_source
         assert "preferred_channel_id" in bot_source
@@ -634,6 +691,12 @@ def main():
         assert "live_flow_in" in neuro["nodes"][0]
         assert "live_flow_out" in neuro["nodes"][0]
         assert "learned_synapses" in neuro
+        assert "internal_states" in neuro
+        assert neuro["internal_states"]["states"]
+        assert any(
+            node.get("internal_states")
+            for node in neuro["nodes"]
+        )
 
         # Reward should now change both neuron bias and real existing
         # connectome edges through the sparse learned-synapse overlay.
