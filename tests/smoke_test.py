@@ -100,6 +100,32 @@ def main():
         assert "tie_evidence_margin" in voice_out
         assert "raw_winner_margin" in voice_out
 
+        tie_cfg = BrainConfig(
+            connectome_dir=td / "c",
+            state_file=td / "tie-brain.npz",
+        )
+        tie_brain = FlyBrain(c, tie_cfg)
+        tie_brain.state[...] = 0
+        tie_brain.plastic_bias[...] = 0
+        tie_brain.eligibility[...] = 0
+        tie_brain.reward_trace = 0.0
+        flat_voice = tie_brain.voice_action_decision(
+            connected=False,
+            can_join=True,
+        )
+        assert flat_voice["tie_break"] == (
+            "unbiased-flat-neural-fallback"
+        )
+        assert set(flat_voice["tie_evidence"]) == {
+            "stay",
+            "voice_join",
+        }
+        assert flat_voice["margin"] == 0.0
+        assert flat_voice["action"] in {
+            "stay",
+            "voice_join",
+        }
+
         b.inject_voice_decision_context(
             999,
             12345,
@@ -275,6 +301,7 @@ def main():
         assert "reward_opportunity_stay_punish" in CONFIG_HTML
         assert "reward_opportunity_stay_punish_interval_seconds" in CONFIG_HTML
         assert "motivation_propagation_steps" in CONFIG_HTML
+        assert "neural tie-break" in DETAILS_HTML
         assert "Social Neural Memory" in AFFINITY_HTML
         assert "neural-users" in AFFINITY_HTML
         assert 'const out={brain:{},language:{},behavior:{},voice:{}};' in CONFIG_HTML
@@ -291,6 +318,8 @@ def main():
         assert "_user_affinity_components" in bot_source
         assert "_write_neural_social_memory" in bot_source
         assert "voice_action_decision" in bot_source
+        assert "tie_evidence" in bot_source
+        assert "tie_break" in bot_source
         assert "connectome-readout-competition" in bot_source
         assert "inject_voice_decision_context" in bot_source
         assert "_last_social_drive_punish" in bot_source
