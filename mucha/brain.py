@@ -34,6 +34,8 @@ class FlyBrain:
     ACTION_BIOLOGICAL_SEEDS = {
         "speak": (
             "pip10", "pmp2", "song", "courtship",
+            "wing extension", "wing motor", "pulse song",
+            "sine song", "vibration",
         ),
         "react": (
             "adn1", "adn2", "groom", "dnp07", "dnp10",
@@ -103,6 +105,7 @@ class FlyBrain:
         self._neuro_map_region_source = "cell_class"
         self._neuro_map_history = deque(maxlen=180)
         self._action_output_pools: dict[str, np.ndarray] = {}
+        self._action_output_seeds: dict[str, np.ndarray] = {}
         self._action_output_info: dict[str, dict] = {}
         self._action_structural_cache: tuple[
             np.ndarray,
@@ -477,36 +480,105 @@ class FlyBrain:
                 break
         return np.asarray(expanded[:width], dtype=np.int32)
 
-    def _build_action_output_pools(self, width: int = 128) -> None:
-        """Build action readouts from annotated DNs and real connectivity.
+    def _seed_display_type(
+        self,
+        idx: int,
+    ) -> str:
+        """Return the cleanest available biological label for one neuron."""
+        meta = self.c.neuron_meta or {}
+        for key in (
+            "primary_type",
+            "cell_class",
+            "sub_class",
+            "super_class",
+        ):
+            arr = meta.get(key)
+            if arr is None or len(arr) != self.c.n_neurons:
+                continue
+            value = str(arr[int(idx)]).strip()
+            if value:
+                return value
+        return "untyped"
 
-        Seed labels are only anchors. Once a known type is found, the pool is
-        expanded through the actual FAFB graph. If annotations are unavailable,
-        a deterministic structural fallback is used instead of hash-random
-        output neurons.
+    def _action_seed_candidates(
+        self,
+        action: str,
+        annotations: np.ndarray,
+        output: np.ndarray,
+        limit: int = 32,
+    ) -> tuple[np.ndarray, list[str]]:
+        """Find biological anchors, preferring output cells but scanning all.
+
+        Older code searched only c.output. Some useful descending/courtship
+        types can be present in neuron metadata without having landed in that
+        broad runtime pool, so the second pass searches the full annotated
+        connectome and lets real connectivity project them into output cells.
         """
+        terms = tuple(
+            str(term).lower()
+            for term in self.ACTION_BIOLOGICAL_SEEDS.get(action, ())
+        )
+        if not terms:
+            return np.empty(0, dtype=np.int32), []
+
+        output_set = set(int(i) for i in output.tolist())
+        ranked: list[tuple[int, int, str]] = []
+        seen: set[int] = set()
+
+        for idx_raw in output:
+            idx = int(idx_raw)
+            label = str(annotations[idx]).lower()
+            hits = [term for term in terms if term in label]
+            if not hits:
+                continue
+            specificity = max(len(term) for term in hits)
+            ranked.append((0, -specificity, idx))
+            seen.add(idx)
+
+        if len(ranked) < limit:
+            for idx in range(self.c.n_neurons):
+                if idx in seen:
+                    continue
+                label = str(annotations[idx]).lower()
+                hits = [term for term in terms if term in label]
+                if not hits:
+                    continue
+                specificity = max(len(term) for term in hits)
+                # Full-connectome matches are valid biological anchors, but
+                # direct output-pool matches remain preferred.
+                ranked.append((1, -specificity, idx))
+
+        ranked.sort(key=lambda item: (item[0], item[1], item[2]))
+        chosen = np.asarray(
+            [item[2] for item in ranked[: max(1, int(limit))]],
+            dtype=np.int32,
+        )
+        matched_terms: list[str] = []
+        for idx in chosen:
+            label = str(annotations[int(idx)]).lower()
+            for term in terms:
+                if term in label and term not in matched_terms:
+                    matched_terms.append(term)
+        return chosen, matched_terms
+
+    def _build_action_output_pools(self, width: int = 128) -> None:
+        """Build action readouts from annotated neurons and real connectivity."""
         annotations = self._action_metadata_text()
         output = np.asarray(self.c.output, dtype=np.int32)
         if not len(output):
             output = np.arange(self.c.n_neurons, dtype=np.int32)
 
         self._action_output_pools = {}
+        self._action_output_seeds = {}
         self._action_output_info = {}
 
         for action in self.ACTIONS:
             terms = self.ACTION_BIOLOGICAL_SEEDS.get(action, ())
-            matches: list[int] = []
-            matched_labels: list[str] = []
-            for idx in output:
-                label = str(annotations[int(idx)]).lower()
-                if not label:
-                    continue
-                if any(term in label for term in terms):
-                    matches.append(int(idx))
-                    if len(matched_labels) < 8:
-                        matched_labels.append(label)
-
-            seeds = np.asarray(matches, dtype=np.int32)
+            seeds, matched_terms = self._action_seed_candidates(
+                action,
+                annotations,
+                output,
+            )
             if len(seeds):
                 pool = self._expand_action_seed_pool(
                     seeds,
@@ -524,18 +596,47 @@ class FlyBrain:
                 )
                 mode = "structural-fallback"
 
+            type_counts = Counter(
+                self._seed_display_type(int(idx))
+                for idx in seeds
+            )
+            seed_types = [
+                {"name": name, "count": int(count)}
+                for name, count in type_counts.most_common(10)
+            ]
+            seed_neurons = [
+                {
+                    "root_id": int(self.c.root_ids[int(idx)]),
+                    "type": self._seed_display_type(int(idx)),
+                    "in_output_pool": bool(
+                        int(idx) in self._output_lookup
+                    ),
+                }
+                for idx in seeds[:12]
+            ]
+
+            self._action_output_seeds[action] = seeds
             self._action_output_pools[action] = pool
             self._action_output_info[action] = {
                 "mode": mode,
                 "seed_count": int(len(seeds)),
                 "pool_size": int(len(pool)),
                 "seed_terms": list(terms),
-                "matched_labels": matched_labels,
+                "matched_terms": matched_terms,
+                "seed_types": seed_types,
+                "seed_neurons": seed_neurons,
+                "external_seed_count": int(
+                    sum(
+                        int(idx) not in self._output_lookup
+                        for idx in seeds
+                    )
+                ),
             }
 
     def action_pool_diagnostics(self) -> dict[str, dict]:
-        return {
-            action: {
+        result: dict[str, dict] = {}
+        for action, info in self._action_output_info.items():
+            row = {
                 key: (
                     list(value)
                     if isinstance(value, tuple)
@@ -543,8 +644,57 @@ class FlyBrain:
                 )
                 for key, value in info.items()
             }
-            for action, info in self._action_output_info.items()
-        }
+            pool = self._action_output_pools.get(
+                action,
+                np.empty(0, dtype=np.int32),
+            )
+            seeds = self._action_output_seeds.get(
+                action,
+                np.empty(0, dtype=np.int32),
+            )
+            if len(pool):
+                idx = self._backend_indices(pool)
+                values = self.compute.to_cpu(
+                    self.state[idx]
+                ).astype(np.float32, copy=False)
+                row["mean_activation"] = float(
+                    np.mean(values)
+                )
+                row["mean_abs_activation"] = float(
+                    np.mean(np.abs(values))
+                )
+                row["max_abs_activation"] = float(
+                    np.max(np.abs(values))
+                )
+            else:
+                row["mean_activation"] = 0.0
+                row["mean_abs_activation"] = 0.0
+                row["max_abs_activation"] = 0.0
+
+            seed_activity = []
+            if len(seeds):
+                idx = self._backend_indices(seeds)
+                values = self.compute.to_cpu(
+                    self.state[idx]
+                ).astype(np.float32, copy=False)
+                order = np.argsort(np.abs(values))[::-1][:8]
+                for pos in order:
+                    neuron_idx = int(seeds[int(pos)])
+                    seed_activity.append({
+                        "root_id": int(
+                            self.c.root_ids[neuron_idx]
+                        ),
+                        "type": self._seed_display_type(
+                            neuron_idx
+                        ),
+                        "activation": float(values[int(pos)]),
+                        "in_output_pool": bool(
+                            neuron_idx in self._output_lookup
+                        ),
+                    })
+            row["top_seed_activity"] = seed_activity
+            result[action] = row
+        return result
 
     def _rebuild_synaptic_matrix(self) -> None:
         n = self.c.n_neurons
