@@ -706,7 +706,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;border-bottom:1px solid rgba(28,43,59,.58);text-align:left}th{color:#6f879c;font-weight:600}td{color:#b7c6d3}.plus{color:var(--cyan)}.minus{color:var(--pink)}
 .event{font:10px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;color:#9eb0c0;background:#060c12;border:1px solid #162536;border-radius:11px;padding:10px;word-break:break-word}
 .legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;color:#7990a4;font-size:9px}.lg{display:inline-flex;align-items:center;gap:5px}.lg i{width:8px;height:8px;border-radius:50%}.sens{background:var(--cyan)}.internal{background:var(--blue)}.mod{background:var(--violet)}.out{background:var(--pink)}
-.circuits-card{margin-bottom:12px}.circuits-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.circuit{background:#071019;border:1px solid #172a3b;border-radius:13px;padding:11px;min-width:0;transition:.18s}.circuit.hot{border-color:rgba(85,234,208,.42);box-shadow:0 0 22px rgba(85,234,208,.06)}.circuit-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.circuit-title{font-size:12px;font-weight:850;color:#e8f4ff}.circuit-mode{font-size:8px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:4px 6px;border-radius:999px;border:1px solid #284056;color:#8da5b8;white-space:nowrap}.circuit-mode.bio{color:var(--good);border-color:rgba(86,227,154,.32);background:rgba(86,227,154,.06)}.circuit-mode.fallback{color:var(--warn);border-color:rgba(255,209,102,.28);background:rgba(255,209,102,.05)}.circuit-score{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin:10px 0 7px}.circuit-score .track{height:7px}.circuit-score b{font-size:11px}.circuit-meta{display:flex;gap:9px;flex-wrap:wrap;color:#7790a5;font-size:9px;margin-bottom:7px}.circuit-types{font-size:10px;line-height:1.5;color:#b6c7d5;min-height:30px}.circuit-seeds{margin-top:7px;padding-top:7px;border-top:1px solid rgba(28,43,59,.7);font:9px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#71899d;max-height:54px;overflow:auto}.circuit-activity{margin-top:6px;color:#91a8b9;font-size:9px}.circuit-activity strong{color:var(--cyan)}
+.circuits-card{margin-bottom:12px}.circuits-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px}.circuit{background:#071019;border:1px solid #172a3b;border-radius:13px;padding:11px;min-width:0;transition:.18s}.circuit.hot{border-color:rgba(85,234,208,.42);box-shadow:0 0 22px rgba(85,234,208,.06)}.circuit-head{display:flex;justify-content:space-between;gap:8px;align-items:flex-start}.circuit-title{font-size:12px;font-weight:850;color:#e8f4ff}.circuit-mode{font-size:8px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;padding:4px 6px;border-radius:999px;border:1px solid #284056;color:#8da5b8;white-space:nowrap}.circuit-mode.bio{color:var(--good);border-color:rgba(86,227,154,.32);background:rgba(86,227,154,.06)}.circuit-mode.adaptive{color:var(--cyan);border-color:rgba(85,234,208,.36);background:rgba(85,234,208,.07)}.circuit-mode.fallback{color:var(--warn);border-color:rgba(255,209,102,.28);background:rgba(255,209,102,.05)}.circuit-score{display:grid;grid-template-columns:1fr auto;gap:8px;align-items:center;margin:10px 0 7px}.circuit-score .track{height:7px}.circuit-score b{font-size:11px}.circuit-meta{display:flex;gap:9px;flex-wrap:wrap;color:#7790a5;font-size:9px;margin-bottom:7px}.circuit-types{font-size:10px;line-height:1.5;color:#b6c7d5;min-height:30px}.circuit-seeds{margin-top:7px;padding-top:7px;border-top:1px solid rgba(28,43,59,.7);font:9px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;color:#71899d;max-height:54px;overflow:auto}.circuit-activity{margin-top:6px;color:#91a8b9;font-size:9px}.circuit-activity strong{color:var(--cyan)}
 @media(max-width:1120px){.grid{grid-template-columns:1fr}.graph-wrap{height:560px}.hero{grid-template-columns:repeat(3,1fr)}.circuits-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
 @media(max-width:760px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.flow{grid-template-columns:1fr}.arrow{transform:rotate(90deg)}.graph-wrap{height:500px}.circuits-grid{grid-template-columns:1fr}}
 </style>
@@ -738,7 +738,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
 
 <section class="card circuits-card">
  <div class="card-head">
-  <div><h2>Biological Action Circuits</h2><div class="muted" style="margin-top:4px">Biologiczne seedy → rzeczywiste połączenia FAFB → readout akcji Discord.</div></div>
+  <div><h2>Action Circuits • biology + learned</h2><div class="muted" style="margin-top:4px">Biologiczne seedy albo wyuczony adapter → rzeczywiste połączenia FAFB → readout akcji Discord.</div></div>
   <span class="mode">LIVE CIRCUITS</span>
  </div>
  <div class="circuits-grid" id="biological-circuits"></div>
@@ -792,6 +792,8 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
     <div class="mini"><small>ostatnia akcja</small><strong id="last-action">—</strong></div>
     <div class="mini"><small>wybrane neurony</small><strong id="selected">—</strong></div>
     <div class="mini"><small>krawędzie live</small><strong id="edges">—</strong></div>
+    <div class="mini"><small>połączone outputy</small><strong id="connected-outputs">—</strong></div>
+    <div class="mini"><small>izolowane w widoku</small><strong id="isolated-nodes">—</strong></div>
     <div class="mini"><small>okno stabilne</small><strong id="stable-age">—</strong></div>
     <div class="mini"><small>ostatnia podmiana</small><strong id="replacements">—</strong></div>
    </div>
@@ -868,13 +870,27 @@ function draw(){
   const e=item.edge,a=layout[e.source],b=layout[e.target];if(!a||!b)continue;
   const srcEntry=byId[e.source],dstEntry=byId[e.target];if(!srcEntry||!dstEntry)continue;
   const alpha=item.alpha*Math.min(srcEntry.alpha,dstEntry.alpha),q=clamp(Number(e.importance||0)/maxImp,0,1);
-  ctx.strokeStyle="rgba(90,151,197,"+(alpha*(0.05+q*.34))+")";ctx.lineWidth=.45+q*1.35;
+  const target=dstEntry.node,source=srcEntry.node;
+  const rgb=target.role==="output"?"255,120,183":(Number(e.weight||0)<0?"181,140,255":"90,151,197");
+  ctx.strokeStyle="rgba("+rgb+","+(alpha*(0.15+q*.58))+")";ctx.lineWidth=.7+q*1.9;
   ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
-  const source=srcEntry.node,act=Math.abs(Number(source.activation||0));
-  if(act>.12&&q>.18&&alpha>.08){
-   const phase=(t*(.16+.48*q)+hash(e.source+e.target))%1;
+
+  // Direction arrow near the postsynaptic neuron.
+  if(q>.08&&alpha>.08){
+   const ang=Math.atan2(b.y-a.y,b.x-a.x),back=8+q*4,wing=3+q*2;
+   const ax=b.x-Math.cos(ang)*back,ay=b.y-Math.sin(ang)*back;
+   ctx.fillStyle="rgba("+rgb+","+(alpha*(.35+q*.55))+")";
+   ctx.beginPath();ctx.moveTo(ax,ay);
+   ctx.lineTo(ax-Math.cos(ang-.65)*wing,ay-Math.sin(ang-.65)*wing);
+   ctx.lineTo(ax-Math.cos(ang+.65)*wing,ay-Math.sin(ang+.65)*wing);
+   ctx.closePath();ctx.fill();
+  }
+
+  const act=Math.abs(Number(source.activation||0));
+  if(act>.05&&q>.07&&alpha>.06){
+   const phase=(t*(.20+.55*q)+hash(e.source+e.target))%1;
    const x=a.x+(b.x-a.x)*phase,y=a.y+(b.y-a.y)*phase;
-   ctx.fillStyle=colors[source.role]||colors.internal;ctx.globalAlpha=alpha*(.35+.55*q);ctx.beginPath();ctx.arc(x,y,1.3+q*1.8,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+   ctx.fillStyle=colors[source.role]||colors.internal;ctx.globalAlpha=alpha*(.45+.50*q);ctx.beginPath();ctx.arc(x,y,1.5+q*2.0,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
   }
  }
  hover=null;
@@ -897,19 +913,19 @@ function renderBiologicalCircuits(pools,scores){
  const order=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];
  const html=order.map(action=>{
   const p=(pools||{})[action]||{},score=clamp(Number((scores||{})[action]||0),0,1);
-  const bio=String(p.mode||"").startsWith("annotated");
-  const types=(p.seed_types||[]).map(x=>esc(x.name)+" ×"+nfmt(x.count)).join(" • ")||(bio?"typ nieopisany":"brak biologicznych seedów");
+  const mode=String(p.mode||""),bio=mode.startsWith("annotated"),adaptive=mode.startsWith("adaptive");
+  const types=(p.seed_types||[]).map(x=>esc(x.name)+" ×"+nfmt(x.count)).join(" • ")||(bio?"typ nieopisany":(adaptive?"wyuczony obwód sensoryczny":"brak biologicznych seedów"));
   const seeds=(p.top_seed_activity||[]).slice(0,4).map(x=>{
    const sign=Number(x.activation||0)>=0?"+":"";
-   return esc(x.type)+" #"+esc(x.root_id)+" "+sign+Number(x.activation||0).toFixed(3)+(x.in_output_pool?"":" [spoza output]");
+   return esc(x.type)+" #"+esc(x.root_id)+" "+sign+Number(x.activation||0).toFixed(3)+(adaptive?" [cue]":(x.in_output_pool?"":" [spoza output]"));
   }).join("<br>");
   const searched=(p.seed_terms||[]).slice(0,7).map(esc).join(", ");
   const external=Number(p.external_seed_count||0);
   const mean=Number(p.mean_abs_activation||0),max=Number(p.max_abs_activation||0);
   return '<div class="circuit '+(score>.58?"hot":"")+'">'+
-   '<div class="circuit-head"><div class="circuit-title">'+esc(action)+'</div><span class="circuit-mode '+(bio?"bio":"fallback")+'">'+esc(p.mode||"—")+'</span></div>'+
+   '<div class="circuit-head"><div class="circuit-title">'+esc(action)+'</div><span class="circuit-mode '+(adaptive?"adaptive":(bio?"bio":"fallback"))+'">'+esc(p.mode||"—")+'</span></div>'+
    '<div class="circuit-score"><div class="track"><div class="fill" style="width:'+(score*100).toFixed(1)+'%"></div></div><b>'+score.toFixed(3)+'</b></div>'+
-   '<div class="circuit-meta"><span>seeds <b>'+nfmt(p.seed_count||0)+'</b></span><span>pool <b>'+nfmt(p.pool_size||0)+'</b></span>'+(external?'<span>spoza output <b>'+nfmt(external)+'</b></span>':'')+'</div>'+
+   '<div class="circuit-meta"><span>'+(adaptive?'sensory cues':'seeds')+' <b>'+nfmt(p.seed_count||0)+'</b></span><span>pool <b>'+nfmt(p.pool_size||0)+'</b></span>'+(!adaptive&&external?'<span>spoza output <b>'+nfmt(external)+'</b></span>':'')+'</div>'+
    '<div class="circuit-types">'+types+'</div>'+
    '<div class="circuit-activity">mean |a| <strong>'+mean.toFixed(4)+'</strong> • max |a| <strong>'+max.toFixed(4)+'</strong></div>'+
    '<div class="circuit-seeds">'+(seeds||(bio?"brak aktywności seedów":"szukano: "+searched))+'</div>'+
@@ -926,7 +942,7 @@ function render(s,v){
  stateSnap=s;visualSnap=v;ingestGraph(v);
  const d=s.diag||{},ld=s.language_diag||{},cw=ld.connectome_word_control_last||{};
  $("k-neurons").textContent=nfmt(d.neurons);$("k-connections").textContent=nfmt(d.connections);$("k-active").textContent=nfmt(d.active_abs_gt_0_1);$("k-mean").textContent=Number(d.mean_abs||0).toFixed(5);$("k-reward").textContent=Number(d.reward_trace||0).toFixed(3);$("k-backend").textContent=(d.backend||"—")+" • "+(d.device||"");$("k-tick").textContent="tick "+nfmt(d.ticks);$("k-synapses").textContent=nfmt(d.learned_synapses||0);$("k-synapse-delta").textContent="max |Δ| "+Number(d.synaptic_max_abs||0).toFixed(5);
- $("selected").textContent=nfmt(v.selected_neurons);$("edges").textContent=nfmt(v.selected_edges);$("event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";renderActions(s.scores||{});
+ $("selected").textContent=nfmt(v.selected_neurons);$("edges").textContent=nfmt(v.selected_edges);$("connected-outputs").textContent=nfmt(v.connected_output_neurons||0);$("isolated-nodes").textContent=nfmt(v.isolated_neurons||0);$("event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";renderActions(s.scores||{});
  const pools=d.action_pools||{};renderBiologicalCircuits(pools,s.scores||{});const poolOrder=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];$("action-pool-detail").textContent=poolOrder.map(k=>{const p=pools[k]||{};return k+": "+(p.mode||"—")+" • seeds "+nfmt(p.seed_count||0)+" • pool "+nfmt(p.pool_size||0)}).join("  |  ");
  const nm=d.neuromodulation||{},da=nm.dopamine||{},ser=nm.serotonin||{},oct=nm.octopamine||{};$("neuromod-status").textContent=nm.enabled?"ACTIVE":"OFF";$("neuromod-da").textContent=Number(da.level||0).toFixed(4);$("neuromod-da-n").textContent=nfmt(da.neurons||0)+" neuronów";$("neuromod-ser").textContent=Number(ser.level||0).toFixed(4);$("neuromod-ser-n").textContent=nfmt(ser.neurons||0)+" neuronów";$("neuromod-oct").textContent=Number(oct.level||0).toFixed(4);$("neuromod-oct-n").textContent=nfmt(oct.neurons||0)+" neuronów";$("neuromod-plasticity").textContent="×"+Number(nm.plasticity_gain||1).toFixed(3);$("neuromod-gain").textContent=Number(nm.effective_gain||0).toFixed(4);$("neuromod-dynamics").textContent="leak "+Number(nm.effective_leak||0).toFixed(4)+" • noise "+Number(nm.effective_noise||0).toFixed(4);$("neuromod-residual").textContent="direct residual "+Number(nm.direct_residual||0).toFixed(2);
  $("stable-age").textContent=followActivity?"FOLLOW":Math.round(Number(v.stable_age_seconds||0))+" s / "+Math.round(Number(v.stable_window_seconds||45))+" s";
@@ -936,7 +952,7 @@ function render(s,v){
  $("word-eval").textContent=nfmt(cw.evaluated||0);$("word-detail").textContent="Siła wpływu: "+Number(ld.connectome_word_control_strength||0).toFixed(2)+" • średni ostatni score: "+Number(cw.mean_score||.5).toFixed(3)+" • feedback słów: "+nfmt(cw.feedback_words||0)+" • generator: "+(ld.last_generator||"—");
  const nodes=(v.nodes||[]).slice().sort((a,b)=>Math.abs(Number(b.activation))-Math.abs(Number(a.activation))).slice(0,12);
  $("node-table").innerHTML=nodes.map(n=>'<tr><td>'+n.id+'</td><td>'+n.role+'</td><td class="'+(Number(n.activation)>=0?"plus":"minus")+'">'+(Number(n.activation)>=0?"+":"")+Number(n.activation).toFixed(4)+'</td><td>'+Number(n.bias||0).toFixed(5)+'</td></tr>').join("")||'<tr><td colspan="4">Brak danych.</td></tr>';
- $("signal").textContent="MODE  "+(followActivity?"FOLLOW ACTIVITY":"STABLE WINDOW")+"\nINPUT  "+(s.last_event||"—")+"\nCONNECTOME  mean |a| "+Number(d.mean_abs||0).toFixed(5)+" / max "+Number(d.max_abs||0).toFixed(5)+"\nREADOUT  speak "+Number((s.scores||{}).speak||0).toFixed(3)+" / explore "+Number((s.scores||{}).explore||0).toFixed(3)+"\nOUTPUT  "+(s.last_action||"—");
+ $("signal").textContent="MODE  "+(followActivity?"FOLLOW ACTIVITY":"STABLE WINDOW")+"\nINPUT  "+(s.last_event||"—")+"\nCONNECTOME  mean |a| "+Number(d.mean_abs||0).toFixed(5)+" / max "+Number(d.max_abs||0).toFixed(5)+"\nVISIBLE GRAPH  "+nfmt(v.selected_edges||0)+" direct edges • "+nfmt(v.connected_output_neurons||0)+" connected outputs • "+nfmt(v.isolated_neurons||0)+" isolated\nREADOUT  speak "+Number((s.scores||{}).speak||0).toFixed(3)+" / explore "+Number((s.scores||{}).explore||0).toFixed(3)+"\nOUTPUT  "+(s.last_action||"—");
  lastUpdate=Date.now();$("live").textContent="LIVE";
 }
 async function update(){
