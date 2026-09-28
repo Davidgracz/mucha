@@ -6575,6 +6575,8 @@ class MuchaClient(discord.Client):
             ramp = max(1.0, float(self.cfg.voice.threat_ramp_seconds))
             threat_level = min(1.0, 0.25 + 0.75 * (overstay_seconds / ramp))
 
+        episodic_diag = self.voice_episodes.diagnostics()
+
         debug = {
             "guild": guild.name,
             "guild_id": guild.id,
@@ -6642,6 +6644,18 @@ class MuchaClient(discord.Client):
                 self.voice_episodes.prediction_count()
             ),
             "episodic_recent": self.voice_episodes.recent(6),
+            "episodic_memory_scenes": int(
+                episodic_diag.get("memory_scenes", 0)
+            ),
+            "episodic_consolidated_scenes": int(
+                episodic_diag.get("consolidated_scenes", 0)
+            ),
+            "episodic_top_memories": list(
+                episodic_diag.get("top_memories", [])
+            )[:6],
+            "episodic_forgetting": dict(
+                episodic_diag.get("forgetting", {})
+            ),
             "predicted_reward": 0.0,
             "prediction_error": None,
             "prediction_correction_applied": 0.0,
