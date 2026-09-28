@@ -217,6 +217,7 @@ class MuchaClient(discord.Client):
         }
         self._last_overstay_punish: dict[int, float] = {}
         self._last_social_drive_punish: dict[int, float] = {}
+        self._last_reward_opportunity_stay_punish: dict[int, float] = {}
         self._voice_reward_opportunity: dict[int, dict] = {}
         self._deadly_voice_until: dict[tuple[int, int], float] = {}
         self._voice_last_visit: dict[tuple[int, int], float] = {}
@@ -5718,6 +5719,16 @@ class MuchaClient(discord.Client):
             "reward_opportunity_remaining": 0.0,
             "reward_opportunity_found": False,
             "reward_opportunity_reward": 0.0,
+            "reward_opportunity_guided_mode": None,
+            "reward_opportunity_guided_neurons": 0,
+            "reward_opportunity_guided_reach_mean": 0.0,
+            "reward_opportunity_guided_reach_max": 0.0,
+            "reward_opportunity_stay_punished": False,
+            "reward_opportunity_stay_punish_amount": 0.0,
+            "social_drive_guided_mode": None,
+            "social_drive_guided_neurons": 0,
+            "social_drive_guided_reach_mean": 0.0,
+            "social_drive_guided_reach_max": 0.0,
             "threat_active": threat_active,
             "threat_level": threat_level,
             "chaser_active": chaser_active,
@@ -6022,6 +6033,8 @@ class MuchaClient(discord.Client):
         )
         decision_trace = None
         brain_decision = None
+        reward_opportunity_diag = None
+        voice_context_diag = None
 
         async with self._brain_lock:
             for ch, humans in channels:
@@ -6050,21 +6063,24 @@ class MuchaClient(discord.Client):
                 connectome_voice_control
                 and reward_opportunity is not None
             ):
-                self.brain.inject_voice_reward_opportunity(
-                    guild.id,
-                    int(
-                        reward_opportunity["channel_id"]
-                    ),
-                    human_count=int(
-                        reward_opportunity["human_count"]
-                    ),
-                    strength=float(
-                        reward_opportunity["strength"]
-                    ),
+                reward_opportunity_diag = (
+                    self.brain.inject_voice_reward_opportunity(
+                        guild.id,
+                        int(
+                            reward_opportunity["channel_id"]
+                        ),
+                        human_count=int(
+                            reward_opportunity["human_count"]
+                        ),
+                        strength=float(
+                            reward_opportunity["strength"]
+                        ),
+                    )
                 )
 
             if connectome_voice_control:
-                self.brain.inject_voice_decision_context(
+                voice_context_diag = (
+                    self.brain.inject_voice_decision_context(
                     guild.id,
                     current.id if current is not None else None,
                     connected=bool(
@@ -6081,6 +6097,7 @@ class MuchaClient(discord.Client):
                     social_drive_magnitude=float(
                         self.cfg.voice.social_drive_max_magnitude
                     ),
+                    )
                 )
                 self.brain.step(
                     max(
@@ -6113,6 +6130,38 @@ class MuchaClient(discord.Client):
                 ch.id: self.brain.channel_affinity(guild.id, ch.id)
                 for ch, _ in channels
             }
+
+        if reward_opportunity_diag:
+            debug["reward_opportunity_guided_mode"] = str(
+                reward_opportunity_diag.get("mode", "")
+            )
+            debug["reward_opportunity_guided_neurons"] = int(
+                reward_opportunity_diag.get("neurons", 0)
+            )
+            debug["reward_opportunity_guided_reach_mean"] = float(
+                reward_opportunity_diag.get("reach_mean", 0.0)
+            )
+            debug["reward_opportunity_guided_reach_max"] = float(
+                reward_opportunity_diag.get("reach_max", 0.0)
+            )
+        social_diag = (
+            (voice_context_diag or {}).get("social_drive")
+            if voice_context_diag
+            else None
+        )
+        if social_diag:
+            debug["social_drive_guided_mode"] = str(
+                social_diag.get("mode", "")
+            )
+            debug["social_drive_guided_neurons"] = int(
+                social_diag.get("neurons", 0)
+            )
+            debug["social_drive_guided_reach_mean"] = float(
+                social_diag.get("reach_mean", 0.0)
+            )
+            debug["social_drive_guided_reach_max"] = float(
+                social_diag.get("reach_max", 0.0)
+            )
 
         if (
             connectome_voice_control
