@@ -1,4 +1,2 @@
 @echo off
-call .venv\Scripts\activate
-python bot.py
-pause
+call "%~dp0START_MUCHA.bat"
