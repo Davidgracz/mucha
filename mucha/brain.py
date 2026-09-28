@@ -2474,6 +2474,10 @@ class FlyBrain:
         human_count: int,
         disliked_strength: float = 0.0,
         alternatives: int = 0,
+        outside_seconds: float = 0.0,
+        available_humans: int = 0,
+        social_drive_level: float = 0.0,
+        social_drive_magnitude: float = 1.0,
     ) -> None:
         """Encode voice context as sensory input before motor competition.
 
@@ -2503,6 +2507,16 @@ class FlyBrain:
         )
         human_count = max(0, int(human_count))
         alternatives = max(0, int(alternatives))
+        outside_seconds = max(0.0, float(outside_seconds))
+        available_humans = max(0, int(available_humans))
+        social_drive_level = max(
+            0.0,
+            min(1.0, float(social_drive_level)),
+        )
+        social_drive_magnitude = max(
+            0.0,
+            min(4.0, float(social_drive_magnitude)),
+        )
 
         if connected:
             if dwell_progress < 1.0:
@@ -2516,6 +2530,38 @@ class FlyBrain:
                     "voice:context:dwell-complete",
                     0.28 + 0.18 * min(1.0, dwell_progress - 1.0),
                     72,
+                )
+        else:
+            outside_bucket = min(
+                8,
+                int(outside_seconds // 60.0),
+            )
+            self.inject(
+                f"voice:context:outside-minutes:{outside_bucket}",
+                0.18 + 0.06 * outside_bucket,
+                72,
+            )
+            if available_humans > 0:
+                people_bucket = min(8, available_humans)
+                self.inject(
+                    f"voice:context:people-available:{people_bucket}",
+                    0.22 + 0.07 * people_bucket,
+                    96,
+                )
+            if social_drive_level > 0.0:
+                magnitude = (
+                    social_drive_magnitude
+                    * social_drive_level
+                )
+                self.inject(
+                    "internal:voice-social-drive",
+                    magnitude,
+                    192,
+                )
+                self.inject(
+                    f"voice:social-drive:guild:{guild_id}",
+                    0.72 * magnitude,
+                    128,
                 )
         if overstay_level > 0.0:
             self.inject(
@@ -2540,10 +2586,15 @@ class FlyBrain:
                 96,
             )
 
-        crowd_bucket = min(6, human_count)
+        decision_humans = (
+            human_count
+            if connected
+            else available_humans
+        )
+        crowd_bucket = min(6, decision_humans)
         self.inject(
             f"voice:context:humans:{crowd_bucket}",
-            0.16 + 0.07 * min(human_count, 8),
+            0.16 + 0.07 * min(decision_humans, 8),
             64,
         )
         option_bucket = min(6, alternatives)
