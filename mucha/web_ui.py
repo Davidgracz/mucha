@@ -1737,10 +1737,17 @@ HTML = r"""<!doctype html>
 body{margin:0;background:linear-gradient(180deg,#0a0e13,#0d131a 60%,#0b1016);color:var(--text);
 font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:1500px;margin:auto;padding:22px}
-.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:18px}
+.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
 .brand{display:flex;align-items:center;gap:12px}.fly{font-size:32px}.title h1{font-size:23px;margin:0}.title p{margin:4px 0 0;color:var(--muted);font-size:13px}
 .badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.badge{border:1px solid var(--line);background:#0f161f;border-radius:999px;padding:7px 10px;font-size:12px}
+.detail-nav{position:sticky;top:8px;z-index:30;display:flex;align-items:center;gap:7px;overflow-x:auto;margin:0 0 18px;padding:8px;background:rgba(10,15,21,.88);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.18)}
+.detail-nav a{flex:0 0 auto;color:#aebdcb;text-decoration:none;font-size:11px;font-weight:700;padding:8px 10px;border-radius:9px;border:1px solid transparent}
+.detail-nav a:hover{color:var(--text);background:#111b25;border-color:#26384a}.detail-nav a:first-child{color:#07110e;background:var(--accent)}
 .grid{display:grid;grid-template-columns:1.05fr 1.35fr .9fr;gap:14px}
+.section-heading{grid-column:1/-1;display:flex;align-items:flex-end;justify-content:space-between;gap:14px;margin:10px 2px -2px;padding-top:4px;scroll-margin-top:76px}
+.section-heading:first-child{margin-top:0}.section-heading h2{margin:0;font-size:17px;letter-spacing:-.01em}.section-heading p{margin:3px 0 0;color:var(--muted);font-size:11px;line-height:1.45}.section-no{font:700 10px/1 ui-monospace,SFMono-Regular,Consolas,monospace;color:var(--accent);letter-spacing:.12em}
+.snapshot-card{background:linear-gradient(145deg,rgba(85,211,195,.06),rgba(17,24,33,.94) 42%)}.focus-card{border-color:#2c4557;box-shadow:0 12px 32px rgba(0,0,0,.14)}
+.card.is-collapsible>h2{cursor:pointer;margin:-3px -3px 0;padding:3px 3px 12px;display:flex;align-items:center;justify-content:space-between;gap:10px}.card.is-collapsible>h2::after{content:"SCHOWAJ";font-size:9px;color:var(--muted);letter-spacing:.08em}.card.is-collapsible.collapsed>h2{padding-bottom:3px;margin-bottom:0}.card.is-collapsible.collapsed>h2::after{content:"POKAŻ";color:var(--accent)}.card.is-collapsible.collapsed>:not(h2){display:none}
 .card{background:rgba(17,24,33,.94);border:1px solid var(--line);border-radius:16px;padding:15px;min-width:0}
 .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:#a9b8c8;margin:0 0 12px}
 .metric{display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid rgba(35,49,66,.6)}
@@ -1767,7 +1774,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .voice-hero-sub{margin-top:5px;color:var(--muted);font-size:11px;line-height:1.45}
 .voice-hero-stat{display:flex;flex-direction:column;justify-content:center}
 .voice-hero-stat strong{font-size:18px;font-variant-numeric:tabular-nums}.voice-hero-stat small{color:var(--muted);margin-top:5px}
-.voice-groups{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+.voice-groups{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.voice-groups>.voice-box:nth-child(4){grid-column:span 2}.voice-groups>.voice-box:nth-child(7){grid-column:span 2}
+.mini-details{margin-top:8px;border:1px solid #192735;border-radius:10px;background:#081018;overflow:hidden}.mini-details summary{cursor:pointer;padding:8px 9px;color:#b9c9d6;font-size:10px;font-weight:700;list-style:none}.mini-details summary::-webkit-details-marker{display:none}.mini-details[open] summary{border-bottom:1px solid #192735}.mini-details .memory-list{padding:0 8px 8px}
 .voice-box h3{margin:0 0 10px;font-size:11px;text-transform:uppercase;letter-spacing:.08em;color:#a9b8c8}
 .voice-kpis{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:7px}
 .voice-kpi{background:#0a1118;border:1px solid #192735;border-radius:10px;padding:9px;min-width:0}
@@ -1812,9 +1821,9 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .legend{display:flex;gap:15px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}
 .legend span::before{content:"";display:inline-block;width:10px;height:3px;margin-right:5px;vertical-align:middle;border-radius:2px}
 .legend .reward-line::before{background:var(--warn)}.legend .trace-line::before{background:var(--accent)}
-@media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.span3{grid-column:span 2}.voice-hero{grid-template-columns:1fr 1fr}.voice-hero-main{grid-column:span 2}.voice-groups{grid-template-columns:1fr 1fr}}
+@media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.span3{grid-column:span 2}.voice-hero{grid-template-columns:1fr 1fr}.voice-hero-main{grid-column:span 2}.voice-groups{grid-template-columns:1fr 1fr}.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:span 2}}
 @media(max-width:900px){.voice-summary,.learning-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.voice-tech-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.events{grid-template-columns:1fr}.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.voice-hero-main{grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
+@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
 </style>
 </head>
 <body>
@@ -1835,8 +1844,18 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
   </div>
 
+  <nav class="detail-nav" aria-label="Sekcje szczegółów">
+    <a href="#teraz">● Teraz</a>
+    <a href="#voice-section">Voice i decyzje</a>
+    <a href="#learning-section">Uczenie i pamięć</a>
+    <a href="#social-section">Relacje</a>
+    <a href="#audio-section">Audio / STT</a>
+    <a href="#neurons-section">Neurony</a>
+  </nav>
+
   <section class="grid">
-    <div class="card">
+    <div class="section-heading" id="teraz"><div><span class="section-no">01 / TERAZ</span><h2>Co dzieje się w tej chwili</h2><p>Najważniejszy stan connectomu, wyjścia i gotowość Muchy — bez wchodzenia w debug.</p></div></div>
+    <div class="card snapshot-card">
       <h2>Stan mózgu</h2>
       <div class="metric"><span>Neurony</span><strong id="neurons">—</strong></div>
       <div class="metric"><span>Połączenia</span><strong id="connections">—</strong></div>
@@ -1869,10 +1888,14 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="metric"><span>Stan</span><strong id="paused">—</strong></div>
     </div>
 
-    <div class="card span3">
+    <div class="section-heading" id="voice-section"><div><span class="section-no">02 / VOICE</span><h2>Voice i decyzje</h2><p>Najpierw decyzja, potem jej przyczyna: readouty, potrzeby, pamięć, reward i zagrożenia.</p></div></div>
+
+    <div class="card span3 focus-card">
       <h2>Voice / Zachowanie</h2>
       <div id="voice-debug"><div class="reason">Czekam na pierwszy cykl voice…</div></div>
     </div>
+
+    <div class="section-heading" id="learning-section"><div><span class="section-no">03 / UCZENIE</span><h2>Uczenie i pamięć</h2><p>Zmiany wynikające z rewardu, plastyczność, historia aktywności i to, co utrwaliło się od startu.</p></div></div>
 
     <div class="card span2">
       <h2>Aktywność w czasie</h2>
@@ -1933,6 +1956,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
         </div>
       </div>
     </div>
+
+    <div class="section-heading" id="social-section"><div><span class="section-no">04 / RELACJE</span><h2>Relacje i reakcje</h2><p>Jak Mucha reaguje na ludzi, słowa i feedback społeczny.</p></div></div>
 
     <div class="card span2">
       <h2>Social Learning / Relacje</h2>
@@ -2012,6 +2037,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       </table>
     </div>
 
+    <div class="section-heading" id="audio-section"><div><span class="section-no">05 / AUDIO</span><h2>Audio i rozpoznawanie mowy</h2><p>Diagnostyka TTS, odtwarzania i STT — zwykle potrzebna dopiero przy problemie.</p></div></div>
+
     <div class="card span3">
       <h2>Audio Debug</h2>
       <div class="learning-grid" style="grid-template-columns:repeat(4,1fr)">
@@ -2042,6 +2069,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="metric"><span>Ostatnia transkrypcja</span><strong id="stt-debug-text">—</strong></div>
       <div class="reason" id="stt-debug-error">Brak błędów STT.</div>
     </div>
+
+    <div class="section-heading" id="neurons-section"><div><span class="section-no">06 / NEURONY</span><h2>Neurony i surowy stan</h2><p>Najbardziej aktywne komórki do głębszej analizy w Connectome i Neuro-map.</p></div></div>
 
     <div class="card span3">
       <h2>Najbardziej aktywne neurony</h2>
@@ -2252,10 +2281,8 @@ function renderVoiceDebug(items){
           '<div class="voice-note"><b>Expected:</b> '+esc(expected)+'</div>'+
           '<div class="voice-note"><b>Recall → connectome:</b> '+esc(recallSummary)+'</div>'+
           '<div class="voice-note"><b>MEMORY REPLAY:</b> '+esc(replaySummary)+'</div>'+
-          '<div class="voice-note"><b>Najsilniejsze sceny:</b></div>'+
-          '<div class="memory-list">'+consolidatedRows+'</div>'+
-          '<div class="voice-note"><b>Ostatnie epizody:</b></div>'+
-          '<div class="memory-list">'+memoryRows+'</div>'+
+          '<details class="mini-details"><summary>Najsilniejsze sceny • '+Number(v.episodic_consolidated_scenes||0)+' utrwalonych</summary><div class="memory-list">'+consolidatedRows+'</div></details>'+
+          '<details class="mini-details"><summary>Ostatnie epizody • pokaż 3 najnowsze</summary><div class="memory-list">'+memoryRows+'</div></details>'+
         '</div>'+
 
         '<div class="voice-box">'+
@@ -2323,7 +2350,7 @@ function renderVoiceDebug(items){
         '</div>'+
       '</details>'+
 
-      '<div class="voice-table-wrap"><table><thead><tr><th>Kanał</th><th>Ludzie</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table></div>'+
+      '<details class="voice-technical"><summary>▸ Kanały głosowe ('+Number((v.channels||[]).length)+')</summary><div class="voice-technical-body"><div class="voice-table-wrap"><table><thead><tr><th>Kanał</th><th>Ludzie</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table></div></div></details>'+
     '</div>';
   }).join('<div class="voice-server-sep"></div>');
 }
