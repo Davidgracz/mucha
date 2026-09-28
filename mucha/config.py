@@ -67,6 +67,13 @@ class VoiceConfig:
     enabled: bool = True
     poll_seconds: int = 15
     connectome_voice_control_enabled: bool = True
+    social_drive_enabled: bool = True
+    social_drive_start_seconds: int = 60
+    social_drive_ramp_seconds: int = 300
+    social_drive_max_magnitude: float = 1.40
+    social_drive_stay_punish: float = 0.035
+    social_drive_learning_interval_seconds: int = 45
+    social_join_reward: float = 0.12
     minimum_dwell_seconds: int = 60
     maximum_dwell_seconds: int = 300
     overstay_punish_amount: float = 0.5
