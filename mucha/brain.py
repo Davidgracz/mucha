@@ -2986,6 +2986,21 @@ class FlyBrain:
             return
         mag = min(1.8, 0.25 + len(stripped) / 180.0)
         self.inject("text:any", mag, 128)
+        self.inject_internal_state_cue(
+            "arousal",
+            min(1.2, 0.20 + 0.28 * mag + (0.18 if mentioned else 0.0)),
+            key=f"internal-state:arousal:text:{author_id}",
+        )
+        self.inject_internal_state_cue(
+            "curiosity",
+            min(
+                1.0,
+                0.10
+                + (0.22 if "?" in stripped else 0.0)
+                + 0.10 * min(4, len(stripped) // 80),
+            ),
+            key=f"internal-state:curiosity:text:{author_id}",
+        )
         self.activate_user_memory(
             author_id,
             0.45 + 0.20 * mentioned,
@@ -4379,6 +4394,7 @@ class FlyBrain:
         guided_social_fatigue_leave = None
         guided_habituation = None
         guided_exploration = None
+        internal_state_cues: dict[str, dict] = {}
         self.inject(
             "voice:context:connected"
             if connected
@@ -4435,6 +4451,77 @@ class FlyBrain:
             0.0,
             min(4.0, float(exploration_drive_magnitude)),
         )
+
+        if social_drive_level > 0.0:
+            internal_state_cues["social_need"] = (
+                self.inject_internal_state_cue(
+                    "social_need",
+                    social_drive_magnitude * social_drive_level,
+                    key=f"internal-state:social-need:{guild_id}",
+                )
+            )
+
+        curiosity_drive = max(
+            exploration_drive_level,
+            min(1.0, alternatives / 4.0)
+            * (0.35 if connected else 0.18),
+        )
+        if curiosity_drive > 0.0:
+            internal_state_cues["curiosity"] = (
+                self.inject_internal_state_cue(
+                    "curiosity",
+                    exploration_drive_magnitude * curiosity_drive,
+                    key=f"internal-state:curiosity:voice:{guild_id}",
+                )
+            )
+
+        stress_drive = max(
+            overstay_level,
+            disliked_strength,
+        )
+        if stress_drive > 0.0:
+            internal_state_cues["stress"] = (
+                self.inject_internal_state_cue(
+                    "stress",
+                    0.55 + 1.10 * stress_drive,
+                    key=f"internal-state:stress:voice:{guild_id}",
+                )
+            )
+
+        satiety_drive = max(
+            social_fatigue_level,
+            0.70 * habituation_level,
+        )
+        if connected and satiety_drive > 0.0:
+            internal_state_cues["satiety"] = (
+                self.inject_internal_state_cue(
+                    "satiety",
+                    max(
+                        social_fatigue_magnitude,
+                        0.70 * habituation_change_magnitude,
+                    )
+                    * satiety_drive,
+                    key=f"internal-state:satiety:voice:{guild_id}",
+                )
+            )
+
+        social_intensity = min(
+            1.0,
+            (human_count if connected else available_humans) / 4.0,
+        )
+        arousal_drive = max(
+            0.18 * social_intensity,
+            0.45 * stress_drive,
+            0.22 * curiosity_drive,
+        )
+        if arousal_drive > 0.0:
+            internal_state_cues["arousal"] = (
+                self.inject_internal_state_cue(
+                    "arousal",
+                    arousal_drive,
+                    key=f"internal-state:arousal:voice:{guild_id}",
+                )
+            )
 
         if connected:
             if dwell_progress < 1.0:
@@ -4613,6 +4700,8 @@ class FlyBrain:
             "social_fatigue_level": social_fatigue_level,
             "habituation_level": habituation_level,
             "exploration_drive_level": exploration_drive_level,
+            "internal_state_cues": internal_state_cues,
+            "internal_states": self.internal_state_diagnostics(),
         }
 
     def _action_tie_evidence(
