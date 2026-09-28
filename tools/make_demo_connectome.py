@@ -54,10 +54,17 @@ def main():
     flow[sensory] = "sensory"
     flow[output] = "descending"
     nt_type = rng.choice(
-        np.array(["ACH", "GABA", "GLUT", "DA"], dtype="<U8"),
+        np.array(
+            ["ACH", "GABA", "GLUT", "DA", "SER", "OCT"],
+            dtype="<U8",
+        ),
         size=n,
-        p=[0.55, 0.20, 0.20, 0.05],
+        p=[0.50, 0.18, 0.18, 0.06, 0.04, 0.04],
     )
+    if n >= 6:
+        nt_type[1] = "DA"
+        nt_type[2] = "SER"
+        nt_type[3] = "OCT"
     primary_type = np.full(n, "demo-neuron", dtype="<U32")
     # Synthetic labels exercise the biological action-readout path in tests.
     # They are still explicitly marked as demo metadata in the manifest.
