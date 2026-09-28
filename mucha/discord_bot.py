@@ -42,6 +42,7 @@ from .brain import FlyBrain
 from .config import Config
 from .connectome import Connectome
 from .console_ui import ConsoleBrainUI
+from .episodic import VoiceEpisodicMemory
 from .language import OnlineLanguage
 from .web_ui import WebDashboard
 
@@ -173,6 +174,13 @@ class MuchaClient(discord.Client):
         self._language_start_diag = self.language.diagnostics()
         self._stt_transcripts_since_start = 0
         self.random = random.Random(cfg.brain.seed + 1)
+        self.voice_episodes = VoiceEpisodicMemory(
+            max_events=cfg.voice.episodic_memory_size,
+            learning_rate=cfg.voice.prediction_learning_rate,
+        )
+        self._voice_prediction_pending: dict[int, dict] = {}
+        self._voice_prediction_corrections: dict[int, dict] = {}
+        self._voice_prediction_last: dict[int, dict] = {}
         self.last_reply: dict[int, float] = {}
         self.last_spontaneous: dict[int, float] = {}
         self.last_text_channel: dict[int, int] = {}
@@ -418,6 +426,12 @@ class MuchaClient(discord.Client):
             "exploration_drive_start_seconds",
             "exploration_drive_ramp_seconds",
             "exploration_drive_max_magnitude",
+            "episodic_prediction_enabled",
+            "episodic_memory_size",
+            "prediction_learning_rate",
+            "prediction_error_scale",
+            "prediction_error_max_correction",
+            "prediction_max_age_seconds",
             "minimum_dwell_seconds",
             "maximum_dwell_seconds",
             "overstay_punish_amount",
@@ -720,6 +734,24 @@ class MuchaClient(discord.Client):
             ),
             ("voice", "exploration_drive_max_magnitude"): (
                 float, 0.0, 4.0
+            ),
+            ("voice", "episodic_prediction_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "episodic_memory_size"): (
+                int, 16, 5000
+            ),
+            ("voice", "prediction_learning_rate"): (
+                float, 0.001, 1.0
+            ),
+            ("voice", "prediction_error_scale"): (
+                float, 0.0, 1.0
+            ),
+            ("voice", "prediction_error_max_correction"): (
+                float, 0.0, 0.5
+            ),
+            ("voice", "prediction_max_age_seconds"): (
+                int, 5, 3600
             ),
             ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
             ("voice", "maximum_dwell_seconds"): (int, 1, 86400),
@@ -1026,6 +1058,83 @@ class MuchaClient(discord.Client):
         })
         if len(self._reward_history) > 120:
             del self._reward_history[:-120]
+
+        if (
+            guild is not None
+            and action in {
+                "stay",
+                "voice_join",
+                "voice_move",
+                "voice_leave",
+            }
+            and self.cfg.voice.episodic_prediction_enabled
+        ):
+            pending = self._voice_prediction_pending.get(guild.id)
+            if pending is not None:
+                age = max(
+                    0.0,
+                    time.monotonic()
+                    - float(pending.get("time", 0.0)),
+                )
+                if (
+                    str(pending.get("action")) == str(action)
+                    and age <= float(
+                        self.cfg.voice.prediction_max_age_seconds
+                    )
+                ):
+                    episode = self.voice_episodes.observe(
+                        guild_id=guild.id,
+                        context=str(pending["context"]),
+                        action=str(action),
+                        actual_reward=float(amount),
+                        source=source,
+                        predicted_reward=float(
+                            pending.get("predicted_reward", 0.0)
+                        ),
+                    )
+                    self._voice_prediction_last[guild.id] = episode
+                    error = float(episode["prediction_error"])
+                    limit = max(
+                        0.0,
+                        min(
+                            0.5,
+                            float(
+                                self.cfg.voice
+                                .prediction_error_max_correction
+                            ),
+                        ),
+                    )
+                    correction = max(
+                        -limit,
+                        min(
+                            limit,
+                            error
+                            * max(
+                                0.0,
+                                float(
+                                    self.cfg.voice
+                                    .prediction_error_scale
+                                ),
+                            ),
+                        ),
+                    )
+                    if (
+                        abs(correction) > 1e-9
+                        and pending.get("trace") is not None
+                    ):
+                        self._voice_prediction_corrections[
+                            guild.id
+                        ] = {
+                            "amount": correction,
+                            "action": str(action),
+                            "trace": pending["trace"],
+                            "prediction_error": error,
+                            "source": source,
+                        }
+                    self._voice_prediction_pending.pop(
+                        guild.id,
+                        None,
+                    )
 
     def _set_reinforceable(
         self,
@@ -3053,6 +3162,33 @@ class MuchaClient(discord.Client):
     ) -> None:
         now = time.monotonic() if now is None else now
         self._voice_last_visit[(int(guild_id), int(channel_id))] = now
+
+    @staticmethod
+    def _voice_prediction_context(
+        *,
+        connected: bool,
+        social_need: float,
+        social_fatigue: float,
+        habituation: float,
+        exploration: float,
+        human_count: int,
+        alternatives: int,
+    ) -> str:
+        def bucket(value: float) -> int:
+            return max(
+                0,
+                min(3, int(float(value) * 4.0)),
+            )
+
+        return (
+            f"{'in' if connected else 'out'}"
+            f"|need={bucket(social_need)}"
+            f"|fatigue={bucket(social_fatigue)}"
+            f"|hab={bucket(habituation)}"
+            f"|explore={bucket(exploration)}"
+            f"|humans={min(4, max(0, int(human_count)))}"
+            f"|alts={min(4, max(0, int(alternatives)))}"
+        )
 
     def _voice_homeostasis_levels(
         self,
@@ -5910,6 +6046,12 @@ class MuchaClient(discord.Client):
             "habituation_suppression": 0.0,
             "exploration_drive_level": 0.0,
             "homeostasis_guided": {},
+            "prediction_context": None,
+            "prediction_expected": {},
+            "predicted_reward": 0.0,
+            "prediction_error": None,
+            "prediction_correction_applied": 0.0,
+            "episodic_memory_size": self.voice_episodes.size(),
             "social_drive_stay_punished": False,
             "social_drive_stay_punish_amount": 0.0,
             "social_join_reward": 0.0,
@@ -6252,6 +6394,42 @@ class MuchaClient(discord.Client):
         debug["exploration_drive_level"] = float(
             homeostasis["exploration"]
         )
+        prediction_context = self._voice_prediction_context(
+            connected=current is not None,
+            social_need=social_drive_level,
+            social_fatigue=float(homeostasis["social_fatigue"]),
+            habituation=float(homeostasis["habituation"]),
+            exploration=float(homeostasis["exploration"]),
+            human_count=(
+                len(current_humans)
+                if current is not None
+                else available_humans
+            ),
+            alternatives=alternatives_count,
+        )
+        prediction_actions = (
+            ("voice_move", "voice_leave", "stay")
+            if current is not None
+            else ("voice_join", "stay")
+        )
+        prediction_expected = (
+            self.voice_episodes.predictions(
+                prediction_context,
+                prediction_actions,
+            )
+            if self.cfg.voice.episodic_prediction_enabled
+            else {}
+        )
+        debug["prediction_context"] = prediction_context
+        debug["prediction_expected"] = dict(prediction_expected)
+        last_prediction = self._voice_prediction_last.get(
+            guild.id
+        )
+        if last_prediction is not None:
+            debug["prediction_error"] = float(
+                last_prediction.get("prediction_error", 0.0)
+            )
+        debug["episodic_memory_size"] = self.voice_episodes.size()
         disliked_strength = max(
             (
                 min(1.0, max(0.0, -float(affinity)))
@@ -6274,6 +6452,26 @@ class MuchaClient(discord.Client):
         voice_context_diag = None
 
         async with self._brain_lock:
+            correction = self._voice_prediction_corrections.pop(
+                guild.id,
+                None,
+            )
+            if correction is not None:
+                self.brain.reward(
+                    float(correction["amount"]),
+                    action=str(correction["action"]),
+                    trace=correction["trace"],
+                )
+                self.brain.step(1)
+                debug["prediction_correction_applied"] = float(
+                    correction["amount"]
+                )
+                self._last_brain_event = (
+                    "PREDICTION ERROR • "
+                    f"{correction['action']} "
+                    f"{float(correction['prediction_error']):+.3f}"
+                )
+
             for ch, humans in channels:
                 sensory_scale = 1.0
                 if current is not None and ch.id == current.id:
@@ -6406,6 +6604,19 @@ class MuchaClient(discord.Client):
                 )
                 scores = dict(brain_decision["scores"])
                 decision_trace = self.brain.capture_learning_trace()
+                chosen_action = str(brain_decision["action"])
+                predicted_reward = float(
+                    prediction_expected.get(chosen_action, 0.0)
+                )
+                debug["predicted_reward"] = predicted_reward
+                if self.cfg.voice.episodic_prediction_enabled:
+                    self._voice_prediction_pending[guild.id] = {
+                        "time": now,
+                        "context": prediction_context,
+                        "action": chosen_action,
+                        "predicted_reward": predicted_reward,
+                        "trace": decision_trace,
+                    }
             else:
                 self.brain.step(2)
                 scores = self.brain.action_scores()
