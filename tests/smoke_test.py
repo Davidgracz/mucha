@@ -43,6 +43,25 @@ def main():
             b._action_output_pools["voice_leave"],
         )
         assert 0 <= b.language_word_score("siema") <= 1
+
+        nm = b.neuromodulator_diagnostics()
+        assert nm["enabled"]
+        assert nm["dopamine"]["neurons"] > 0
+        assert nm["serotonin"]["neurons"] > 0
+        assert nm["octopamine"]["neurons"] > 0
+        for name in ("dopamine", "serotonin", "octopamine"):
+            pool = b._modulator_pools[name]
+            idx = b._backend_indices(pool[:1])
+            b.state[idx] = np.float32(0.9)
+        b.step(2)
+        nm = b.neuromodulator_diagnostics()
+        assert nm["dopamine"]["level"] > 0
+        assert nm["serotonin"]["level"] > 0
+        assert nm["octopamine"]["level"] > 0
+        assert nm["plasticity_gain"] > 1.0
+        assert nm["effective_gain"] > cfg.propagation_gain
+        assert nm["effective_leak"] > cfg.leak
+
         b.mark_language_output("siema mucha dobry tekst")
         output_trace = b.capture_learning_trace(256)
         assert len(output_trace[0]) > 0
@@ -68,6 +87,8 @@ def main():
         assert "FOLLOW ACTIVITY" in CONNECTOME_HTML
         assert "Biological Action Circuits" in CONNECTOME_HTML
         assert "biological-circuits" in CONNECTOME_HTML
+        assert "Neuromodulation v2" in CONNECTOME_HTML
+        assert "neuromod-da" in CONNECTOME_HTML
         assert "Zapisz i zrestartuj Muchę" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
