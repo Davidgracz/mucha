@@ -116,6 +116,8 @@ class OnlineLanguage:
             "min_vocab": self.connectome_word_control_min_vocab,
             "evaluated": 0,
             "mean_score": 0.5,
+            "recurrent_feedback": False,
+            "feedback_words": 0,
         }
         self._last_generator = "none"
         self._init_schema()
