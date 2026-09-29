@@ -1749,6 +1749,33 @@ main{max-width:1500px;margin:auto;padding:22px}
 .top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:12px}
 .brand{display:flex;align-items:center;gap:12px}.fly{font-size:32px}.title h1{font-size:23px;margin:0}.title p{margin:4px 0 0;color:var(--muted);font-size:13px}
 .badges{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.badge{border:1px solid var(--line);background:#0f161f;border-radius:999px;padding:7px 10px;font-size:12px}
+
+/* Details UI v2 — guided diagnostics first, raw telemetry second. */
+.guide-hero{grid-column:1/-1;background:
+  radial-gradient(circle at 0 0,rgba(85,211,195,.10),transparent 34%),
+  radial-gradient(circle at 100% 100%,rgba(110,168,254,.08),transparent 34%),
+  rgba(14,21,30,.98);border:1px solid #294153;border-radius:20px;padding:16px;box-shadow:0 18px 50px rgba(0,0,0,.18)}
+.guide-head{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;margin-bottom:13px}
+.guide-head h2{margin:0;font-size:15px;letter-spacing:-.01em}.guide-head p{margin:4px 0 0;color:var(--muted);font-size:11px;line-height:1.45}
+.guide-mode{display:flex;gap:6px;background:#091018;border:1px solid #1c2b39;border-radius:10px;padding:4px;flex:0 0 auto}
+.guide-mode button{border:0;background:transparent;color:#8fa0b0;border-radius:7px;padding:6px 9px;font-size:10px;font-weight:800;cursor:pointer}
+.guide-mode button.active{background:#18303a;color:#8ff2e4}
+.decision-flow{display:grid;grid-template-columns:1.25fr 24px 1.1fr 24px 1.05fr 24px 1.05fr 24px 1.2fr;gap:6px;align-items:stretch}
+.flow-step{min-width:0;background:#091119;border:1px solid #1d2d3b;border-radius:13px;padding:11px}
+.flow-step small{display:flex;align-items:center;gap:6px;color:#758697;font-size:9px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px}
+.flow-step strong{display:block;font-size:13px;line-height:1.35;word-break:break-word}.flow-step em{display:block;margin-top:5px;color:#7f91a2;font-size:9px;font-style:normal;line-height:1.4}
+.flow-arrow{display:grid;place-items:center;color:#416071;font-size:17px}
+.flow-step.attention{border-color:#315064}.flow-step.brain{border-color:#31465f}.flow-step.decision{border-color:#3a4f4b}.flow-step.action{border-color:#31584f}
+.panel-explainer{grid-column:1/-1;display:flex;align-items:flex-start;gap:10px;background:#0a1219;border:1px dashed #294052;border-radius:13px;padding:10px 12px;color:#9cadbc;font-size:10px;line-height:1.5}
+.panel-explainer b{color:#cfdee9}.panel-explainer .help-dot{margin-top:1px}
+.card{transition:border-color .18s ease,background .18s ease,transform .18s ease}.card:hover{border-color:#30475d}
+.card>h2{display:flex;align-items:center;gap:7px}
+.advanced-card{opacity:.88}.guided-simple .advanced-card:not(.is-collapsible){display:none}
+.help-dot{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;border:1px solid #3a556c;background:#0a131b;color:#8fded3;font:800 9px/1 ui-monospace,SFMono-Regular,Consolas,monospace;cursor:help;vertical-align:middle;flex:0 0 auto;outline:0}
+.help-dot:hover,.help-dot:focus{border-color:var(--accent);color:#d7fff9;background:#11252a}
+.help-tooltip{position:fixed;z-index:9999;width:min(360px,calc(100vw - 24px));background:#071019;border:1px solid #355168;border-radius:13px;padding:12px 13px;box-shadow:0 18px 55px rgba(0,0,0,.55);pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .12s ease,transform .12s ease}
+.help-tooltip.show{opacity:1;transform:none}.help-tooltip .tt-title{font-weight:800;color:#eaf5fc;font-size:12px;margin-bottom:5px}.help-tooltip .tt-body{color:#a9b9c7;font-size:10px;line-height:1.5}.help-tooltip .tt-read{margin-top:7px;padding-top:7px;border-top:1px solid #1d2d3a;color:#77daca;font-size:10px;line-height:1.45}
+.metric>span:first-child,.kpi small,.voice-kpi small,.voice-box h3,.attention-panel h3,th{display:flex;align-items:center;gap:5px}
 .detail-nav{position:sticky;top:8px;z-index:30;display:flex;align-items:center;gap:7px;overflow-x:auto;margin:0 0 18px;padding:8px;background:rgba(10,15,21,.88);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.18)}
 .detail-nav a{flex:0 0 auto;color:#aebdcb;text-decoration:none;font-size:11px;font-weight:700;padding:8px 10px;border-radius:9px;border:1px solid transparent}
 .detail-nav a:hover{color:var(--text);background:#111b25;border-color:#26384a}.detail-nav a:first-child{color:#07110e;background:var(--accent)}
@@ -1836,9 +1863,10 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .legend{display:flex;gap:15px;flex-wrap:wrap;color:var(--muted);font-size:12px;margin-top:8px}
 .legend span::before{content:"";display:inline-block;width:10px;height:3px;margin-right:5px;vertical-align:middle;border-radius:2px}
 .legend .reward-line::before{background:var(--warn)}.legend .trace-line::before{background:var(--accent)}
+@media(max-width:1180px){.decision-flow{grid-template-columns:1fr 20px 1fr 20px 1fr}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:none}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:span 2}}
 @media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.span3{grid-column:span 2}.voice-hero{grid-template-columns:1fr 1fr}.voice-hero-main{grid-column:span 2}.voice-groups{grid-template-columns:1fr 1fr}.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:span 2}}
 @media(max-width:900px){.voice-summary,.learning-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.voice-tech-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.attention-shell{grid-template-columns:1fr 1fr}.attention-shell>.attention-panel:last-child{grid-column:span 2}}
-@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
+@media(max-width:700px){main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg);height:14px}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:grid}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:auto}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
 </style>
 </head>
 <body>
@@ -1869,7 +1897,31 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
   </nav>
 
   <section class="grid">
-    <div class="section-heading" id="teraz"><div><span class="section-no">01 / TERAZ</span><h2>Co dzieje się w tej chwili</h2><p>Najważniejszy stan connectomu, wyjścia i gotowość Muchy — bez wchodzenia w debug.</p></div></div>
+    <div class="section-heading" id="teraz"><div><span class="section-no">01 / TERAZ</span><h2>Co dzieje się w tej chwili</h2><p>Najpierw zobacz ścieżkę decyzji. Dopiero potem schodź do parametrów technicznych.</p></div></div>
+
+    <div class="guide-hero">
+      <div class="guide-head">
+        <div><h2>Jak Mucha doszła do tego, co robi teraz?</h2><p>Pięć kroków od bodźca do akcji. Najedź na <span class="help-dot" data-help-key="decision-flow" tabindex="0">?</span>, aby zobaczyć jak czytać ten widok.</p></div>
+        <div class="guide-mode" aria-label="Poziom szczegółowości">
+          <button type="button" id="mode-simple" class="active">PROSTY</button>
+          <button type="button" id="mode-full">PEŁNY</button>
+        </div>
+      </div>
+      <div class="decision-flow">
+        <div class="flow-step"><small>1 • BODZIEC <span class="help-dot" data-help-key="last-event" tabindex="0">?</span></small><strong id="flow-event">—</strong><em>Co właśnie dotarło do Muchy.</em></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step attention"><small>2 • UWAGA <span class="help-dot" data-help-key="attention-score" tabindex="0">?</span></small><strong id="flow-attention">—</strong><em>Na czym utrzymuje się working memory.</em></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step brain"><small>3 • CONNECTOME <span class="help-dot" data-help-key="brain-state" tabindex="0">?</span></small><strong id="flow-brain">—</strong><em>Dominujący stan neuronalny.</em></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step decision"><small>4 • READOUT <span class="help-dot" data-help-key="readout" tabindex="0">?</span></small><strong id="flow-readout">—</strong><em>Najsilniejsze wyjście zachowania.</em></div>
+        <div class="flow-arrow">→</div>
+        <div class="flow-step action"><small>5 • AKCJA <span class="help-dot" data-help-key="last-action" tabindex="0">?</span></small><strong id="flow-action">—</strong><em>Co faktycznie wykonała.</em></div>
+      </div>
+    </div>
+
+    <div class="panel-explainer"><span class="help-dot" data-help-key="simple-mode" tabindex="0">?</span><div><b>Tryb PROSTY</b> ukrywa część surowej telemetrii. Niczego nie wyłącza w Musze — zmienia tylko sposób wyświetlania. Tryb PEŁNY pokazuje cały debug.</div></div>
+
     <div class="card snapshot-card">
       <h2>Stan mózgu</h2>
       <div class="metric"><span>Neurony</span><strong id="neurons">—</strong></div>
