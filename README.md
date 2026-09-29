@@ -613,11 +613,50 @@ state/brain_state.npz
 
 i jest widoczny na żywo w `/details` jako **Learned Action Policy**.
 
+# Semantic Memory
+
+Powtarzające się epizody voice są teraz uogólniane do pamięci semantycznej.
+
+Zamiast przechowywać wyłącznie konkretne sceny:
+
+```text
+kanał X + użytkownicy A/B + akcja JOIN + reward
+```
+
+Mucha buduje też bardziej ogólne relacje:
+
+```text
+użytkownik → akcja → typowy rezultat
+kanał → akcja → typowy rezultat
+stan homeostatyczny → akcja → typowy rezultat
+użytkownik + kanał → akcja → typowy rezultat
+```
+
+Recall używa confidence zależnego od liczby obserwacji i zgodności doświadczeń. Dopiero po minimalnej liczbie podobnych zdarzeń uogólnienie może wrócić do mózgu.
+
+```text
+semantic expected reward
+× confidence
+= signed semantic signal
+→ action-guided sensory neurons
+→ real FAFB propagation
+→ action readout
+```
+
+Dodatni sygnał pobudza sensoryczną drogę do danej akcji, a ujemny ją hamuje. Kod nie dodaje semantycznego bonusu bezpośrednio do action score.
+
+Dane semantyczne są zapisywane w tej samej bazie SQLite co epizody:
+
+```text
+state/voice_episodes.sqlite3
+```
+
+Po pierwszej aktualizacji pusta tabela semantyczna jest bootstrapowana z części istniejących epizodów, więc wcześniejsze doświadczenia mogą od razu zacząć tworzyć uogólnienia.
+
 # Najbliższy kierunek rozwoju
 
 Dalsze kierunki:
 
-- pamięć semantyczna powstająca z epizodów,
 - curiosity / uncertainty driven exploration,
 - bogatsze sensory voice,
 - sleep / offline consolidation,
