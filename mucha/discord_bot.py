@@ -393,6 +393,10 @@ class MuchaClient(discord.Client):
             "internal_state_arousal_gain",
             "internal_state_stress_gain",
             "internal_state_satiety_stability_gain",
+            "action_policy_enabled",
+            "action_policy_lr",
+            "action_policy_max_bias",
+            "action_policy_decay",
         ]
         language_fields = [
             "min_chars_before_speaking",
@@ -704,6 +708,18 @@ class MuchaClient(discord.Client):
             ),
             ("brain", "internal_state_satiety_stability_gain"): (
                 float, 0.0, 0.5
+            ),
+            ("brain", "action_policy_enabled"): (
+                bool, None, None
+            ),
+            ("brain", "action_policy_lr"): (
+                float, 0.0, 1.0
+            ),
+            ("brain", "action_policy_max_bias"): (
+                float, 0.0, 3.0
+            ),
+            ("brain", "action_policy_decay"): (
+                float, 0.90, 1.0
             ),
             ("language", "min_chars_before_speaking"): (int, 100, 1000000),
             ("language", "min_unique_chars_before_speaking"): (int, 5, 500),
