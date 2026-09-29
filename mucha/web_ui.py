@@ -132,6 +132,15 @@ const groups=[
   ["connectome_word_feedback_steps","Ticki mózgu na słowo","number",1,1,8,"Ile kroków connectomu wykonuje Mucha po każdym wybranym słowie."],
   ["connectome_word_feedback_magnitude","Siła feedbacku słowa","number",0.01,0,1,"Jak mocno wybrane słowo zmienia stan connectomu przed wyborem kolejnego."]
  ]},
+ {id:"attention",title:"Attention / Working Memory",desc:"Krótkotrwała uwaga utrzymuje osoby, kanały i tematy jako zanikający kontekst, który jest ponownie podawany do connectomu.",section:"behavior",open:true,fields:[
+  ["attention_enabled","Attention + working memory","bool",0,0,0,"Włącza krótkotrwały stan uwagi i jego neuronalną reiniekcję."],
+  ["attention_half_life_seconds","Półokres uwagi","number",5,5,3600,"Po ilu sekundach siła nieodświeżanego elementu uwagi spada o połowę."],
+  ["working_memory_seconds","Okno working memory","number",10,10,3600,"Jak długo ostatnie sceny tekst/voice pozostają dostępne jako aktywny kontekst."],
+  ["attention_max_items","Maks. elementów uwagi","number",1,1,32,"Ile najsilniejszych osób, kanałów i tematów może być jednocześnie reiniektowanych."],
+  ["attention_reinject_magnitude","Siła reiniekcji uwagi","number",0.01,0,1.5,"Jak mocno aktywny kontekst wraca do sensorycznych populacji connectomu przy idle tick."],
+  ["attention_topic_words","Słów tematu na scenę","number",1,1,12,"Ile istotnych słów z wiadomości może utworzyć krótkotrwałe ślady topic."],
+  ["attention_mention_boost","Boost uwagi po @Mucha","number",0.05,0,1,"Dodatkowa siła focusu osoby, która bezpośrednio zwraca się do Muchy."]
+ ]},
  {id:"behavior",title:"Zachowanie",desc:"Progi mówienia, reakcji i podstawowe parametry uczenia społecznego.",section:"behavior",open:true,fields:[
   ["speak_threshold","Próg mówienia","number",0.01,0,1,"Niżej = Mucha łatwiej decyduje się mówić."],
   ["reaction_threshold","Próg reakcji emoji","number",0.01,0,1,"Niżej = częściej reaguje emoji."],
@@ -1803,6 +1812,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .voice-table-wrap table{min-width:820px}.voice-table-wrap th{background:#0a1118;position:sticky;top:0}
 .voice-server-sep{height:1px;background:linear-gradient(90deg,transparent,#294153,transparent);margin:2px 0}
 
+.attention-shell{display:grid;grid-template-columns:minmax(220px,.8fr) minmax(0,1.4fr) minmax(0,1.2fr);gap:10px}
+.attention-panel{background:#0c131b;border:1px solid #1d2936;border-radius:12px;padding:11px;min-width:0}
+.attention-panel h3{margin:0 0 9px;font-size:10px;text-transform:uppercase;letter-spacing:.08em;color:#a9b8c8}
+.attention-focus{font-size:20px;font-weight:800;line-height:1.25;word-break:break-word}.attention-focus small{display:block;color:var(--muted);font-size:10px;font-weight:500;margin-top:6px}
+.attention-row{display:grid;grid-template-columns:95px 1fr 54px;gap:8px;align-items:center;margin:7px 0;font-size:10px}.attention-row b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.attention-row output{text-align:right;color:#c8d7e4;font-variant-numeric:tabular-nums}
+.attention-memory{display:flex;flex-direction:column;gap:6px;max-height:230px;overflow:auto}.attention-memory-row{background:#081018;border:1px solid #192735;border-radius:9px;padding:7px 8px;font-size:10px;line-height:1.45}.attention-memory-row b{color:#cfe1ef}.attention-memory-row small{color:var(--muted);display:block;margin-bottom:3px}.attention-memory-row span{color:#b6c5d1}
 .reason{padding:11px 12px;border-radius:12px;background:#0c131b;border:1px solid #1d2936;margin-bottom:12px}
 .reason b{color:var(--accent)}
 .ok{color:var(--good)}.no{color:var(--bad)}.warn{color:var(--warn)}
@@ -1822,8 +1837,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .legend span::before{content:"";display:inline-block;width:10px;height:3px;margin-right:5px;vertical-align:middle;border-radius:2px}
 .legend .reward-line::before{background:var(--warn)}.legend .trace-line::before{background:var(--accent)}
 @media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.span3{grid-column:span 2}.voice-hero{grid-template-columns:1fr 1fr}.voice-hero-main{grid-column:span 2}.voice-groups{grid-template-columns:1fr 1fr}.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:span 2}}
-@media(max-width:900px){.voice-summary,.learning-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.voice-tech-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
-@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
+@media(max-width:900px){.voice-summary,.learning-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.voice-tech-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.attention-shell{grid-template-columns:1fr 1fr}.attention-shell>.attention-panel:last-child{grid-column:span 2}}
+@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
 </style>
 </head>
 <body>
@@ -1886,6 +1901,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="metric"><span>Gotowa pisać</span><strong id="ready">—</strong></div>
       <div class="metric"><span>Voice</span><strong id="voice">—</strong></div>
       <div class="metric"><span>Stan</span><strong id="paused">—</strong></div>
+    </div>
+
+    <div class="card span3 focus-card">
+      <h2>Attention / Working Memory</h2>
+      <div id="attention-debug"><div class="reason">Czekam na pierwszy kontekst tekstowy lub voice…</div></div>
     </div>
 
     <div class="section-heading" id="voice-section"><div><span class="section-no">02 / VOICE</span><h2>Voice i decyzje</h2><p>Najpierw decyzja, potem jej przyczyna: readouty, potrzeby, pamięć, reward i zagrożenia.</p></div></div>
@@ -2134,6 +2154,47 @@ function renderSttDebug(s){
   $("stt-debug-text").textContent=s.text||"—";
   const err=s.error||"";
   $("stt-debug-error").innerHTML=err?'<b class="no">BŁĄD:</b> '+esc(err):'Brak błędów STT.';
+}
+
+function renderAttention(a){
+  const root=$("attention-debug");
+  a=a||{};
+  if(!a.enabled){
+    root.innerHTML='<div class="reason">Attention / Working Memory jest wyłączone w konfiguracji.</div>';
+    return;
+  }
+  const guilds=(a.guilds||[]).filter(g=>(g.items||[]).length||(g.working_memory||[]).length);
+  if(!guilds.length){
+    root.innerHTML='<div class="reason">Brak aktywnego kontekstu. Pierwsza wiadomość tekstowa albo transkrypcja voice utworzy ślad uwagi.</div>';
+    return;
+  }
+  root.innerHTML=guilds.map(g=>{
+    const focus=g.focus||null;
+    const items=(g.items||[]).slice(0,8);
+    const memories=(g.working_memory||[]).slice(0,5);
+    const focusText=focus
+      ? '<div class="attention-focus">'+esc(focus.label||focus.key||"—")+
+        '<small>'+esc(focus.kind||"item")+' • score '+Number(focus.score||0).toFixed(3)+
+        ' • neural '+Number(focus.neural||0).toFixed(3)+' • age '+Number(focus.age||0).toFixed(0)+' s</small></div>'
+      : '<div class="attention-focus">—<small>brak dominującego focusu</small></div>';
+    const itemRows=items.map(x=>{
+      const width=Math.max(0,Math.min(100,Number(x.score||0)*100));
+      return '<div class="attention-row"><b title="'+esc(x.key||"")+'">'+esc(x.label||x.key||"—")+'</b>'+
+        '<div class="track"><div class="fill" style="width:'+width.toFixed(1)+'%"></div></div>'+
+        '<output>'+Number(x.score||0).toFixed(2)+'</output></div>';
+    }).join("")||'<div class="voice-note">Brak elementów.</div>';
+    const memoryRows=memories.map(m=>
+      '<div class="attention-memory-row"><small>'+esc(m.source||"—")+' • '+esc(m.user||"—")+
+      ' • '+esc(m.channel||"—")+' • '+Number(m.age||0).toFixed(0)+' s</small><span>'+esc(m.text||"—")+'</span>'+
+      ((m.topics||[]).length?'<div class="voice-note">topics: '+esc((m.topics||[]).join(" • "))+'</div>':'')+'</div>'
+    ).join("")||'<div class="voice-note">Brak working memory.</div>';
+    return '<div class="voice-note" style="margin:0 0 7px"><b>'+esc(g.guild||"serwer")+'</b> • half-life '+Number(a.half_life_seconds||0).toFixed(0)+' s • memory '+Number(a.working_memory_seconds||0).toFixed(0)+' s</div>'+
+      '<div class="attention-shell">'+
+        '<div class="attention-panel"><h3>🎯 Focus</h3>'+focusText+'</div>'+
+        '<div class="attention-panel"><h3>🧠 Aktywna uwaga</h3>'+itemRows+'</div>'+
+        '<div class="attention-panel"><h3>🗂 Working memory</h3><div class="attention-memory">'+memoryRows+'</div></div>'+
+      '</div>';
+  }).join('<div class="voice-server-sep" style="margin:12px 0"></div>');
 }
 
 function renderVoiceDebug(items){
@@ -2634,6 +2695,7 @@ async function update(){
     drawRewardChart(s.reward_history||[],d.reward_trace);
     renderAudioDebug(s.audio_debug||{});
     renderSttDebug(s.stt_debug||{});
+    renderAttention(s.attention||{});
     renderVoiceDebug(s.voice_debug||[]);
     $("top").innerHTML=(s.top_neurons||[]).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+x[0]+'</td><td>'+(x[1]>=0?"+":"")+Number(x[1]).toFixed(5)+'</td><td>'+Math.abs(x[1]).toFixed(5)+'</td></tr>').join("");
     history.push({mean:Number(d.mean_abs),max:Number(d.max_abs)});while(history.length>maxHistory)history.shift();draw();
