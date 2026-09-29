@@ -2211,8 +2211,46 @@ const HELP={
   "voice_move":{title:"voice_move",body:"Readout skłonności do zmiany kanału voice.",read:"Może rosnąć po threat, fatigue lub habituation przez wpływ sensoryczny na connectome."},
   "voice_leave":{title:"voice_leave",body:"Readout skłonności do opuszczenia voice.",read:"Konkuruje z join/move/stay."},
   "explore":{title:"explore",body:"Readout eksploracyjny wpływający na bardziej nowe/niepewne wybory.",read:"Wyższy wynik oznacza większą tendencję do eksploracji zamiast utrwalonego zachowania."},
-  "stay":{title:"stay",body:"Readout pozostania w obecnym stanie/kanał voice.",read:"Może być osłabiany przez overstay, threat i social fatigue."}
+  "stay":{title:"stay",body:"Readout pozostania w obecnym stanie/kanał voice.",read:"Może być osłabiany przez overstay, threat i social fatigue."},
+  "attention-neural":{title:"Neural attention",body:"Czysty neuronalny odczyt tego elementu uwagi z przypisanych populacji sensory/output.",read:"0.5 jest w przybliżeniu neutralne. Wynik powyżej 0.5 wzmacnia chwilowy ślad, poniżej 0.5 go osłabia."},
+  "attention-age":{title:"Age uwagi",body:"Czas od ostatniego odświeżenia elementu attention.",read:"Im starszy element, tym bardziej jego ślad zanika zgodnie z attention_half_life_seconds."},
+  "social-need":{title:"SOCIAL NEED",body:"Wewnętrzny stan reprezentujący brak kontaktu społecznego / motywację do szukania ludzi.",read:"To aktywność attractora po propagacji, nie ręczny bonus do voice_join."},
+  "curiosity":{title:"CURIOSITY",body:"Wewnętrzny stan ciekawości i eksploracji.",read:"Może być pobudzany przez nowe sytuacje, pytania i brak znajomości środowiska."},
+  "stress":{title:"STRESS",body:"Wewnętrzny stan związany z threat, odrzuceniem i niekorzystnymi bodźcami.",read:"Wyższy poziom oznacza silniejszą aktywację zespołu STRESS, nie diagnozę emocji."},
+  "satiety":{title:"SATIETY",body:"Wewnętrzny stan nasycenia/stabilizacji po kontakcie i nagrodzie.",read:"Może przeciwdziałać ciągłemu szukaniu nowych bodźców."},
+  "arousal":{title:"AROUSAL",body:"Globalny stan pobudzenia neuronalnego używany także przy generowaniu języka.",read:"Wyższy poziom może zwiększać reaktywność i losowość generatora."},
+  "social-drive-cue":{title:"Social need cue",body:"Sensoryczny bodziec informujący connectome, że Mucha długo pozostaje poza voice przy dostępnych ludziach.",read:"To wejście do sieci. Nie wymusza join."},
+  "social-fatigue-cue":{title:"Social fatigue cue",body:"Sensoryczny sygnał zmęczenia długim pobytem z ludźmi na voice.",read:"Ma zwiększać szansę move/leave poprzez connectome, a nie przez bezpośredni if."},
+  "habituation-cue":{title:"Habituation cue",body:"Sygnał przyzwyczajenia do powtarzającej się sceny/kanału.",read:"Rośnie przy braku zmian i może osłabiać atrakcyjność pozostawania."},
+  "exploration-cue":{title:"Exploration cue",body:"Sensoryczny sygnał zachęcający do sprawdzenia innych kanałów lub nowych sytuacji.",read:"Jego wpływ zależy od rzeczywistych ścieżek connectome do readoutów."},
+  "predicted-reward":{title:"Przewidywany reward",body:"Oczekiwana wartość nagrody dla bieżącej sceny/akcji wyliczona z pamięci epizodycznej.",read:"Dodatni oznacza, że podobne sytuacje wcześniej kończyły się korzystniej."},
+  "prediction-error":{title:"Prediction error",body:"Różnica między faktycznym rewardem a tym, czego Mucha spodziewała się na podstawie pamięci.",read:"Dodatni = było lepiej niż oczekiwano; ujemny = gorzej. To ważny sygnał uczenia."},
+  "prediction-correction":{title:"Korekta connectomu",body:"Wielkość korekty neuronalnej zastosowanej po błędzie predykcji.",read:"Im większy błąd i dostępny ślad, tym mocniej doświadczenie może zmienić przyszłe zachowanie."},
+  "episodic":{title:"Epizody",body:"Liczba zapisanych doświadczeń/scen w pamięci epizodycznej.",read:"Epizod łączy kontekst, akcję, przewidywany i faktyczny reward."},
+  "credit-queue":{title:"Credit queue",body:"Kolejka niedawnych decyzji czekających na późniejszy reward/punish.",read:"Pozwala przypisać feedback do akcji, która wydarzyła się wcześniej, zamiast tylko do ostatniego ticka."},
+  "memory-replay":{title:"Memory Replay",body:"Odtwarzanie ważnych epizodów podczas ciszy jako słabszych bodźców dla connectomu.",read:"Ma utrwalać powtarzające się doświadczenia i wygaszać przypadkowe ślady."},
+  "memory-scenes":{title:"Memory scenes",body:"Liczba unikalnych scen/kontekstów utrzymywanych przez pamięć epizodyczną.",read:"Kilka epizodów może należeć do tej samej sceny."},
+  "consolidated":{title:"Consolidated",body:"Liczba scen, których strength przekroczył próg konsolidacji.",read:"Takie wspomnienia są bardziej odporne na zapominanie i częściej trafiają do replay."},
+  "reward-opportunity":{title:"Reward opportunity",body:"Kanał/scena oznaczona jako potencjalna możliwość zdobycia pozytywnego reinforcement.",read:"To zachęta sensoryczna; nadal connectome musi wyprodukować odpowiednią decyzję."},
+  "cue-effective":{title:"Cue effective",body:"Efektywna siła bodźca reward opportunity po uwzględnieniu bieżącego stanu i parametrów.",read:"Wyższa wartość oznacza silniejszy sygnał wejściowy skierowany w stronę JOIN."},
+  "threat":{title:"Threat",body:"Poziom aktywnego zagrożenia voice, np. overstay albo Chaser.",read:"Wyższy threat pobudza ścieżki ucieczki i może zwiększać move/leave."},
+  "overstay":{title:"Overstay",body:"Czas przebywania na jednym voice ponad limit komfortowego dwell.",read:"Po przekroczeniu limitu może pojawić się kara za stay i rosnący threat."},
+  "chaser":{title:"Chaser",body:"Stan wykrytego bota-predatora Mucha Chaser.",read:"ACTIVE oznacza aktywną pogoń/panic; wtedy część normalnych ograniczeń ruchu jest rozluźniana."},
+  "propagation":{title:"Propagation",body:"Liczba ticków connectomu wykonanych po podaniu danego bodźca motywacyjnego.",read:"Więcej ticków daje sygnałowi więcej czasu na przejście realnymi krawędziami FAFB."},
+  "guided-reach":{title:"Guided reach",body:"Miara strukturalnego dotarcia wybranego sensory input do konkretnego readoutu przez połączenia connectomu.",read:"Wyższe reach sugeruje, że bodziec ma biologicznie-spójną drogę do danego outputu w modelu."},
+  "effective-move":{title:"Effective move",body:"Końcowy wynik używany przy decyzji o zmianie voice po uwzględnieniu dynamicznych modyfikatorów.",read:"Porównaj z surowym voice_move, żeby zobaczyć wpływ threat/homeostazy."},
+  "effective-margin":{title:"Effective margin",body:"Aktualny wymagany margines przewagi move nad pozostaniem.",read:"Niższy margines ułatwia ucieczkę w sytuacji zagrożenia."}
 };
+
+const HELP_LABEL_KEYS={
+  "SOCIAL NEED":"social-need","CURIOSITY":"curiosity","STRESS":"stress","SATIETY":"satiety","AROUSAL":"arousal",
+  "Social need cue":"social-drive-cue","Social fatigue cue":"social-fatigue-cue","Habituation cue":"habituation-cue","Exploration cue":"exploration-cue",
+  "Przewidywany reward":"predicted-reward","Prediction error":"prediction-error","Korekta connectomu":"prediction-correction",
+  "Epizody":"episodic","Credit queue":"credit-queue","Replay":"memory-replay","Memory scenes":"memory-scenes","Consolidated":"consolidated",
+  "Reward opportunity":"reward-opportunity","Cue effective":"cue-effective","Threat":"threat","Overstay":"overstay","Chaser":"chaser",
+  "Propagation":"propagation","Guided reach":"guided-reach","Effective move":"effective-move","Effective margin":"effective-margin"
+};
+function helpKeyForLabel(label){return HELP_LABEL_KEYS[String(label||"").trim()]||null}
 
 function helpDot(key){
   return HELP[key]?'<span class="help-dot" data-help-key="'+esc(key)+'" tabindex="0">?</span>':'';
@@ -2312,8 +2350,9 @@ function renderAttention(a){
     const memories=(g.working_memory||[]).slice(0,5);
     const focusText=focus
       ? '<div class="attention-focus">'+esc(focus.label||focus.key||"—")+
-        '<small>'+esc(focus.kind||"item")+' • score '+Number(focus.score||0).toFixed(3)+
-        ' • neural '+Number(focus.neural||0).toFixed(3)+' • age '+Number(focus.age||0).toFixed(0)+' s</small></div>'
+        '<small>'+esc(focus.kind||"item")+' • score '+Number(focus.score||0).toFixed(3)+' '+helpDot("attention-score")+
+        ' • neural '+Number(focus.neural||0).toFixed(3)+' '+helpDot("attention-neural")+
+        ' • age '+Number(focus.age||0).toFixed(0)+' s '+helpDot("attention-age")+'</small></div>'
       : '<div class="attention-focus">—<small>brak dominującego focusu</small></div>';
     const itemRows=items.map(x=>{
       const width=Math.max(0,Math.min(100,Number(x.score||0)*100));
@@ -2348,16 +2387,20 @@ function renderVoiceDebug(items){
   }
 
   const pct=v=>Math.max(0,Math.min(100,Number(v||0)*100));
-  const drive=(label,value,tone="")=>
-    '<div class="drive-row"><label>'+esc(label)+'</label>'+
-    '<div class="drive-track"><div class="drive-fill '+tone+'" style="width:'+pct(value).toFixed(1)+'%"></div></div>'+
-    '<output>'+pct(value).toFixed(0)+'%</output></div>';
+  const drive=(label,value,tone="")=>{
+    const hk=helpKeyForLabel(label);
+    return '<div class="drive-row"><label>'+esc(label)+(hk?' '+helpDot(hk):'')+'</label>'+
+      '<div class="drive-track"><div class="drive-fill '+tone+'" style="width:'+pct(value).toFixed(1)+'%"></div></div>'+
+      '<output>'+pct(value).toFixed(0)+'%</output></div>';
+  };
   const score=(label,value,active=false)=>
     '<div class="voice-score"><span class="'+(active?'dominant':'')+'">'+(active?'▶ ':'')+esc(label)+'</span>'+
     '<div class="track"><div class="fill" style="width:'+pct(value).toFixed(1)+'%"></div></div>'+
     '<span class="val">'+Number(value||0).toFixed(3)+'</span></div>';
-  const kpi=(label,value,cls="")=>
-    '<div class="voice-kpi"><small>'+esc(label)+'</small><strong class="'+cls+'">'+value+'</strong></div>';
+  const kpi=(label,value,cls="")=>{
+    const hk=helpKeyForLabel(label);
+    return '<div class="voice-kpi"><small>'+esc(label)+(hk?' '+helpDot(hk):'')+'</small><strong class="'+cls+'">'+value+'</strong></div>';
+  };
 
   root.innerHTML=items.map(v=>{
     const s=v.scores||{},bd=v.brain_decision||{},neural=!!v.connectome_voice_control;
