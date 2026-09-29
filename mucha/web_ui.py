@@ -104,6 +104,12 @@ const groups=[
   ["internal_state_stress_gain","STRESS → propagation","number",0.01,0,1.5,"Jak mocno neuronalny STRESS zwiększa propagation gain i pobudzenie."],
   ["internal_state_satiety_stability_gain","SATIETY → stabilność","number",0.01,0,0.5,"Jak mocno neuronalny SATIETY zwiększa leak/stabilność stanu sieci."]
  ]},
+ {id:"action-policy",title:"Learned Action Policy",desc:"Reward i punish uczą osobny bias każdej akcji. Connectome nadal daje surowy readout, a policy tylko przesuwa jego skuteczną wartość w ograniczonym zakresie.",section:"brain",open:true,fields:[
+  ["action_policy_enabled","Learned action policy","bool",0,0,0,"Włącza trwałe uczenie preferencji akcji na podstawie reward/punish."],
+  ["action_policy_lr","Policy learning rate","number",0.005,0,1,"Jak szybko reward zmienia bias wybranej akcji."],
+  ["action_policy_max_bias","Maks. |policy bias|","number",0.01,0,3,"Ogranicza jak mocno policy może przesunąć decyzję connectomu."],
+  ["action_policy_decay","Policy decay","number",0.0001,0.9,1,"Przy każdym rewardzie stare biasy są lekko wygaszane. 1.0 = bez wygaszania."]
+ ]},
  {id:"language-main",title:"Język i odpowiedzi",desc:"Kiedy Mucha może mówić i jak długie odpowiedzi generuje.",section:"language",open:true,fields:[
   ["min_chars_before_speaking","Minimum danych przed mówieniem","number",50,100,1000000,"Ile poznanych znaków musi mieć model zanim zacznie odpowiadać."],
   ["min_unique_chars_before_speaking","Minimum unikalnych znaków","number",1,5,500,"Chroni przed startem na bardzo ubogim materiale."],
@@ -1906,6 +1912,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .attention-focus{font-size:20px;font-weight:800;line-height:1.25;word-break:break-word}.attention-focus small{display:block;color:var(--muted);font-size:10px;font-weight:500;margin-top:6px}
 .attention-row{display:grid;grid-template-columns:95px 1fr 54px;gap:8px;align-items:center;margin:7px 0;font-size:10px}.attention-row b{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.attention-row output{text-align:right;color:#c8d7e4;font-variant-numeric:tabular-nums}
 .attention-memory{display:flex;flex-direction:column;gap:6px;max-height:230px;overflow:auto}.attention-memory-row{background:#081018;border:1px solid #192735;border-radius:9px;padding:7px 8px;font-size:10px;line-height:1.45}.attention-memory-row b{color:#cfe1ef}.attention-memory-row small{color:var(--muted);display:block;margin-bottom:3px}.attention-memory-row span{color:#b6c5d1}
+.policy-wrap{overflow-x:auto;border:1px solid #1d2936;border-radius:12px;background:#081018}.policy-table{width:100%;min-width:860px;border-collapse:collapse;font-size:10px}.policy-table th,.policy-table td{padding:8px 9px;border-bottom:1px solid #172735;text-align:right}.policy-table th:first-child,.policy-table td:first-child{text-align:left}.policy-table th{color:#8296a8;background:#0b141d;text-transform:uppercase;letter-spacing:.06em;font-size:8px}.policy-action{font-weight:800;color:#d8e8f3}.policy-pos{color:var(--good)}.policy-neg{color:var(--bad)}.policy-gates{display:flex;gap:7px;flex-wrap:wrap;margin:0 0 9px}.policy-gate{border:1px solid #274056;background:#0b141d;border-radius:999px;padding:5px 8px;font-size:9px;color:#9eb1c2}.policy-gate.pass{border-color:#2f6550;color:#79dfa3}.policy-gate.fail{border-color:#653b42;color:#e9979f}
 .reason{padding:11px 12px;border-radius:12px;background:#0c131b;border:1px solid #1d2936;margin-bottom:12px}
 .reason b{color:var(--accent)}
 .ok{color:var(--good)}.no{color:var(--bad)}.warn{color:var(--warn)}
@@ -2019,6 +2026,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     <div class="card span3 focus-card">
       <h2>Attention / Working Memory <span class="help-dot" data-help-key="attention" tabindex="0">?</span></h2>
       <div id="attention-debug"><div class="reason">Czekam na pierwszy kontekst tekstowy lub voice…</div></div>
+    </div>
+
+    <div class="card span3 focus-card">
+      <h2>Learned Action Policy <span class="help-dot" data-help-key="action-policy" tabindex="0">?</span></h2>
+      <div id="action-policy-debug"><div class="reason">Policy czeka na dane connectomu i pierwszy reward/punish…</div></div>
     </div>
 
     <div class="section-heading" id="voice-section"><div><span class="section-no">02 / VOICE</span><h2>Voice i decyzje</h2><p>Najpierw decyzja, potem jej przyczyna: readouty, potrzeby, pamięć, reward i zagrożenia.</p></div></div>
@@ -2240,6 +2252,7 @@ const HELP={
   "last-event":{title:"Ostatni bodziec",body:"Ostatnie zdarzenie zapisane jako wejście dla runtime'u, np. tekst, STT, reward, voice albo threat.",read:"To punkt startowy, gdy chcesz sprawdzić co poprzedziło zmianę zachowania."},
   "attention":{title:"Attention / Working Memory",body:"Krótkotrwały kontekst osób, kanałów i tematów. Ślad zanika, a aktywny focus jest ponownie podawany do connectomu.",read:"Attention jest chwilowe. Affinity jest relacją długoterminową. Working memory pokazuje ostatnie sceny nadal dostępne jako kontekst."},
   "attention-score":{title:"Attention score",body:"Połączenie świeżości krótkotrwałego śladu z neuronalnym attention_score odczytanym z connectomu.",read:"Wyższy score = większa aktualna dominacja tego elementu w kontekście. To nie jest reward."},
+  "action-policy":{title:"Learned Action Policy",body:"Warstwa ucząca się na reward/punish, jak łatwo dany raw readout connectomu ma przechodzić w realną akcję. Bias jest trwały i zapisuje się w brain_state.npz.",read:"raw = sam connectome. bias = doświadczenie. effective = raw po policy. Dodatni bias ułatwia akcję, ujemny ją hamuje. Dla speak/react pokazujemy też learned raw threshold."},
   "brain-state":{title:"Stan connectomu",body:"Bieżąca aktywność całej sieci po bodźcach, propagacji, plastyczności i internal states. Stan nie resetuje się po każdym evencie.",read:"Globalna aktywność mówi jak mocno sieć pracuje, ale do konkretnej decyzji patrz na readouty."},
   "readout":{title:"Readout",body:"Wartość 0–1 z populacji neuronów wyjściowych przypisanej do akcji speak/react/join/move/leave/explore/stay.",read:"Najsilniejszy readout jest kandydatem. Wykonanie może być zablokowane przez cooldown, permissions albo warunki bezpieczeństwa."},
   "last-action":{title:"Faktyczna akcja",body:"Ostatnie zachowanie naprawdę wykonane przez bota, a nie sam zamiar connectomu.",read:"Porównaj ją z najsilniejszym readoutem i z polem 'powód decyzji'."},
@@ -2391,6 +2404,43 @@ function renderSttDebug(s){
   $("stt-debug-text").textContent=s.text||"—";
   const err=s.error||"";
   $("stt-debug-error").innerHTML=err?'<b class="no">BŁĄD:</b> '+esc(err):'Brak błędów STT.';
+}
+
+function renderActionPolicy(p){
+  const root=$("action-policy-debug");
+  p=p||{};
+  if(!p.enabled){
+    root.innerHTML='<div class="reason">Learned Action Policy jest wyłączone. Decyzje używają surowych readoutów connectomu.</div>';
+    return;
+  }
+  const gates=p.gates||{};
+  const gateRows=Object.entries(gates).map(([name,g])=>
+    '<span class="policy-gate '+(g.passed?'pass':'fail')+'">'+esc(name)+
+    ' • raw '+Number(g.raw_score||0).toFixed(3)+
+    ' • effective '+Number(g.effective_score||0).toFixed(3)+
+    ' • learned próg raw '+Number(g.learned_raw_threshold||0).toFixed(3)+
+    ' • '+(g.passed?'PASS':'BLOCK')+'</span>'
+  ).join("");
+  const rows=actionOrder.map(name=>{
+    const a=(p.actions||{})[name]||{};
+    const bias=Number(a.bias||0), raw=Number(a.raw_score||0), eff=Number(a.effective_score||0);
+    const cls=bias>0.0005?'policy-pos':bias<-.0005?'policy-neg':'';
+    return '<tr><td class="policy-action">'+esc(name)+'</td>'+
+      '<td>'+raw.toFixed(3)+'</td>'+
+      '<td class="'+cls+'">'+(bias>=0?'+':'')+bias.toFixed(3)+'</td>'+
+      '<td><b>'+eff.toFixed(3)+'</b></td>'+
+      '<td>'+(Number(a.reward_ema||0)>=0?'+':'')+Number(a.reward_ema||0).toFixed(3)+'</td>'+
+      '<td>'+Number(a.updates||0).toLocaleString("pl-PL")+'</td></tr>';
+  }).join("");
+  const last=p.last_update||{};
+  root.innerHTML=
+    '<div class="policy-gates">'+gateRows+'</div>'+
+    '<div class="voice-note" style="margin:0 0 8px">Ostatnia aktualizacja: <b>'+esc(last.action||"brak")+'</b> • reward '+
+      (Number(last.reward||0)>=0?'+':'')+Number(last.reward||0).toFixed(3)+
+      ' • Δ bias '+(Number(last.delta||0)>=0?'+':'')+Number(last.delta||0).toFixed(4)+
+      ' • lr '+Number(p.learning_rate||0).toFixed(3)+
+      ' • max |bias| '+Number(p.max_bias||0).toFixed(2)+'</div>'+
+    '<div class="policy-wrap"><table class="policy-table"><thead><tr><th>Akcja</th><th>Raw connectome</th><th>Learned bias</th><th>Effective</th><th>Reward EMA</th><th>Updates</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
 function renderAttention(a){
@@ -2955,6 +3005,7 @@ async function update(){
     renderAudioDebug(s.audio_debug||{});
     renderSttDebug(s.stt_debug||{});
     renderAttention(s.attention||{});
+    renderActionPolicy(s.action_policy||{});
     renderVoiceDebug(s.voice_debug||[]);
     enhanceHelp();
     $("top").innerHTML=(s.top_neurons||[]).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+x[0]+'</td><td>'+(x[1]>=0?"+":"")+Number(x[1]).toFixed(5)+'</td><td>'+Math.abs(x[1]).toFixed(5)+'</td></tr>').join("");
