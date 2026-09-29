@@ -246,7 +246,10 @@ class MuchaClient(discord.Client):
         self._voice_debug: dict[int, dict] = {}
         self._reaction_debug: dict = {
             "score": 0.0,
+            "effective_score": 0.0,
             "threshold": cfg.behavior.reaction_threshold,
+            "learned_raw_threshold": cfg.behavior.reaction_threshold,
+            "policy_bias": 0.0,
             "decision": "BRAK DANYCH",
             "emoji": None,
             "target": None,
@@ -4272,6 +4275,16 @@ class MuchaClient(discord.Client):
                 )
             self.brain.step(self.cfg.brain.steps_per_event)
             scores = self.brain.action_scores()
+            react_gate = self.brain.action_policy_gate(
+                "react",
+                scores["react"],
+                self.cfg.behavior.reaction_threshold,
+            )
+            speak_gate = self.brain.action_policy_gate(
+                "speak",
+                scores["speak"],
+                self.cfg.behavior.speak_threshold,
+            )
 
         now = time.monotonic()
 
@@ -4284,7 +4297,13 @@ class MuchaClient(discord.Client):
         )
         self._reaction_debug = {
             "score": scores["react"],
-            "threshold": self.cfg.behavior.reaction_threshold,
+            "effective_score": react_gate["effective_score"],
+            "threshold": react_gate["base_threshold"],
+            "learned_raw_threshold": react_gate[
+                "learned_raw_threshold"
+            ],
+            "policy_bias": react_gate["bias"],
+            "policy_updates": react_gate["updates"],
             "decision": "NIE REAGUJĘ",
             "emoji": None,
             "target": f"#{channel_name} / {message.author.display_name}",
@@ -4293,7 +4312,7 @@ class MuchaClient(discord.Client):
         }
         if (
             not disliked_user
-            and scores["react"] >= self.cfg.behavior.reaction_threshold
+            and react_gate["passed"]
             and react_cooldown <= 0.0
         ):
             candidates, pool_total = self._reaction_candidates(message.guild)
@@ -4367,16 +4386,19 @@ class MuchaClient(discord.Client):
             self._reaction_debug["decision"] = "COOLDOWN"
         else:
             self._reaction_debug["decision"] = (
-                f"react {scores['react']:.3f} < {self.cfg.behavior.reaction_threshold:.3f}"
+                f"react raw {scores['react']:.3f} • "
+                f"policy {react_gate['effective_score']:.3f} < "
+                f"{react_gate['base_threshold']:.3f} • "
+                f"learned raw threshold "
+                f"{react_gate['learned_raw_threshold']:.3f}"
             )
 
         last = self.last_reply.get(message.guild.id, 0.0)
-        urge = scores["speak"] + (0.10 if mentioned else 0.0)
         if (
             not blocked_text
             and not disliked_user
             and self.language.ready()
-            and urge >= self.cfg.behavior.speak_threshold
+            and speak_gate["passed"]
             and now - last >= self.cfg.language.reply_cooldown_seconds
         ):
             await self._send_learned(
@@ -5203,6 +5225,14 @@ class MuchaClient(discord.Client):
             self.brain.inject("internal:time", 0.035, 32)
             self.brain.step(self.cfg.brain.idle_steps)
             scores = self.brain.action_scores()
+            spontaneous_gate = self.brain.action_policy_gate(
+                "speak",
+                scores["speak"],
+                min(
+                    0.999,
+                    self.cfg.behavior.speak_threshold + 0.08,
+                ),
+            )
         self.voice_episodes.apply_forgetting(now=wall_now)
 
         if now - self._last_save >= self.cfg.behavior.save_every_seconds:
@@ -5212,7 +5242,7 @@ class MuchaClient(discord.Client):
 
         if not self.cfg.language.spontaneous_text or not self.language.ready():
             return
-        if scores["speak"] < self.cfg.behavior.speak_threshold + 0.08:
+        if not spontaneous_gate["passed"]:
             return
         for guild in self.guilds:
             last = self.last_spontaneous.get(guild.id, 0.0)
@@ -5571,6 +5601,7 @@ class MuchaClient(discord.Client):
             "paused": self.paused,
             "voice_debug": list(self._voice_debug.values()),
             "attention": attention_debug,
+            "action_policy": diag.get("action_policy", {}),
             "episodic_memory": self.voice_episodes.diagnostics(),
             "memory_replay": dict(self._memory_replay_debug),
             "audio_debug": dict(self._audio_debug),
