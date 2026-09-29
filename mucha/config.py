@@ -143,6 +143,13 @@ class VoiceConfig:
     semantic_recall_min_observations: int = 2
     semantic_recall_magnitude: float = 0.85
     semantic_recall_steps: int = 2
+    uncertainty_exploration_enabled: bool = True
+    uncertainty_curiosity_magnitude: float = 1.10
+    uncertainty_curiosity_steps: int = 3
+    uncertainty_target_weight: float = 0.30
+    information_gain_reward_scale: float = 0.20
+    information_gain_reward_max: float = 0.08
+    information_gain_min_delta: float = 0.01
     minimum_dwell_seconds: int = 60
     maximum_dwell_seconds: int = 300
     overstay_punish_amount: float = 0.5
