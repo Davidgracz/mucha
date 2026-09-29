@@ -1227,11 +1227,21 @@ class OnlineLanguage:
             if selected is not None:
                 feedback_applied = feed_selected_word(selected)
 
-            top_candidates = sorted(
+            ranked_candidates = sorted(
                 debug.values(),
                 key=lambda item: float(item.get("final_weight", 0.0)),
                 reverse=True,
-            )[:12]
+            )
+            top_candidates = ranked_candidates[:12]
+            if (
+                selected is not None
+                and all(
+                    str(item.get("token")) != str(selected)
+                    for item in top_candidates
+                )
+                and selected in debug
+            ):
+                top_candidates.append(debug[selected])
             attempt_trace["steps"].append({
                 "step": len(out) + 1,
                 "phase": "word-choice",
