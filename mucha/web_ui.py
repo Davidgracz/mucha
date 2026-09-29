@@ -248,6 +248,13 @@ const groups=[
   ["semantic_recall_min_observations","Minimum doświadczeń semantycznych","number",1,1,1000,"Ile podobnych zdarzeń musi istnieć, zanim uogólnienie zacznie być przypominane."],
   ["semantic_recall_magnitude","Siła semantic recall","number",0.05,0,4,"Skaluje dodatni lub ujemny bodziec pamięci semantycznej podawany do connectomu."],
   ["semantic_recall_steps","Ticki semantic recall","number",1,1,12,"Minimalna liczba kroków propagacji, gdy aktywne jest przypomnienie semantyczne."],
+  ["uncertainty_exploration_enabled","Curiosity / uncertainty exploration","bool",0,0,0,"Nieznane kanały i sytuacje pobudzają attractor CURIOSITY zamiast bezpośrednio zmieniać action score."],
+  ["uncertainty_curiosity_magnitude","Siła uncertainty → CURIOSITY","number",0.05,0,4,"Maksymalna amplituda bodźca curiosity przy pełnej niepewności semantycznej."],
+  ["uncertainty_curiosity_steps","Ticki propagacji uncertainty","number",1,1,12,"Minimalna liczba kroków connectomu, gdy aktywny jest cue z niepewności."],
+  ["uncertainty_target_weight","Waga uncertainty przy wyborze celu","number",0.01,0,2,"Po decyzji JOIN/MOVE zwiększa szansę wybrania mniej znanego kanału; nie zmienia samego readoutu akcji."],
+  ["information_gain_reward_scale","Reward za information gain","number",0.01,0,1,"Skaluje wewnętrzną nagrodę, gdy nowe doświadczenie realnie zmniejsza niepewność."],
+  ["information_gain_reward_max","Maks. reward information gain","number",0.01,0,0.5,"Górny limit pojedynczej nagrody za zdobycie informacji."],
+  ["information_gain_min_delta","Minimum information gain","number",0.005,0,1,"Minimalny spadek uncertainty wymagany do przyznania wewnętrznego rewardu."],
   ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
   ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie uruchamia się mechanizm overstay/threat."],
   ["overstay_punish_amount","Kara STAY za zbyt długi pobyt","number",0.05,0,1,"Kara ucząca ścieżkę STAY, gdy Mucha po maximum_dwell_seconds nadal zostaje na kanale."],
@@ -2309,6 +2316,9 @@ const HELP={
   "memory-replay":{title:"Memory Replay",body:"Odtwarzanie ważnych epizodów podczas ciszy jako słabszych bodźców dla connectomu.",read:"Ma utrwalać powtarzające się doświadczenia i wygaszać przypadkowe ślady."},
   "semantic-memory":{title:"Pamięć semantyczna",body:"Uogólnienie z wielu epizodów. Zamiast pamiętać tylko konkretną scenę, Mucha zbiera statystyki typu użytkownik→akcja, kanał→akcja, stan→akcja i użytkownik+kanał→akcja.",read:"Expected reward mówi kierunek doświadczenia, confidence mówi jak wiarygodne jest uogólnienie, a signal jest tym, co faktycznie trafia jako signed cue do connectomu."},
   "semantic-signal":{title:"Semantic signal",body:"Iloczyn oczekiwanego rewardu i confidence uogólnienia.",read:"Dodatni pobudza sensoryczną drogę do akcji, ujemny ją hamuje. Sam action score nie jest edytowany bezpośrednio."},
+  "uncertainty":{title:"Semantic uncertainty",body:"Miara 0–1 opisująca jak mało Mucha wie o kombinacji kanału, użytkowników, stanu i możliwych akcji.",read:"1.0 = prawie brak doświadczenia. 0.0 = wysoka znajomość. Niepewność pobudza attractor CURIOSITY."},
+  "information-gain":{title:"Information gain",body:"Spadek semantic uncertainty po nowym doświadczeniu.",read:"Jeżeli niepewność realnie spadła, decyzja może dostać mały intrinsic reward."},
+  "curiosity-cue":{title:"Uncertainty → CURIOSITY",body:"Niepewność jest zamieniana na sensory cue wejściowy attractora CURIOSITY.",read:"Cue przechodzi przez neuronalny attractor i connectome do EXPLORE/MOVE. To nie jest ręczny bonus do action score."},
   "memory-scenes":{title:"Memory scenes",body:"Liczba unikalnych scen/kontekstów utrzymywanych przez pamięć epizodyczną.",read:"Kilka epizodów może należeć do tej samej sceny."},
   "consolidated":{title:"Consolidated",body:"Liczba scen, których strength przekroczył próg konsolidacji.",read:"Takie wspomnienia są bardziej odporne na zapominanie i częściej trafiają do replay."},
   "reward-opportunity":{title:"Reward opportunity",body:"Kanał/scena oznaczona jako potencjalna możliwość zdobycia pozytywnego reinforcement.",read:"To zachęta sensoryczna; nadal connectome musi wyprodukować odpowiednią decyzję."},
@@ -2326,7 +2336,7 @@ const HELP_LABEL_KEYS={
   "SOCIAL NEED":"social-need","CURIOSITY":"curiosity","STRESS":"stress","SATIETY":"satiety","AROUSAL":"arousal",
   "Social need cue":"social-drive-cue","Social fatigue cue":"social-fatigue-cue","Habituation cue":"habituation-cue","Exploration cue":"exploration-cue",
   "Przewidywany reward":"predicted-reward","Prediction error":"prediction-error","Korekta connectomu":"prediction-correction",
-  "Epizody":"episodic","Credit queue":"credit-queue","Replay":"memory-replay","Memory scenes":"memory-scenes","Consolidated":"consolidated","Semantic entries":"semantic-memory","Semantic signal":"semantic-signal",
+  "Epizody":"episodic","Credit queue":"credit-queue","Replay":"memory-replay","Memory scenes":"memory-scenes","Consolidated":"consolidated","Semantic entries":"semantic-memory","Semantic signal":"semantic-signal","Uncertainty":"uncertainty","Information gain":"information-gain","Curiosity cue":"curiosity-cue",
   "Reward opportunity":"reward-opportunity","Cue effective":"cue-effective","Threat":"threat","Overstay":"overstay","Chaser":"chaser",
   "Propagation":"propagation","Guided reach":"guided-reach","Effective move":"effective-move","Effective margin":"effective-margin"
 };
@@ -2578,6 +2588,14 @@ function renderVoiceDebug(items){
         ' • '+nfmt(m.observations||0)+' obs • conf '+(conf*100).toFixed(0)+'%</span>'+
         '<em class="'+cls+'">'+(value>=0?"+":"")+value.toFixed(2)+'</em></div>';
     }).join("")||'<div class="voice-note">Brak uogólnień z wystarczającą siłą.</div>';
+    const uncertaintyRows=(v.uncertainty_channels||[]).slice(0,6).map(row=>{
+      const u=Math.max(0,Math.min(1,Number(row.uncertainty||0)));
+      return '<div class="memory-row"><b>'+esc(row.channel||"—")+'</b><span>'+
+        nfmt(row.observations||0)+' obs • '+nfmt(row.known_pairs||0)+'/'+nfmt(row.possible_pairs||0)+' znanych par • '+nfmt(row.human_count||0)+' osób</span>'+
+        '<em class="'+(u>.65?"warn":u<.25?"ok":"")+'">'+(u*100).toFixed(0)+'%</em></div>';
+    }).join("")||'<div class="voice-note">Brak kanałów do oceny niepewności.</div>';
+    const curiosityCue=v.uncertainty_curiosity_cue||{};
+    const infoGain=v.information_gain_last||{};
     const currentTime=onVoice
       ? Number(v.dwell_elapsed||0).toFixed(0)+" / "+Number(v.maximum_dwell_seconds||0).toFixed(0)+" s"
       : Number(v.outside_seconds||0).toFixed(0)+" s poza VC";
@@ -2586,6 +2604,7 @@ function renderVoiceDebug(items){
       const aff=ch.affinity==null?"—":Number(ch.affinity).toFixed(3);
       const explore=ch.exploration_score==null?"—":Number(ch.exploration_score).toFixed(3);
       const novelty=ch.novelty==null?"—":(Number(ch.novelty)*100).toFixed(0)+"%";
+      const uncertainty=ch.semantic_uncertainty==null?"—":(Number(ch.semantic_uncertainty)*100).toFixed(0)+"%";
       const visitAge=ch.visit_age==null?"never":Number(ch.visit_age).toFixed(0)+"s";
       const status=ch.eligible?(ch.reward_opportunity?"🎯 REWARD?":"OK"):ch.status;
       const cls=ch.eligible?"ok":(ch.status==="AFK"?"warn":"no");
@@ -2595,6 +2614,7 @@ function renderVoiceDebug(items){
         '<td>'+aff+'</td>'+
         '<td>'+explore+'</td>'+
         '<td>'+novelty+'</td>'+
+        '<td>'+uncertainty+'</td>'+
         '<td>'+visitAge+'</td>'+
         '<td class="'+cls+'">'+esc(status)+'</td>'+
       '</tr>';
@@ -2680,6 +2700,27 @@ function renderVoiceDebug(items){
         '</div>'+
 
         '<div class="voice-box">'+
+          '<h3>🔎 Curiosity / Uncertainty '+helpDot("uncertainty")+'</h3>'+
+          '<div class="voice-kpis">'+
+            kpi("Uncertainty",(Number(v.uncertainty_overall||0)*100).toFixed(0)+"%",Number(v.uncertainty_overall||0)>.65?"warn":"")+
+            kpi("Curiosity cue",curiosityCue.magnitude==null?"—":Number(curiosityCue.magnitude||0).toFixed(3),Number(curiosityCue.magnitude||0)>0?"ok":"")+
+            kpi("Information gain",infoGain.information_gain==null?"—":Number(infoGain.information_gain||0).toFixed(3),Number(infoGain.information_gain||0)>0?"ok":"")+
+            kpi("Intrinsic reward",infoGain.intrinsic_reward==null?"—":("+"+Number(infoGain.intrinsic_reward||0).toFixed(3)),Number(infoGain.intrinsic_reward||0)>0?"ok":"")+
+          '</div>'+
+          '<div class="voice-note"><b>Ścieżka:</b> uncertainty '+Number(v.uncertainty_overall||0).toFixed(3)+
+            ' → CURIOSITY cue '+Number(curiosityCue.magnitude||0).toFixed(3)+
+            ' → '+Number(curiosityCue.entry_neurons||0)+' input n → attractor '+Number(curiosityCue.attractor_neurons||0)+' n → '+
+            esc((curiosityCue.target_actions||[]).join(" / ")||"—")+'</div>'+
+          '<div class="voice-note"><b>Ostatni information gain:</b> '+
+            (infoGain.information_gain==null?'brak':
+              Number(infoGain.uncertainty_before||0).toFixed(3)+' → '+Number(infoGain.uncertainty_after||0).toFixed(3)+
+              ' • gain '+Number(infoGain.information_gain||0).toFixed(3)+
+              ' • reward +'+Number(infoGain.intrinsic_reward||0).toFixed(3))+
+          '</div>'+
+          '<details class="mini-details" data-detail-key="uncertainty-top-'+esc(v.guild||"server")+'"><summary>Najbardziej nieznane kanały</summary><div class="memory-list">'+uncertaintyRows+'</div></details>'+
+        '</div>'+
+
+        '<div class="voice-box">'+
           '<h3>🎯 Social / reward</h3>'+
           '<div class="voice-kpis">'+
             kpi("Reward opportunity",v.reward_opportunity_channel?esc(v.reward_opportunity_channel):"—",v.reward_opportunity_channel?"ok":"")+
@@ -2731,6 +2772,10 @@ function renderVoiceDebug(items){
             kpi("Semantic entries",String(Number(v.semantic_entries||0)))+
             kpi("Semantic recall",esc(semanticSummary))+
             kpi("Semantic guided",esc(semanticGuidedSummary))+
+            kpi("Uncertainty",(Number(v.uncertainty_overall||0)*100).toFixed(0)+"%")+
+            kpi("Curiosity cue",Number(curiosityCue.magnitude||0).toFixed(3))+
+            kpi("Information gain",infoGain.information_gain==null?"—":Number(infoGain.information_gain||0).toFixed(3))+
+            kpi("Info reward applied",Number(v.information_gain_reward_applied||0).toFixed(3))+
             kpi("neural tie-break",esc(bd.tie_break||"niepotrzebny"))+
             kpi("Tie evidence",esc(tieSummary||"—"))+
             kpi("Homeostasis paths",esc(guided))+
@@ -2747,7 +2792,7 @@ function renderVoiceDebug(items){
         '</div>'+
       '</details>'+
 
-      '<details class="voice-technical" data-detail-key="channels-'+esc(v.guild||"server")+'"><summary>▸ Kanały głosowe ('+Number((v.channels||[]).length)+')</summary><div class="voice-technical-body"><div class="voice-table-wrap"><table><thead><tr><th>Kanał</th><th>Ludzie</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table></div></div></details>'+
+      '<details class="voice-technical" data-detail-key="channels-'+esc(v.guild||"server")+'"><summary>▸ Kanały głosowe ('+Number((v.channels||[]).length)+')</summary><div class="voice-technical-body"><div class="voice-table-wrap"><table><thead><tr><th>Kanał</th><th>Ludzie</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Uncertainty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table></div></div></details>'+
     '</div>';
   }).join('<div class="voice-server-sep"></div>');
   root.querySelectorAll("details[data-detail-key]").forEach(el=>{
