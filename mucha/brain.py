@@ -3996,6 +3996,53 @@ class FlyBrain:
         # action-specific in reward(), so feedback no longer lifts every action equally.
         return _sigmoid(3.2 * raw + 0.08 * self.reward_trace)
 
+    def attention_score(self, key: str, width: int = 48) -> float:
+        """Score one short-term attention item from live activity + plasticity.
+
+        Attention items use stable sensory/output populations. Recent context
+        activates the sensory side, while experience can reshape the same
+        pathway through plastic bias/synaptic learning. The score is therefore
+        not a separate rule engine: it is a compact readout of the current
+        connectome state for that item.
+        """
+        key = str(key or "").strip().lower()
+        if not key:
+            return 0.5
+
+        width = max(16, min(int(width), 96))
+        sensory_cpu = self._subset(
+            "sensory:attention:" + key,
+            self.c.sensory,
+            width,
+        )
+        output_cpu = self._subset(
+            "output:attention:" + key,
+            self.c.output,
+            width,
+        )
+        sensory = self._backend_indices(sensory_cpu)
+        output = self._backend_indices(output_cpu)
+
+        sensory_raw = self.compute.scalar(
+            self.xp.mean(self.state[sensory])
+        )
+        output_raw = self.compute.scalar(
+            self.xp.mean(self.state[output])
+        )
+        sensory_bias = self.compute.scalar(
+            self.xp.mean(self.plastic_bias[sensory])
+        )
+        output_bias = self.compute.scalar(
+            self.xp.mean(self.plastic_bias[output])
+        )
+        activity_raw = 0.45 * sensory_raw + 0.55 * output_raw
+        learned_raw = 0.40 * sensory_bias + 0.60 * output_bias
+        return _sigmoid(
+            3.0 * activity_raw
+            + 1.8 * learned_raw
+            + 0.04 * self.reward_trace
+        )
+
     def language_word_score(self, token: str, width: int = 32) -> float:
         """Return the live connectome preference for one learned word.
 
