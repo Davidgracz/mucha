@@ -653,7 +653,12 @@ def main():
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
         assert "/api/public/state" in PUBLIC_OVERVIEW_HTML
-        assert "Mapa skojarzeń Muchy" in ASSOCIATIONS_HTML
+        assert "Mowa / Language Brain" in ASSOCIATIONS_HTML
+        assert "Live trace ostatniej generacji" in ASSOCIATIONS_HTML
+        assert "Connectome word control" in ASSOCIATIONS_HTML
+        assert "brain_score" in ASSOCIATIONS_HTML
+        assert "selection_roll" in ASSOCIATIONS_HTML
+        assert "Recurrent feedback" in ASSOCIATIONS_HTML
         assert "/api/associations" in ASSOCIATIONS_HTML
 
         assoc = b.word_association_snapshot(
@@ -848,6 +853,43 @@ def main():
         assert lang.diagnostics()["connectome_word_control_last"][
             "feedback_words"
         ] > 0
+        generation_trace = lang.generation_trace()
+        assert generation_trace["generator"] == "words"
+        assert generation_trace["result"]
+        assert generation_trace["attempts"]
+        accepted_attempt = next(
+            (
+                item
+                for item in generation_trace["attempts"]
+                if item.get("accepted")
+            ),
+            generation_trace["attempts"][-1],
+        )
+        assert accepted_attempt["steps"]
+        traced_step = next(
+            (
+                item
+                for item in accepted_attempt["steps"]
+                if item.get("phase") == "word-choice"
+            ),
+            accepted_attempt["steps"][0],
+        )
+        assert traced_step["candidates"]
+        assert traced_step["selected"]
+        if traced_step.get("phase") == "word-choice":
+            assert 0.0 <= traced_step["selection_roll"] <= 1.0
+            selected_rows = [
+                item
+                for item in traced_step["candidates"]
+                if str(item.get("token"))
+                == str(traced_step["selected"])
+            ]
+            assert selected_rows
+            selected_row = selected_rows[0]
+            assert "base_weight" in selected_row
+            assert "final_weight" in selected_row
+            assert "choice_share" in selected_row
+            assert "brain_multiplier" in selected_row
 
         # The word generator should recombine learned transitions instead of
         # walking one memorized sentence path every time.
