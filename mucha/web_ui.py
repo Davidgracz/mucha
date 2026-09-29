@@ -1923,23 +1923,23 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     <div class="panel-explainer"><span class="help-dot" data-help-key="simple-mode" tabindex="0">?</span><div><b>Tryb PROSTY</b> ukrywa część surowej telemetrii. Niczego nie wyłącza w Musze — zmienia tylko sposób wyświetlania. Tryb PEŁNY pokazuje cały debug.</div></div>
 
     <div class="card snapshot-card">
-      <h2>Stan mózgu</h2>
-      <div class="metric"><span>Neurony</span><strong id="neurons">—</strong></div>
-      <div class="metric"><span>Połączenia</span><strong id="connections">—</strong></div>
-      <div class="metric"><span>Aktywne |a| &gt; 0.1</span><strong id="active">—</strong></div>
-      <div class="metric"><span>Średnia |a|</span><strong id="mean">—</strong></div>
-      <div class="metric"><span>Maks. |a|</span><strong id="max">—</strong></div>
-      <div class="metric"><span>Reward trace</span><strong id="reward">—</strong></div>
-      <div class="metric"><span>Tick</span><strong id="ticks">—</strong></div>
+      <h2>Stan mózgu <span class="help-dot" data-help-key="brain-state" tabindex="0">?</span></h2>
+      <div class="metric"><span data-help-label="neurons">Neurony</span><strong id="neurons">—</strong></div>
+      <div class="metric"><span data-help-label="connections">Połączenia</span><strong id="connections">—</strong></div>
+      <div class="metric"><span data-help-label="active-neurons">Aktywne |a| &gt; 0.1</span><strong id="active">—</strong></div>
+      <div class="metric"><span data-help-label="mean-activation">Średnia |a|</span><strong id="mean">—</strong></div>
+      <div class="metric"><span data-help-label="max-activation">Maks. |a|</span><strong id="max">—</strong></div>
+      <div class="metric"><span data-help-label="reward-trace">Reward trace</span><strong id="reward">—</strong></div>
+      <div class="metric"><span data-help-label="tick">Tick</span><strong id="ticks">—</strong></div>
     </div>
 
     <div class="card">
-      <h2>Wyjścia connectome</h2>
+      <h2>Wyjścia connectome <span class="help-dot" data-help-key="readout" tabindex="0">?</span></h2>
       <div id="actions"></div>
     </div>
 
-    <div class="card">
-      <h2>Środowisko</h2>
+    <div class="card advanced-card">
+      <h2>Środowisko <span class="help-dot" data-help-key="environment" tabindex="0">?</span></h2>
       <div class="metric"><span>Język</span><strong id="language">—</strong></div>
       <div class="metric"><span>Tryb języka</span><strong id="language-mode">—</strong></div>
       <div class="metric"><span>Wiadomości</span><strong id="language-messages">—</strong></div>
@@ -1956,26 +1956,26 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card span3 focus-card">
-      <h2>Attention / Working Memory</h2>
+      <h2>Attention / Working Memory <span class="help-dot" data-help-key="attention" tabindex="0">?</span></h2>
       <div id="attention-debug"><div class="reason">Czekam na pierwszy kontekst tekstowy lub voice…</div></div>
     </div>
 
     <div class="section-heading" id="voice-section"><div><span class="section-no">02 / VOICE</span><h2>Voice i decyzje</h2><p>Najpierw decyzja, potem jej przyczyna: readouty, potrzeby, pamięć, reward i zagrożenia.</p></div></div>
 
     <div class="card span3 focus-card">
-      <h2>Voice / Zachowanie</h2>
+      <h2>Voice / Zachowanie <span class="help-dot" data-help-key="voice-decision" tabindex="0">?</span></h2>
       <div id="voice-debug"><div class="reason">Czekam na pierwszy cykl voice…</div></div>
     </div>
 
     <div class="section-heading" id="learning-section"><div><span class="section-no">03 / UCZENIE</span><h2>Uczenie i pamięć</h2><p>Zmiany wynikające z rewardu, plastyczność, historia aktywności i to, co utrwaliło się od startu.</p></div></div>
 
-    <div class="card span2">
-      <h2>Aktywność w czasie</h2>
+    <div class="card span2 advanced-card">
+      <h2>Aktywność w czasie <span class="help-dot" data-help-key="activity-chart" tabindex="0">?</span></h2>
       <canvas id="chart" width="1000" height="220" aria-label="Wykres aktywności mózgu"></canvas>
     </div>
 
     <div class="card">
-      <h2>Ostatnie zdarzenia</h2>
+      <h2>Ostatnie zdarzenia <span class="help-dot" data-help-key="events" tabindex="0">?</span></h2>
       <div class="events">
         <div class="event"><small>bodziec</small><div id="event">—</div></div>
         <div class="event"><small>akcja</small><div id="lastaction">—</div></div>
@@ -1983,7 +1983,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card span2">
-      <h2>Learning Debug</h2>
+      <h2>Learning Debug <span class="help-dot" data-help-key="learning-debug" tabindex="0">?</span></h2>
       <div class="learning-grid">
         <div class="kpi"><small>ostatni reward</small><strong id="learn-reward">—</strong></div>
         <div class="kpi"><small>target action</small><strong id="learn-action">—</strong></div>
@@ -1997,7 +1997,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card span3">
-      <h2>Learning Since Startup</h2>
+      <h2>Learning Since Startup <span class="help-dot" data-help-key="learning-startup" tabindex="0">?</span></h2>
       <div class="learning-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="kpi"><small>czas uczenia</small><strong id="session-age">—</strong></div>
         <div class="kpi"><small>nowe znaki</small><strong id="session-chars">—</strong></div>
@@ -2032,7 +2032,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     <div class="section-heading" id="social-section"><div><span class="section-no">04 / RELACJE</span><h2>Relacje i reakcje</h2><p>Jak Mucha reaguje na ludzi, słowa i feedback społeczny.</p></div></div>
 
     <div class="card span2">
-      <h2>Social Learning / Relacje</h2>
+      <h2>Social Learning / Relacje <span class="help-dot" data-help-key="social-learning" tabindex="0">?</span></h2>
       <div class="learning-grid">
         <div class="kpi"><small>ostatni sygnał</small><strong id="social-event">—</strong></div>
         <div class="kpi"><small>szczegół</small><strong id="social-detail">—</strong></div>
@@ -2059,7 +2059,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card">
-      <h2>Reaction Debug</h2>
+      <h2>Reaction Debug <span class="help-dot" data-help-key="reaction-debug" tabindex="0">?</span></h2>
       <div class="learning-grid" style="grid-template-columns:1fr 1fr">
         <div class="kpi"><small>react / próg</small><strong id="reaction-score">—</strong></div>
         <div class="kpi"><small>emoji</small><strong class="reaction-emoji" id="reaction-emoji">—</strong></div>
@@ -2073,7 +2073,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card">
-      <h2>Plasticity</h2>
+      <h2>Plasticity <span class="help-dot" data-help-key="plasticity" tabindex="0">?</span></h2>
       <div class="metric"><span>Średni bias</span><strong id="bias-mean">—</strong></div>
       <div class="metric"><span>Średni |bias|</span><strong id="bias-mean-abs">—</strong></div>
       <div class="metric"><span>Max |bias|</span><strong id="bias-max">—</strong></div>
@@ -2086,23 +2086,23 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card span2">
-      <h2>Reward timeline</h2>
+      <h2>Reward timeline <span class="help-dot" data-help-key="reward-timeline" tabindex="0">?</span></h2>
       <canvas id="reward-chart" width="1000" height="220" aria-label="Historia reward trace"></canvas>
       <div class="legend"><span class="trace-line">reward trace</span><span class="reward-line">zdarzenie reward</span></div>
     </div>
 
     <div class="card span2">
-      <h2>Action History</h2>
+      <h2>Action History <span class="help-dot" data-help-key="action-history" tabindex="0">?</span></h2>
       <div class="log-list" id="action-history"><div class="reason">Brak akcji.</div></div>
     </div>
 
     <div class="card">
-      <h2>Top changed neurons</h2>
+      <h2>Top changed neurons <span class="help-dot" data-help-key="changed-neurons" tabindex="0">?</span></h2>
       <table><thead><tr><th>root_id</th><th>Δ bias</th><th>activation</th></tr></thead><tbody id="changed-neurons"></tbody></table>
     </div>
 
     <div class="card span3">
-      <h2>Server Learning Context</h2>
+      <h2>Server Learning Context <span class="help-dot" data-help-key="server-learning" tabindex="0">?</span></h2>
       <table>
         <thead><tr><th>Serwer</th><th>Ostatnia nagradzalna akcja</th><th>Szczegół</th><th>Wiek</th></tr></thead>
         <tbody id="guild-learning-context"></tbody>
@@ -2112,7 +2112,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     <div class="section-heading" id="audio-section"><div><span class="section-no">05 / AUDIO</span><h2>Audio i rozpoznawanie mowy</h2><p>Diagnostyka TTS, odtwarzania i STT — zwykle potrzebna dopiero przy problemie.</p></div></div>
 
     <div class="card span3">
-      <h2>Audio Debug</h2>
+      <h2>Audio Debug <span class="help-dot" data-help-key="audio-debug" tabindex="0">?</span></h2>
       <div class="learning-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="kpi"><small>Status</small><strong id="audio-status">—</strong></div>
         <div class="kpi"><small>Etap</small><strong id="audio-stage">—</strong></div>
@@ -2128,7 +2128,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     </div>
 
     <div class="card span3">
-      <h2>Voice Recognition / STT</h2>
+      <h2>Voice Recognition / STT <span class="help-dot" data-help-key="stt" tabindex="0">?</span></h2>
       <div class="learning-grid" style="grid-template-columns:repeat(4,1fr)">
         <div class="kpi"><small>Status</small><strong id="stt-debug-status">—</strong></div>
         <div class="kpi"><small>Model</small><strong id="stt-debug-model">—</strong></div>
@@ -2145,11 +2145,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     <div class="section-heading" id="neurons-section"><div><span class="section-no">06 / NEURONY</span><h2>Neurony i surowy stan</h2><p>Najbardziej aktywne komórki do głębszej analizy w Connectome i Neuro-map.</p></div></div>
 
     <div class="card span3">
-      <h2>Najbardziej aktywne neurony</h2>
+      <h2>Najbardziej aktywne neurony <span class="help-dot" data-help-key="top-neurons" tabindex="0">?</span></h2>
       <table><thead><tr><th>#</th><th>FlyWire root_id</th><th>activation</th><th>|a|</th></tr></thead><tbody id="top"></tbody></table>
       <div class="footer">Przy prawdziwym FAFB v783 root_id odpowiada identyfikatorowi neuronu FlyWire.</div>
     </div>
   </section>
+  <div id="help-tooltip" class="help-tooltip" role="tooltip" aria-hidden="true"></div>
 </main>
 <script>
 const actionOrder=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];
@@ -2159,16 +2160,101 @@ const $=id=>document.getElementById(id);
 function fmt(n,d=3){return Number(n).toFixed(d)}
 function nfmt(n){return Number(n).toLocaleString("pl-PL")}
 function renderActions(scores){
-  const dom=Object.entries(scores).sort((a,b)=>b[1]-a[1])[0]?.[0];
+  const dom=Object.entries(scores||{}).sort((a,b)=>Number(b[1])-Number(a[1]))[0]?.[0];
   $("actions").innerHTML=actionOrder.map(k=>{
-    const v=Number(scores[k]??0);
-    return '<div class="action"><div class="'+(k===dom?'dominant':'')+'">'+(k===dom?'▶ ':'')+k+'</div>'+
+    const v=Number((scores||{})[k]??0);
+    return '<div class="action"><div class="'+(k===dom?'dominant':'')+'">'+(k===dom?'▶ ':'')+esc(k)+' '+helpDot(k)+'</div>'+
       '<div class="track"><div class="fill" style="width:'+Math.max(0,Math.min(100,v*100))+'%"></div></div>'+
       '<div class="val">'+v.toFixed(3)+'</div></div>';
   }).join("");
+  enhanceHelp();
 }
 function esc(v){
   return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;"}[m]));
+}
+
+const HELP={
+  "decision-flow":{title:"Jak czytać ścieżkę decyzji?",body:"To skrót jednego cyklu: bodziec → uwaga/pamięć → stan connectomu → readout zachowania → faktyczna akcja.",read:"Czytaj od lewej do prawej. Jeśli readout i akcja się różnią, niżej szukaj cooldownu, blokady albo ograniczenia operacyjnego."},
+  "simple-mode":{title:"PROSTY vs PEŁNY",body:"PROSTY pokazuje tylko elementy potrzebne do zrozumienia bieżącego zachowania. PEŁNY odsłania telemetrię techniczną.",read:"To zmienia wyłącznie interfejs. Nie zmienia configu ani zachowania Muchy."},
+  "last-event":{title:"Ostatni bodziec",body:"Ostatnie zdarzenie zapisane jako wejście dla runtime'u, np. tekst, STT, reward, voice albo threat.",read:"To punkt startowy, gdy chcesz sprawdzić co poprzedziło zmianę zachowania."},
+  "attention":{title:"Attention / Working Memory",body:"Krótkotrwały kontekst osób, kanałów i tematów. Ślad zanika, a aktywny focus jest ponownie podawany do connectomu.",read:"Attention jest chwilowe. Affinity jest relacją długoterminową. Working memory pokazuje ostatnie sceny nadal dostępne jako kontekst."},
+  "attention-score":{title:"Attention score",body:"Połączenie świeżości krótkotrwałego śladu z neuronalnym attention_score odczytanym z connectomu.",read:"Wyższy score = większa aktualna dominacja tego elementu w kontekście. To nie jest reward."},
+  "brain-state":{title:"Stan connectomu",body:"Bieżąca aktywność całej sieci po bodźcach, propagacji, plastyczności i internal states. Stan nie resetuje się po każdym evencie.",read:"Globalna aktywność mówi jak mocno sieć pracuje, ale do konkretnej decyzji patrz na readouty."},
+  "readout":{title:"Readout",body:"Wartość 0–1 z populacji neuronów wyjściowych przypisanej do akcji speak/react/join/move/leave/explore/stay.",read:"Najsilniejszy readout jest kandydatem. Wykonanie może być zablokowane przez cooldown, permissions albo warunki bezpieczeństwa."},
+  "last-action":{title:"Faktyczna akcja",body:"Ostatnie zachowanie naprawdę wykonane przez bota, a nie sam zamiar connectomu.",read:"Porównaj ją z najsilniejszym readoutem i z polem 'powód decyzji'."},
+  "neurons":{title:"Neurony",body:"Liczba neuronów załadowanych do runtime connectome.",read:"Pełny przygotowany FAFB v783 ma około 139 tys. neuronów."},
+  "connections":{title:"Połączenia",body:"Liczba kierunkowych połączeń w bazowej sparse matrix FAFB.",read:"Uczone synaptic delta są nakładką i nie zmieniają tej bazowej liczby."},
+  "active-neurons":{title:"Aktywne |a| > 0.1",body:"Liczba neuronów, których bezwzględna aktywacja przekracza diagnostyczny próg 0.1.",read:"To szerokość pobudzenia sieci, nie biologiczna liczba spike'ów."},
+  "mean-activation":{title:"Średnia |a|",body:"Średnia bezwzględna aktywacja wszystkich neuronów.",read:"Najbardziej użyteczna przy porównywaniu chwil przed i po bodźcu."},
+  "max-activation":{title:"Maks. |a|",body:"Największa bezwzględna aktywacja pojedynczego neuronu.",read:"Może być wysoka nawet wtedy, gdy średnia aktywność całej sieci jest niska."},
+  "reward-trace":{title:"Reward trace",body:"Krótkotrwały ślad niedawnych nagród i kar używany w uczeniu i lekko w readoutach.",read:"Dodatni = niedawny pozytywny feedback, ujemny = kara. Z czasem zanika."},
+  "tick":{title:"Tick connectomu",body:"Licznik kroków propagacji wykonanych przez runtime.",read:"Tick nie oznacza sekundy. Jedno zdarzenie może wykonać kilka ticków."},
+  "environment":{title:"Środowisko",body:"Stan modelu języka, voice i gotowość generatora.",read:"To głównie diagnostyka techniczna, dlatego w trybie PROSTYM jest ukryta."},
+  "voice-decision":{title:"Voice / Zachowanie",body:"Zbiera readouty voice, homeostazę, internal states, pamięć epizodyczną, reward opportunity, threat i Chasera.",read:"Najpierw czytaj duży wynik i 'reason'. Dopiero potem rozwijaj techniczne sekcje."},
+  "activity-chart":{title:"Aktywność w czasie",body:"Historia średniej i maksymalnej aktywacji connectomu.",read:"Pozwala zobaczyć odpowiedź na bodźce i tempo wygaszania stanu."},
+  "events":{title:"Ostatnie zdarzenia",body:"Ostatni bodziec oraz ostatnia wykonana akcja.",read:"Do pełnej kolejności użyj Action History."},
+  "learning-debug":{title:"Learning Debug",body:"Ostatni reward() i jego wpływ na bias neuronów, synaptic delta oraz readouty przed/po.",read:"Dodatnie Δ wzmacnia, ujemne osłabia. Target action mówi czego dotyczył ślad."},
+  "learning-startup":{title:"Learning Since Startup",body:"Liczniki uczenia od uruchomienia procesu: język, reward events i skumulowane zmiany.",read:"Te liczniki resetują się po restarcie, nawet jeśli trwały stan został zapisany."},
+  "social-learning":{title:"Social Learning / Relacje",body:"Długoterminowe sygnały społeczne i affinity użytkowników.",read:"Nie myl z Attention: affinity opisuje relację, Attention opisuje to, co zajmuje Muchę teraz."},
+  "reaction-debug":{title:"Reaction Debug",body:"Readout react, próg, cooldown, kandydaci emoji i wynik próby reakcji.",read:"Jeśli score jest wysoki, ale brak reakcji, sprawdź cooldown i Discord permissions."},
+  "plasticity":{title:"Plasticity",body:"Trwałe zmiany bias neuronów i wag synaptycznych nałożone na bazowy FAFB.",read:"Bazowy connectome pozostaje nienaruszony; uczenie jest nakładką."},
+  "reward-timeline":{title:"Reward timeline",body:"Historia reinforcement events wraz z bieżącym reward trace.",read:"Porównuj znaczniki nagród/kar z Action History i Learning Debug."},
+  "action-history":{title:"Action History",body:"Chronologiczny log zachowań i zdarzeń runtime'u.",read:"Najlepsze miejsce do ustalenia dokładnej kolejności tego, co się wydarzyło."},
+  "changed-neurons":{title:"Top changed neurons",body:"Neurony z największą zmianą plastic bias po rewardzie.",read:"root_id możesz potem odszukać na Neuro-map."},
+  "server-learning":{title:"Server Learning Context",body:"Ostatnia akcja możliwa do nagrodzenia zapisana osobno dla każdego serwera.",read:"Chroni przed przypisaniem rewardu z jednego guild do akcji z innego."},
+  "audio-debug":{title:"Audio Debug",body:"Stan odtwarzania TTS/random audio, FFmpeg, voice connection i błędy.",read:"Używaj gdy Mucha miała coś powiedzieć, ale nic nie słychać."},
+  "stt":{title:"Voice Recognition / STT",body:"Stan pipeline'u faster-whisper i ostatnia transkrypcja.",read:"HEARD = rozpoznano tekst; NO_SPEECH = brak użytecznej mowy; ERROR = błąd pipeline'u."},
+  "top-neurons":{title:"Najbardziej aktywne neurony",body:"Neuronowe root_id z największą chwilową bezwzględną aktywacją.",read:"Wysoka aktywacja nie oznacza automatycznie, że neuron sam spowodował decyzję."},
+  "speak":{title:"speak",body:"Readout skłonności do wygenerowania tekstu lub TTS.",read:"Odpowiedź tekstowa porównuje go ze speak_threshold; spontaniczne pisanie używa dodatkowo +0.08."},
+  "react":{title:"react",body:"Readout skłonności do reakcji emoji.",read:"Musi pokonać reaction_threshold i cooldown."},
+  "voice_join":{title:"voice_join",body:"Readout skłonności do wejścia na voice.",read:"Sam wybór kanału uwzględnia dodatkowo pamięć, affinity, exploration i dostępność."},
+  "voice_move":{title:"voice_move",body:"Readout skłonności do zmiany kanału voice.",read:"Może rosnąć po threat, fatigue lub habituation przez wpływ sensoryczny na connectome."},
+  "voice_leave":{title:"voice_leave",body:"Readout skłonności do opuszczenia voice.",read:"Konkuruje z join/move/stay."},
+  "explore":{title:"explore",body:"Readout eksploracyjny wpływający na bardziej nowe/niepewne wybory.",read:"Wyższy wynik oznacza większą tendencję do eksploracji zamiast utrwalonego zachowania."},
+  "stay":{title:"stay",body:"Readout pozostania w obecnym stanie/kanał voice.",read:"Może być osłabiany przez overstay, threat i social fatigue."}
+};
+
+function helpDot(key){
+  return HELP[key]?'<span class="help-dot" data-help-key="'+esc(key)+'" tabindex="0">?</span>':'';
+}
+function showHelp(dot){
+  const row=HELP[dot?.dataset?.helpKey],tip=$("help-tooltip");
+  if(!row||!tip)return;
+  tip.innerHTML='<div class="tt-title">'+esc(row.title)+'</div><div class="tt-body">'+esc(row.body)+'</div>'+
+    (row.read?'<div class="tt-read"><b>Jak czytać:</b> '+esc(row.read)+'</div>':'');
+  tip.classList.add("show");tip.setAttribute("aria-hidden","false");
+  const r=dot.getBoundingClientRect(),pad=10,tw=Math.min(360,window.innerWidth-24);
+  tip.style.width=tw+"px";
+  tip.style.left=Math.min(window.innerWidth-tw-pad,Math.max(pad,r.left+r.width/2-tw/2))+"px";
+  tip.style.top=(r.bottom+8)+"px";
+  const tr=tip.getBoundingClientRect();
+  if(tr.bottom>window.innerHeight-pad)tip.style.top=Math.max(pad,r.top-tr.height-8)+"px";
+}
+function hideHelp(){const t=$("help-tooltip");if(t){t.classList.remove("show");t.setAttribute("aria-hidden","true")}}
+function enhanceHelp(){
+  document.querySelectorAll("[data-help-label]").forEach(label=>{
+    const key=label.dataset.helpLabel;
+    if(HELP[key]&&!label.querySelector(".help-dot"))label.insertAdjacentHTML("beforeend",helpDot(key));
+  });
+  document.querySelectorAll(".help-dot").forEach(dot=>{
+    if(dot.dataset.helpBound)return;dot.dataset.helpBound="1";
+    dot.addEventListener("mouseenter",()=>showHelp(dot));dot.addEventListener("mouseleave",hideHelp);
+    dot.addEventListener("focus",()=>showHelp(dot));dot.addEventListener("blur",hideHelp);
+    dot.addEventListener("click",e=>{e.stopPropagation();showHelp(dot)});
+  });
+}
+function setDetailsMode(mode){
+  const full=mode==="full";
+  document.body.classList.toggle("guided-simple",!full);
+  $("mode-simple")?.classList.toggle("active",!full);$("mode-full")?.classList.toggle("active",full);
+  try{localStorage.setItem("mucha-details-mode",full?"full":"simple")}catch(_){}
+}
+function initGuide(){
+  let mode="simple";try{mode=localStorage.getItem("mucha-details-mode")||"simple"}catch(_){}
+  setDetailsMode(mode);
+  $("mode-simple")?.addEventListener("click",()=>setDetailsMode("simple"));
+  $("mode-full")?.addEventListener("click",()=>setDetailsMode("full"));
+  enhanceHelp();
 }
 function renderAudioDebug(a){
   a=a||{};
@@ -2703,6 +2789,7 @@ function initDetailsLayout(){
   });
 }
 initDetailsLayout();
+initGuide();
 async function update(){
   try{
     const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);
@@ -2737,7 +2824,23 @@ async function update(){
     $("language-bootstrap").textContent=nfmt(ld.legacy_bootstrap_chars||0)+" znaków / "+nfmt(ld.legacy_bootstrap_items||0)+" elementów";
     $("ready").textContent=s.language_ready?"TAK":"nie";$("voice").textContent=s.voice||"poza voice";
     $("paused").textContent=s.paused?"PAUZA":"aktywny";$("event").textContent=s.last_event||"—";$("lastaction").textContent=s.last_action||"—";
-    renderActions(s.scores||{});
+    const scores=s.scores||{};
+    const rankedActions=Object.entries(scores).sort((a,b)=>Number(b[1])-Number(a[1]));
+    const dominantAction=rankedActions[0]||["—",0];
+    const attGuild=((s.attention||{}).guilds||[]).find(g=>g.focus)||((s.attention||{}).guilds||[])[0]||{};
+    const focus=attGuild.focus||null;
+    const firstVoice=(s.voice_debug||[])[0]||{};
+    const internal=firstVoice.internal_states||{};
+    $("flow-event").textContent=s.last_event||"—";
+    $("flow-attention").textContent=focus
+      ? String(focus.label||focus.key||"—")+" • "+Number(focus.score||0).toFixed(2)
+      : "brak aktywnego focusu";
+    $("flow-brain").textContent=internal.dominant
+      ? String(internal.dominant)+" • "+(Number(internal.dominant_level||0)*100).toFixed(0)+"%"
+      : "mean |a| "+Number(d.mean_abs||0).toFixed(4);
+    $("flow-readout").textContent=String(dominantAction[0])+" • "+Number(dominantAction[1]||0).toFixed(3);
+    $("flow-action").textContent=s.last_action||"brak wykonanej akcji";
+    renderActions(scores);
     renderReaction(s.reaction_debug||{});
     renderLearning(s.learning_debug||{});
     renderLearningSinceStart(s.learning_since_start||{});
@@ -2749,6 +2852,7 @@ async function update(){
     renderSttDebug(s.stt_debug||{});
     renderAttention(s.attention||{});
     renderVoiceDebug(s.voice_debug||[]);
+    enhanceHelp();
     $("top").innerHTML=(s.top_neurons||[]).map((x,i)=>'<tr><td>'+(i+1)+'</td><td>'+x[0]+'</td><td>'+(x[1]>=0?"+":"")+Number(x[1]).toFixed(5)+'</td><td>'+Math.abs(x[1]).toFixed(5)+'</td></tr>').join("");
     history.push({mean:Number(d.mean_abs),max:Number(d.max_abs)});while(history.length>maxHistory)history.shift();draw();
     $("live").textContent="LIVE";
