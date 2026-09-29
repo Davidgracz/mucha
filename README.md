@@ -653,11 +653,57 @@ state/voice_episodes.sqlite3
 
 Po pierwszej aktualizacji pusta tabela semantyczna jest bootstrapowana z części istniejących epizodów, więc wcześniejsze doświadczenia mogą od razu zacząć tworzyć uogólnienia.
 
+# Curiosity / Uncertainty Exploration
+
+Mucha wykorzystuje pamięć semantyczną także do oceny **niepewności**.
+
+Dla kanałów, użytkowników i bieżącego kontekstu obliczana jest znajomość sytuacji na podstawie:
+
+- liczby obserwacji,
+- pokrycia znanych kombinacji akcja/kontekst,
+- confidence pamięci semantycznej.
+
+```text
+mało doświadczenia
+→ semantic uncertainty
+→ sensory cue
+→ attractor CURIOSITY
+→ propagacja po connectomie
+→ EXPLORE / MOVE / JOIN / STAY
+```
+
+Niepewność nie jest dodawana bezpośrednio do action score. Pobudza neuronalny attractor `CURIOSITY`, który dopiero przez sieć wpływa na readouty.
+
+Po podjęciu decyzji JOIN/MOVE wybór konkretnego kanału może dodatkowo uwzględniać uncertainty, aby spośród dostępnych miejsc częściej wybierać te słabiej poznane.
+
+### Information Gain
+
+Po nowym doświadczeniu porównywana jest niepewność:
+
+```text
+uncertainty_before - uncertainty_after = information_gain
+```
+
+Jeżeli wiedza realnie wzrosła, decyzja może dostać mały intrinsic reward. Dzięki temu eksploracja jest nagradzana za **zdobycie informacji**, a nie samo przypadkowe przemieszczanie się.
+
+Domyślne parametry:
+
+```toml
+uncertainty_exploration_enabled = true
+uncertainty_curiosity_magnitude = 1.10
+uncertainty_curiosity_steps = 3
+uncertainty_target_weight = 0.30
+information_gain_reward_scale = 0.20
+information_gain_reward_max = 0.08
+information_gain_min_delta = 0.01
+```
+
+Stan jest widoczny w `/details` jako **Curiosity / Uncertainty**, razem z najbardziej nieznanymi kanałami, cue do attractora i ostatnim information gain.
+
 # Najbliższy kierunek rozwoju
 
 Dalsze kierunki:
 
-- curiosity / uncertainty driven exploration,
 - bogatsze sensory voice,
 - sleep / offline consolidation,
 - pełny panel **„dlaczego zrobiła X?”** pokazujący drogę od bodźca przez connectome do decyzji.
