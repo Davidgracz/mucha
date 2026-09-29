@@ -512,19 +512,41 @@ Jeżeli panel jest dostępny poza localhostem, używaj uwierzytelniania i silneg
 
 ---
 
+# Attention + Working Memory
+
+Mucha posiada krótkotrwały stan uwagi utrzymujący aktywny kontekst:
+
+- użytkowników,
+- kanały tekstowe i voice,
+- najważniejsze słowa / tematy,
+- ostatnie sceny tekstowe i transkrypcje STT.
+
+Każdy element uwagi ma zanikającą siłę. Jego końcowy score jest dodatkowo modulowany przez bieżący stan connectomu poprzez stabilne populacje `attention:<item>`.
+
+Aktywny kontekst jest:
+
+- podawany do connectomu natychmiast po nowym bodźcu,
+- okresowo reiniektowany podczas idle ticków,
+- wygaszany wykładniczo,
+- usuwany po wygaśnięciu okna working memory,
+- używany jako kontekst przy spontanicznym generowaniu tekstu.
+
+Domyślne ustawienia:
+
+```toml
+[behavior]
+attention_enabled = true
+attention_half_life_seconds = 45.0
+working_memory_seconds = 120
+attention_max_items = 8
+attention_reinject_magnitude = 0.32
+attention_topic_words = 5
+attention_mention_boost = 0.35
+```
+
+Stan jest widoczny na żywo w `/details` jako **Attention / Working Memory**.
+
 # Najbliższy kierunek rozwoju
-
-Planowany kolejny etap:
-
-### Attention + Working Memory
-
-Mucha ma otrzymać krótkotrwały stan uwagi, który pozwoli jej utrzymywać aktywny kontekst:
-
-- konkretnego użytkownika,
-- kanału,
-- rozmowy,
-- ostatniego bodźca,
-- aktualnego tematu.
 
 Dalsze kierunki:
 
