@@ -5448,6 +5448,27 @@ class MuchaClient(discord.Client):
                 self.brain.learning_since_start_diagnostics()
             )
             attention_debug = self._attention_snapshot()
+            action_policy_debug = self.brain.action_policy_diagnostics()
+            action_policy_debug["gates"] = {
+                "speak": self.brain.action_policy_gate(
+                    "speak",
+                    scores["speak"],
+                    self.cfg.behavior.speak_threshold,
+                ),
+                "spontaneous_speak": self.brain.action_policy_gate(
+                    "speak",
+                    scores["speak"],
+                    min(
+                        0.999,
+                        self.cfg.behavior.speak_threshold + 0.08,
+                    ),
+                ),
+                "react": self.brain.action_policy_gate(
+                    "react",
+                    scores["react"],
+                    self.cfg.behavior.reaction_threshold,
+                ),
+            }
 
         language_total, language_unique = self.language.stats()
         language_diag = self.language.diagnostics()
@@ -5601,7 +5622,7 @@ class MuchaClient(discord.Client):
             "paused": self.paused,
             "voice_debug": list(self._voice_debug.values()),
             "attention": attention_debug,
-            "action_policy": diag.get("action_policy", {}),
+            "action_policy": action_policy_debug,
             "episodic_memory": self.voice_episodes.diagnostics(),
             "memory_replay": dict(self._memory_replay_debug),
             "audio_debug": dict(self._audio_debug),
@@ -8093,6 +8114,18 @@ class MuchaClient(discord.Client):
                 "margin": brain_decision["margin"],
                 "candidates": dict(
                     brain_decision["candidates"]
+                ),
+                "raw_candidates": dict(
+                    brain_decision.get("raw_candidates", {})
+                ),
+                "policy_scores": dict(
+                    brain_decision.get("policy_scores", {})
+                ),
+                "policy_enabled": bool(
+                    brain_decision.get("policy", {}).get(
+                        "enabled",
+                        False,
+                    )
                 ),
                 "tie_band": float(
                     brain_decision.get("tie_band", 0.0)
