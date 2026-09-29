@@ -494,6 +494,160 @@ class VoiceEpisodicMemory:
             }
         return result
 
+    def semantic_uncertainty(
+        self,
+        context: str,
+        actions: list[str] | tuple[str, ...],
+        *,
+        channel_id: int | None = None,
+        user_ids: list[int] | tuple[int, ...] = (),
+    ) -> dict:
+        """Estimate how little semantic experience exists for a scene.
+
+        Missing action/concept combinations count as unknown. Existing entries
+        become more familiar as observations accumulate and their semantic
+        confidence rises. This does not choose an action; it is an information
+        signal for curiosity/exploration.
+        """
+        actions_clean = tuple(
+            dict.fromkeys(
+                str(action)
+                for action in actions
+                if str(action)
+            )
+        )
+        concepts = self.semantic_concepts(
+            context,
+            channel_id,
+            user_ids,
+        )
+        if not actions_clean or not concepts:
+            return {
+                "uncertainty": 1.0,
+                "familiarity": 0.0,
+                "observations": 0,
+                "known_pairs": 0,
+                "possible_pairs": (
+                    len(actions_clean) * len(concepts)
+                ),
+                "concepts": [],
+            }
+
+        type_weight = {
+            "state": 0.45,
+            "channel": 0.90,
+            "user": 1.00,
+            "user_channel": 1.15,
+        }
+        rows: list[dict] = []
+        weighted_uncertainty = 0.0
+        total_weight = 0.0
+        observations_total = 0
+        known_pairs_total = 0
+
+        for concept_type, concept_key in concepts:
+            confidence_sum = 0.0
+            observations = 0
+            known_pairs = 0
+            action_rows: list[dict] = []
+            for action in actions_clean:
+                entry = self._semantic.get(
+                    (
+                        concept_type,
+                        concept_key,
+                        action,
+                    )
+                )
+                if entry is None:
+                    action_rows.append({
+                        "action": action,
+                        "observations": 0,
+                        "confidence": 0.0,
+                        "expected_reward": 0.0,
+                    })
+                    continue
+                obs = max(
+                    0,
+                    int(entry.get("observations", 0)),
+                )
+                confidence = self._semantic_confidence(entry)
+                observations += obs
+                observations_total += obs
+                known_pairs += 1
+                known_pairs_total += 1
+                confidence_sum += confidence
+                action_rows.append({
+                    "action": action,
+                    "observations": obs,
+                    "confidence": confidence,
+                    "expected_reward": float(
+                        entry.get("expected_reward", 0.0)
+                    ),
+                })
+
+            count = max(1, len(actions_clean))
+            mean_confidence = confidence_sum / count
+            maturity = (
+                1.0
+                - math.exp(
+                    -float(observations)
+                    / max(1.0, 3.0 * count)
+                )
+            )
+            coverage = known_pairs / count
+            familiarity = max(
+                0.0,
+                min(
+                    1.0,
+                    0.55 * mean_confidence
+                    + 0.25 * maturity
+                    + 0.20 * coverage,
+                ),
+            )
+            uncertainty = 1.0 - familiarity
+            weight = float(
+                type_weight.get(concept_type, 0.60)
+            )
+            weighted_uncertainty += weight * uncertainty
+            total_weight += weight
+            rows.append({
+                "concept_type": concept_type,
+                "concept_key": concept_key,
+                "uncertainty": uncertainty,
+                "familiarity": familiarity,
+                "observations": observations,
+                "known_pairs": known_pairs,
+                "possible_pairs": count,
+                "mean_confidence": mean_confidence,
+                "actions": action_rows,
+            })
+
+        rows.sort(
+            key=lambda row: (
+                float(row["uncertainty"]),
+                -int(row["observations"]),
+            ),
+            reverse=True,
+        )
+        overall = (
+            weighted_uncertainty / total_weight
+            if total_weight > 1e-9
+            else 1.0
+        )
+        return {
+            "uncertainty": max(0.0, min(1.0, overall)),
+            "familiarity": max(
+                0.0,
+                min(1.0, 1.0 - overall),
+            ),
+            "observations": observations_total,
+            "known_pairs": known_pairs_total,
+            "possible_pairs": (
+                len(actions_clean) * len(concepts)
+            ),
+            "concepts": rows,
+        }
+
     def semantic_summary(
         self,
         limit: int = 20,
@@ -1292,6 +1446,12 @@ class VoiceEpisodicMemory:
             prediction_error=episode.prediction_error,
             now=episode.time,
         )
+        semantic_uncertainty_before = self.semantic_uncertainty(
+            episode.context,
+            [episode.action],
+            channel_id=episode.channel_id,
+            user_ids=episode.user_ids,
+        )
         semantic_updates = self._update_semantics(
             context=episode.context,
             channel_id=episode.channel_id,
@@ -1300,6 +1460,27 @@ class VoiceEpisodicMemory:
             actual_reward=episode.actual_reward,
             now=episode.time,
             persist=True,
+        )
+        semantic_uncertainty_after = self.semantic_uncertainty(
+            episode.context,
+            [episode.action],
+            channel_id=episode.channel_id,
+            user_ids=episode.user_ids,
+        )
+        information_gain = max(
+            0.0,
+            float(
+                semantic_uncertainty_before.get(
+                    "uncertainty",
+                    1.0,
+                )
+            )
+            - float(
+                semantic_uncertainty_after.get(
+                    "uncertainty",
+                    1.0,
+                )
+            ),
         )
 
         if self.db is not None:
@@ -1379,6 +1560,19 @@ class VoiceEpisodicMemory:
                 memory_entry["replay_count"]
             ),
             "semantic_updates": semantic_updates,
+            "semantic_uncertainty_before": float(
+                semantic_uncertainty_before.get(
+                    "uncertainty",
+                    1.0,
+                )
+            ),
+            "semantic_uncertainty_after": float(
+                semantic_uncertainty_after.get(
+                    "uncertainty",
+                    1.0,
+                )
+            ),
+            "information_gain": float(information_gain),
             "source": episode.source,
         }
 
