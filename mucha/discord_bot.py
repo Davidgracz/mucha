@@ -7303,6 +7303,17 @@ class MuchaClient(discord.Client):
             "episodic_recall": {},
             "semantic_recall": {},
             "semantic_guided": {},
+            "uncertainty_exploration_enabled": bool(
+                self.cfg.voice.uncertainty_exploration_enabled
+            ),
+            "uncertainty_overall": 0.0,
+            "uncertainty_channels": [],
+            "uncertainty_curiosity_cue": {},
+            "information_gain_last": dict(
+                self._information_gain_last.get(guild.id, {})
+            ),
+            "information_gain_reward_applied": 0.0,
+            "information_gain_rewards_applied": 0,
             "semantic_memory_enabled": bool(
                 self.cfg.voice.semantic_memory_enabled
             ),
