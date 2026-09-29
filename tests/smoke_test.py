@@ -544,11 +544,18 @@ def main():
         assert "internal_state_arousal_gain" in CONFIG_HTML
         assert "Internal states / attractors" in CONFIG_HTML
         assert "Attention / Working Memory" in CONFIG_HTML
+        assert "Learned Action Policy" in CONFIG_HTML
+        assert "action_policy_enabled" in CONFIG_HTML
+        assert "action_policy_lr" in CONFIG_HTML
+        assert "action_policy_max_bias" in CONFIG_HTML
+        assert "action_policy_decay" in CONFIG_HTML
         assert "attention_enabled" in CONFIG_HTML
         assert "attention_half_life_seconds" in CONFIG_HTML
         assert "working_memory_seconds" in CONFIG_HTML
         assert "attention_reinject_magnitude" in CONFIG_HTML
         assert "Attention / Working Memory" in HTML
+        assert "Learned Action Policy" in HTML
+        assert "renderActionPolicy" in HTML
         assert "renderAttention" in HTML
         assert "Jak Mucha doszła do tego, co robi teraz?" in HTML
         assert "data-help-key=\"decision-flow\"" in HTML
@@ -599,7 +606,8 @@ def main():
         assert "voice_action_decision" in bot_source
         assert "tie_evidence" in bot_source
         assert "tie_break" in bot_source
-        assert "connectome-readout-competition" in bot_source
+        assert "action_policy_gate" in bot_source
+        assert '"action_policy": action_policy_debug' in bot_source
         assert "inject_voice_decision_context" in bot_source
         assert "_last_social_drive_punish" in bot_source
         assert "neural social drive outside voice" in bot_source
@@ -633,6 +641,10 @@ def main():
         )
         assert "_capture_signal_flow_tick" in brain_source
         assert "attention_score" in brain_source
+        assert "action_policy_score" in brain_source
+        assert "action_policy_gate" in brain_source
+        assert "action_policy_diagnostics" in brain_source
+        assert "connectome-readout+learned-policy" in brain_source
         assert "signal_flow_snapshot" in brain_source
         assert "effective_weight" in brain_source
         assert "top_synapses" in brain_source
@@ -795,6 +807,37 @@ def main():
         )
         assert strongest_after < strongest_before
 
+        policy_before = b.action_policy_diagnostics()
+        speak_bias_before = policy_before["actions"]["speak"]["bias"]
+        raw_speak = b.action_scores()["speak"]
+        gate_before = b.action_policy_gate(
+            "speak",
+            raw_speak,
+            0.50,
+        )
+        b.reward(
+            1.0,
+            action="speak",
+            trace=edge_trace,
+        )
+        policy_after = b.action_policy_diagnostics()
+        speak_bias_after = policy_after["actions"]["speak"]["bias"]
+        assert speak_bias_after > speak_bias_before
+        assert (
+            policy_after["actions"]["speak"]["effective_score"]
+            >= policy_after["actions"]["speak"]["raw_score"]
+        )
+        gate_after = b.action_policy_gate(
+            "speak",
+            b.action_scores()["speak"],
+            0.50,
+        )
+        assert (
+            gate_after["learned_raw_threshold"]
+            < gate_before["learned_raw_threshold"]
+        )
+        assert policy_after["last_update"]["action"] == "speak"
+
         b.save()
         reloaded = FlyBrain(c, cfg)
         assert reloaded.diagnostics()["learned_synapses"] >= 1
@@ -804,6 +847,9 @@ def main():
             edge["consolidation"]
             for edge in reloaded_learned["edges"]
         ) > 0.0
+        reloaded_policy = reloaded.action_policy_diagnostics()
+        assert reloaded_policy["actions"]["speak"]["updates"] > 0
+        assert reloaded_policy["actions"]["speak"]["bias"] > 0.0
 
         lang = OnlineLanguage(
             td / "lang.sqlite3",
