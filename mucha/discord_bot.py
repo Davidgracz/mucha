@@ -4222,6 +4222,7 @@ class MuchaClient(discord.Client):
 
         async with self._brain_lock:
             self.brain.inject_text(message.content, message.author.id, mentioned)
+            self._inject_attention_context(message.guild.id)
             familiar_threshold = float(
                 self.cfg.behavior.familiar_affinity_threshold
             )
@@ -6161,6 +6162,7 @@ class MuchaClient(discord.Client):
                 member.id,
                 mentioned,
             )
+            self._inject_attention_context(guild.id)
             if affinity >= float(
                 self.cfg.behavior.familiar_affinity_threshold
             ):
