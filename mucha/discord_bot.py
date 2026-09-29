@@ -539,6 +539,13 @@ class MuchaClient(discord.Client):
             "semantic_recall_min_observations",
             "semantic_recall_magnitude",
             "semantic_recall_steps",
+            "uncertainty_exploration_enabled",
+            "uncertainty_curiosity_magnitude",
+            "uncertainty_curiosity_steps",
+            "uncertainty_target_weight",
+            "information_gain_reward_scale",
+            "information_gain_reward_max",
+            "information_gain_min_delta",
             "minimum_dwell_seconds",
             "maximum_dwell_seconds",
             "overstay_punish_amount",
@@ -992,6 +999,27 @@ class MuchaClient(discord.Client):
             ),
             ("voice", "semantic_recall_steps"): (
                 int, 1, 12
+            ),
+            ("voice", "uncertainty_exploration_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "uncertainty_curiosity_magnitude"): (
+                float, 0.0, 4.0
+            ),
+            ("voice", "uncertainty_curiosity_steps"): (
+                int, 1, 12
+            ),
+            ("voice", "uncertainty_target_weight"): (
+                float, 0.0, 2.0
+            ),
+            ("voice", "information_gain_reward_scale"): (
+                float, 0.0, 1.0
+            ),
+            ("voice", "information_gain_reward_max"): (
+                float, 0.0, 0.5
+            ),
+            ("voice", "information_gain_min_delta"): (
+                float, 0.0, 1.0
             ),
             ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
             ("voice", "maximum_dwell_seconds"): (int, 1, 86400),
