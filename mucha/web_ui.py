@@ -244,6 +244,10 @@ const groups=[
   ["episodic_forgetting_half_life_days","Półokres pamięci epizodycznej","number",0.25,0.25,3650,"Jak szybko bez ponownego wzmacniania zanikają expected reward i consolidation strength scen."],
   ["episodic_forgetting_interval_seconds","Interwał zapominania pamięci","number",30,30,86400,"Jak często stosować czasowy decay pamięci epizodycznej."],
   ["episodic_consolidated_threshold","Próg utrwalonej sceny","number",0.01,0,1,"Od jakiej siły scena jest traktowana jako skonsolidowane wspomnienie."],
+  ["semantic_memory_enabled","Pamięć semantyczna z epizodów","bool",0,0,0,"Uogólnia powtarzające się doświadczenia po użytkowniku, kanale i stanie homeostatycznym."],
+  ["semantic_recall_min_observations","Minimum doświadczeń semantycznych","number",1,1,1000,"Ile podobnych zdarzeń musi istnieć, zanim uogólnienie zacznie być przypominane."],
+  ["semantic_recall_magnitude","Siła semantic recall","number",0.05,0,4,"Skaluje dodatni lub ujemny bodziec pamięci semantycznej podawany do connectomu."],
+  ["semantic_recall_steps","Ticki semantic recall","number",1,1,12,"Minimalna liczba kroków propagacji, gdy aktywne jest przypomnienie semantyczne."],
   ["minimum_dwell_seconds","Motor refractory po wejściu","number",1,0,86400,"W tym czasie move/leave są fizycznie niedostępne; connectome nadal widzi bodziec early-dwell."],
   ["maximum_dwell_seconds","Maksymalny pobyt","number",1,1,86400,"Po tym czasie uruchamia się mechanizm overstay/threat."],
   ["overstay_punish_amount","Kara STAY za zbyt długi pobyt","number",0.05,0,1,"Kara ucząca ścieżkę STAY, gdy Mucha po maximum_dwell_seconds nadal zostaje na kanale."],
@@ -2303,6 +2307,8 @@ const HELP={
   "episodic":{title:"Epizody",body:"Liczba zapisanych doświadczeń/scen w pamięci epizodycznej.",read:"Epizod łączy kontekst, akcję, przewidywany i faktyczny reward."},
   "credit-queue":{title:"Credit queue",body:"Kolejka niedawnych decyzji czekających na późniejszy reward/punish.",read:"Pozwala przypisać feedback do akcji, która wydarzyła się wcześniej, zamiast tylko do ostatniego ticka."},
   "memory-replay":{title:"Memory Replay",body:"Odtwarzanie ważnych epizodów podczas ciszy jako słabszych bodźców dla connectomu.",read:"Ma utrwalać powtarzające się doświadczenia i wygaszać przypadkowe ślady."},
+  "semantic-memory":{title:"Pamięć semantyczna",body:"Uogólnienie z wielu epizodów. Zamiast pamiętać tylko konkretną scenę, Mucha zbiera statystyki typu użytkownik→akcja, kanał→akcja, stan→akcja i użytkownik+kanał→akcja.",read:"Expected reward mówi kierunek doświadczenia, confidence mówi jak wiarygodne jest uogólnienie, a signal jest tym, co faktycznie trafia jako signed cue do connectomu."},
+  "semantic-signal":{title:"Semantic signal",body:"Iloczyn oczekiwanego rewardu i confidence uogólnienia.",read:"Dodatni pobudza sensoryczną drogę do akcji, ujemny ją hamuje. Sam action score nie jest edytowany bezpośrednio."},
   "memory-scenes":{title:"Memory scenes",body:"Liczba unikalnych scen/kontekstów utrzymywanych przez pamięć epizodyczną.",read:"Kilka epizodów może należeć do tej samej sceny."},
   "consolidated":{title:"Consolidated",body:"Liczba scen, których strength przekroczył próg konsolidacji.",read:"Takie wspomnienia są bardziej odporne na zapominanie i częściej trafiają do replay."},
   "reward-opportunity":{title:"Reward opportunity",body:"Kanał/scena oznaczona jako potencjalna możliwość zdobycia pozytywnego reinforcement.",read:"To zachęta sensoryczna; nadal connectome musi wyprodukować odpowiednią decyzję."},
@@ -2320,7 +2326,7 @@ const HELP_LABEL_KEYS={
   "SOCIAL NEED":"social-need","CURIOSITY":"curiosity","STRESS":"stress","SATIETY":"satiety","AROUSAL":"arousal",
   "Social need cue":"social-drive-cue","Social fatigue cue":"social-fatigue-cue","Habituation cue":"habituation-cue","Exploration cue":"exploration-cue",
   "Przewidywany reward":"predicted-reward","Prediction error":"prediction-error","Korekta connectomu":"prediction-correction",
-  "Epizody":"episodic","Credit queue":"credit-queue","Replay":"memory-replay","Memory scenes":"memory-scenes","Consolidated":"consolidated",
+  "Epizody":"episodic","Credit queue":"credit-queue","Replay":"memory-replay","Memory scenes":"memory-scenes","Consolidated":"consolidated","Semantic entries":"semantic-memory","Semantic signal":"semantic-signal",
   "Reward opportunity":"reward-opportunity","Cue effective":"cue-effective","Threat":"threat","Overstay":"overstay","Chaser":"chaser",
   "Propagation":"propagation","Guided reach":"guided-reach","Effective move":"effective-move","Effective margin":"effective-margin"
 };
@@ -2554,6 +2560,24 @@ function renderVoiceDebug(items){
     const recallSummary=Object.entries(v.episodic_recall||{}).map(([k,x])=>
       k+" "+Number((x||{}).magnitude||0).toFixed(2)+" / "+Number((x||{}).reach_max||0).toFixed(3)
     ).join(" • ")||"—";
+    const semanticSummary=Object.entries(v.semantic_recall||{}).map(([k,x])=>
+      k+" reward "+Number((x||{}).expected_reward||0).toFixed(2)+
+      " • conf "+(Number((x||{}).confidence||0)*100).toFixed(0)+"%"+
+      " • signal "+Number((x||{}).signal||0).toFixed(2)
+    ).join(" | ")||"—";
+    const semanticGuidedSummary=Object.entries(v.semantic_guided||{}).map(([k,x])=>
+      k+" "+String((x||{}).valence||"neutral")+" "+
+      Number((x||{}).magnitude||0).toFixed(2)+
+      " / reach "+Number((x||{}).reach_max||0).toFixed(3)
+    ).join(" • ")||"—";
+    const semanticRows=(v.semantic_top||[]).slice(0,6).map(m=>{
+      const value=Number(m.expected_reward||0),conf=Number(m.confidence||0);
+      const cls=value>0?"ok":value<0?"no":"";
+      return '<div class="memory-row"><b>'+esc(m.action||"—")+'</b><span>'+
+        esc(m.concept_type||"concept")+': '+esc(m.concept_key||"—")+
+        ' • '+nfmt(m.observations||0)+' obs • conf '+(conf*100).toFixed(0)+'%</span>'+
+        '<em class="'+cls+'">'+(value>=0?"+":"")+value.toFixed(2)+'</em></div>';
+    }).join("")||'<div class="voice-note">Brak uogólnień z wystarczającą siłą.</div>';
     const currentTime=onVoice
       ? Number(v.dwell_elapsed||0).toFixed(0)+" / "+Number(v.maximum_dwell_seconds||0).toFixed(0)+" s"
       : Number(v.outside_seconds||0).toFixed(0)+" s poza VC";
@@ -2644,6 +2668,18 @@ function renderVoiceDebug(items){
         '</div>'+
 
         '<div class="voice-box">'+
+          '<h3>🧩 Pamięć semantyczna '+helpDot("semantic-memory")+'</h3>'+
+          '<div class="voice-kpis">'+
+            kpi("Semantic entries",String(Number(v.semantic_entries||0)))+
+            kpi("Semantic signal",Object.values(v.semantic_recall||{}).length?String(Object.values(v.semantic_recall||{}).map(x=>Number((x||{}).signal||0).toFixed(2)).join(" / ")):"—")+
+            kpi("Recall",v.semantic_memory_enabled?"ON":"OFF",v.semantic_memory_enabled?"ok":"warn")+
+          '</div>'+
+          '<div class="voice-note"><b>Uogólniony recall:</b> '+esc(semanticSummary)+'</div>'+
+          '<div class="voice-note"><b>Signed cue → connectome:</b> '+esc(semanticGuidedSummary)+'</div>'+
+          '<details class="mini-details" data-detail-key="semantic-top-'+esc(v.guild||"server")+'"><summary>Najsilniejsze uogólnienia</summary><div class="memory-list">'+semanticRows+'</div></details>'+
+        '</div>'+
+
+        '<div class="voice-box">'+
           '<h3>🎯 Social / reward</h3>'+
           '<div class="voice-kpis">'+
             kpi("Reward opportunity",v.reward_opportunity_channel?esc(v.reward_opportunity_channel):"—",v.reward_opportunity_channel?"ok":"")+
@@ -2692,6 +2728,9 @@ function renderVoiceDebug(items){
             kpi("Episodic DB",esc(v.episodic_database||"—"))+
             kpi("Temporal queue",Number(v.prediction_credit_queue_depth||0)+" / corrections "+Number(v.prediction_correction_queue_depth||0))+
             kpi("Replay reason",esc(replay.reason||"—"))+
+            kpi("Semantic entries",String(Number(v.semantic_entries||0)))+
+            kpi("Semantic recall",esc(semanticSummary))+
+            kpi("Semantic guided",esc(semanticGuidedSummary))+
             kpi("neural tie-break",esc(bd.tie_break||"niepotrzebny"))+
             kpi("Tie evidence",esc(tieSummary||"—"))+
             kpi("Homeostasis paths",esc(guided))+
