@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import deque
 from dataclasses import dataclass
 import json
+import math
 from pathlib import Path
 import sqlite3
 import time
@@ -39,6 +40,8 @@ class VoiceEpisodicMemory:
         forgetting_half_life_days: float = 14.0,
         forgetting_interval_seconds: int = 300,
         consolidated_threshold: float = 0.35,
+        semantic_memory_enabled: bool = True,
+        semantic_recall_min_observations: int = 2,
     ):
         self.max_events = max(16, int(max_events))
         self.max_persisted_events = max(
@@ -65,6 +68,17 @@ class VoiceEpisodicMemory:
             0.0,
             min(1.0, float(consolidated_threshold)),
         )
+        self.semantic_memory_enabled = bool(
+            semantic_memory_enabled
+        )
+        self.semantic_recall_min_observations = max(
+            1,
+            int(semantic_recall_min_observations),
+        )
+        self._semantic: dict[
+            tuple[str, str, str],
+            dict,
+        ] = {}
         self._last_forgetting_at = time.time()
         self._last_forgetting_diag: dict = {
             "ran": False,
@@ -123,6 +137,411 @@ class VoiceEpisodicMemory:
         )
         return f"channel={channel}|users={users or '-'}"
 
+    @staticmethod
+    def semantic_concepts(
+        context: str,
+        channel_id: int | None,
+        user_ids: list[int] | tuple[int, ...],
+    ) -> list[tuple[str, str]]:
+        concepts: list[tuple[str, str]] = []
+        context = str(context or "").strip()
+        if context:
+            concepts.append(("state", context))
+
+        channel_key = (
+            str(int(channel_id))
+            if channel_id is not None
+            else ""
+        )
+        if channel_key:
+            concepts.append(("channel", channel_key))
+
+        users = sorted(set(int(x) for x in user_ids))
+        for user_id in users:
+            user_key = str(user_id)
+            concepts.append(("user", user_key))
+            if channel_key:
+                concepts.append(
+                    (
+                        "user_channel",
+                        f"{user_key}@{channel_key}",
+                    )
+                )
+        return concepts
+
+    @staticmethod
+    def _semantic_confidence(entry: dict) -> float:
+        observations = max(
+            0,
+            int(entry.get("observations", 0)),
+        )
+        if observations <= 0:
+            return 0.0
+        positive = max(
+            0,
+            int(entry.get("positive_count", 0)),
+        )
+        negative = max(
+            0,
+            int(entry.get("negative_count", 0)),
+        )
+        signed = positive + negative
+        agreement = (
+            abs(positive - negative) / signed
+            if signed > 0
+            else 0.0
+        )
+        reward_abs_mean = min(
+            1.0,
+            max(
+                0.0,
+                float(entry.get("reward_abs_sum", 0.0))
+                / max(1, observations),
+            ),
+        )
+        maturity = observations / (observations + 3.0)
+        return max(
+            0.0,
+            min(
+                1.0,
+                maturity
+                * (
+                    0.45
+                    + 0.35 * agreement
+                    + 0.20 * reward_abs_mean
+                ),
+            ),
+        )
+
+    def _persist_semantic_entry(
+        self,
+        concept_type: str,
+        concept_key: str,
+        action: str,
+        entry: dict,
+    ) -> None:
+        if self.db is None:
+            return
+        self.db.execute(
+            """
+            INSERT INTO voice_semantic_memory(
+                concept_type, concept_key, action,
+                expected_reward, observations,
+                positive_count, negative_count,
+                reward_abs_sum, last_reward, updated_at
+            ) VALUES(?,?,?,?,?,?,?,?,?,?)
+            ON CONFLICT(concept_type, concept_key, action)
+            DO UPDATE SET
+                expected_reward=excluded.expected_reward,
+                observations=excluded.observations,
+                positive_count=excluded.positive_count,
+                negative_count=excluded.negative_count,
+                reward_abs_sum=excluded.reward_abs_sum,
+                last_reward=excluded.last_reward,
+                updated_at=excluded.updated_at
+            """,
+            (
+                concept_type,
+                concept_key,
+                action,
+                float(entry["expected_reward"]),
+                int(entry["observations"]),
+                int(entry["positive_count"]),
+                int(entry["negative_count"]),
+                float(entry["reward_abs_sum"]),
+                float(entry["last_reward"]),
+                float(entry["updated_at"]),
+            ),
+        )
+
+    def _update_semantic_entry(
+        self,
+        *,
+        concept_type: str,
+        concept_key: str,
+        action: str,
+        actual_reward: float,
+        now: float,
+        persist: bool = True,
+    ) -> dict:
+        key = (
+            str(concept_type),
+            str(concept_key),
+            str(action),
+        )
+        entry = self._semantic.get(key)
+        if entry is None:
+            entry = {
+                "expected_reward": 0.0,
+                "observations": 0,
+                "positive_count": 0,
+                "negative_count": 0,
+                "reward_abs_sum": 0.0,
+                "last_reward": 0.0,
+                "updated_at": 0.0,
+            }
+            self._semantic[key] = entry
+
+        actual = max(
+            -1.0,
+            min(1.0, float(actual_reward)),
+        )
+        previous_n = max(
+            0,
+            int(entry["observations"]),
+        )
+        new_n = previous_n + 1
+        before = float(entry["expected_reward"])
+        entry["expected_reward"] = max(
+            -1.0,
+            min(
+                1.0,
+                before + (actual - before) / new_n,
+            ),
+        )
+        entry["observations"] = new_n
+        if actual > 1e-9:
+            entry["positive_count"] = (
+                int(entry["positive_count"]) + 1
+            )
+        elif actual < -1e-9:
+            entry["negative_count"] = (
+                int(entry["negative_count"]) + 1
+            )
+        entry["reward_abs_sum"] = (
+            float(entry["reward_abs_sum"])
+            + abs(actual)
+        )
+        entry["last_reward"] = actual
+        entry["updated_at"] = float(now)
+        if persist:
+            self._persist_semantic_entry(
+                key[0],
+                key[1],
+                key[2],
+                entry,
+            )
+        result = dict(entry)
+        result.update({
+            "concept_type": key[0],
+            "concept_key": key[1],
+            "action": key[2],
+            "confidence": self._semantic_confidence(entry),
+        })
+        result["strength"] = (
+            result["confidence"]
+            * abs(float(result["expected_reward"]))
+        )
+        return result
+
+    def _update_semantics(
+        self,
+        *,
+        context: str,
+        channel_id: int | None,
+        user_ids: list[int] | tuple[int, ...],
+        action: str,
+        actual_reward: float,
+        now: float,
+        persist: bool = True,
+    ) -> list[dict]:
+        if not self.semantic_memory_enabled:
+            return []
+        return [
+            self._update_semantic_entry(
+                concept_type=concept_type,
+                concept_key=concept_key,
+                action=action,
+                actual_reward=actual_reward,
+                now=now,
+                persist=persist,
+            )
+            for concept_type, concept_key in self.semantic_concepts(
+                context,
+                channel_id,
+                user_ids,
+            )
+        ]
+
+    def _bootstrap_semantics_from_db(self) -> None:
+        if self.db is None or not self.semantic_memory_enabled:
+            return
+        rows = self.db.execute(
+            """
+            SELECT created_at, guild_id, channel_id, channel_name,
+                   user_ids_json, user_names_json, context,
+                   scene_key, action, predicted_reward,
+                   actual_reward, prediction_error, source
+            FROM voice_episodes
+            ORDER BY id DESC
+            LIMIT 2000
+            """
+        ).fetchall()
+        for row in reversed(rows):
+            episode = self._episode_from_row(row)
+            self._update_semantics(
+                context=episode.context,
+                channel_id=episode.channel_id,
+                user_ids=episode.user_ids,
+                action=episode.action,
+                actual_reward=episode.actual_reward,
+                now=episode.time,
+                persist=True,
+            )
+        if rows:
+            self.db.commit()
+
+    def semantic_recall(
+        self,
+        context: str,
+        actions: list[str] | tuple[str, ...],
+        *,
+        channel_id: int | None = None,
+        user_ids: list[int] | tuple[int, ...] = (),
+        min_observations: int | None = None,
+    ) -> dict[str, dict]:
+        if not self.semantic_memory_enabled:
+            return {}
+
+        minimum = max(
+            1,
+            int(
+                self.semantic_recall_min_observations
+                if min_observations is None
+                else min_observations
+            ),
+        )
+        concepts = self.semantic_concepts(
+            context,
+            channel_id,
+            user_ids,
+        )
+        type_weight = {
+            "state": 0.70,
+            "channel": 0.90,
+            "user": 1.00,
+            "user_channel": 1.20,
+        }
+        result: dict[str, dict] = {}
+        for action in actions:
+            contributors: list[dict] = []
+            weighted_total = 0.0
+            weight_sum = 0.0
+            observations_total = 0
+            for concept_type, concept_key in concepts:
+                entry = self._semantic.get(
+                    (
+                        concept_type,
+                        concept_key,
+                        str(action),
+                    )
+                )
+                if entry is None:
+                    continue
+                observations = int(
+                    entry.get("observations", 0)
+                )
+                if observations < minimum:
+                    continue
+                confidence = self._semantic_confidence(entry)
+                if confidence <= 1e-6:
+                    continue
+                specificity = float(
+                    type_weight.get(concept_type, 0.60)
+                )
+                weight = specificity * confidence
+                expected = float(
+                    entry.get("expected_reward", 0.0)
+                )
+                weighted_total += weight * expected
+                weight_sum += weight
+                observations_total += observations
+                contributors.append({
+                    "concept_type": concept_type,
+                    "concept_key": concept_key,
+                    "expected_reward": expected,
+                    "confidence": confidence,
+                    "observations": observations,
+                    "weight": weight,
+                })
+
+            if weight_sum <= 1e-9:
+                continue
+            value = max(
+                -1.0,
+                min(1.0, weighted_total / weight_sum),
+            )
+            confidence = max(
+                0.0,
+                min(
+                    1.0,
+                    1.0 - math.exp(-weight_sum / 1.6),
+                ),
+            )
+            contributors.sort(
+                key=lambda row: abs(
+                    float(row["weight"])
+                    * float(row["expected_reward"])
+                ),
+                reverse=True,
+            )
+            result[str(action)] = {
+                "expected_reward": value,
+                "confidence": confidence,
+                "signal": value * confidence,
+                "observations": observations_total,
+                "contributors": contributors[:8],
+            }
+        return result
+
+    def semantic_summary(
+        self,
+        limit: int = 20,
+    ) -> list[dict]:
+        limit = max(1, min(200, int(limit)))
+        rows: list[dict] = []
+        for (
+            concept_type,
+            concept_key,
+            action,
+        ), entry in self._semantic.items():
+            confidence = self._semantic_confidence(entry)
+            expected = float(
+                entry.get("expected_reward", 0.0)
+            )
+            rows.append({
+                "concept_type": concept_type,
+                "concept_key": concept_key,
+                "action": action,
+                "expected_reward": expected,
+                "confidence": confidence,
+                "strength": confidence * abs(expected),
+                "observations": int(
+                    entry.get("observations", 0)
+                ),
+                "positive_count": int(
+                    entry.get("positive_count", 0)
+                ),
+                "negative_count": int(
+                    entry.get("negative_count", 0)
+                ),
+                "last_reward": float(
+                    entry.get("last_reward", 0.0)
+                ),
+                "updated_at": float(
+                    entry.get("updated_at", 0.0)
+                ),
+            })
+        rows.sort(
+            key=lambda row: (
+                float(row["strength"]),
+                int(row["observations"]),
+                float(row["updated_at"]),
+            ),
+            reverse=True,
+        )
+        return rows[:limit]
+
     def _create_schema(self) -> None:
         assert self.db is not None
         self.db.executescript(
@@ -176,6 +595,23 @@ class VoiceEpisodicMemory:
 
             CREATE INDEX IF NOT EXISTS idx_voice_memory_strength
             ON voice_memory_consolidation(strength DESC, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS voice_semantic_memory(
+                concept_type TEXT NOT NULL,
+                concept_key TEXT NOT NULL,
+                action TEXT NOT NULL,
+                expected_reward REAL NOT NULL DEFAULT 0,
+                observations INTEGER NOT NULL DEFAULT 0,
+                positive_count INTEGER NOT NULL DEFAULT 0,
+                negative_count INTEGER NOT NULL DEFAULT 0,
+                reward_abs_sum REAL NOT NULL DEFAULT 0,
+                last_reward REAL NOT NULL DEFAULT 0,
+                updated_at REAL NOT NULL DEFAULT 0,
+                PRIMARY KEY(concept_type, concept_key, action)
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_voice_semantic_strength
+            ON voice_semantic_memory(observations DESC, updated_at DESC);
             """
         )
         self.db.commit()
@@ -232,6 +668,42 @@ class VoiceEpisodicMemory:
                 "updated_at": float(updated_at),
             }
 
+        for (
+            concept_type,
+            concept_key,
+            action,
+            expected_reward,
+            observations,
+            positive_count,
+            negative_count,
+            reward_abs_sum,
+            last_reward,
+            updated_at,
+        ) in self.db.execute(
+            """
+            SELECT concept_type, concept_key, action,
+                   expected_reward, observations,
+                   positive_count, negative_count,
+                   reward_abs_sum, last_reward, updated_at
+            FROM voice_semantic_memory
+            """
+        ):
+            self._semantic[
+                (
+                    str(concept_type),
+                    str(concept_key),
+                    str(action),
+                )
+            ] = {
+                "expected_reward": float(expected_reward),
+                "observations": int(observations),
+                "positive_count": int(positive_count),
+                "negative_count": int(negative_count),
+                "reward_abs_sum": float(reward_abs_sum),
+                "last_reward": float(last_reward),
+                "updated_at": float(updated_at),
+            }
+
         rows = self.db.execute(
             """
             SELECT created_at, guild_id, channel_id, channel_name,
@@ -248,6 +720,12 @@ class VoiceEpisodicMemory:
             self._episodes.append(
                 self._episode_from_row(row)
             )
+
+        if (
+            self.semantic_memory_enabled
+            and not self._semantic
+        ):
+            self._bootstrap_semantics_from_db()
 
     @staticmethod
     def _episode_from_row(row) -> VoiceEpisode:
@@ -611,6 +1089,13 @@ class VoiceEpisodicMemory:
                     float(entry["strength"]) * factor,
                 ),
             )
+        for entry in self._semantic.values():
+            entry["expected_reward"] = (
+                float(entry["expected_reward"]) * factor
+            )
+            entry["reward_abs_sum"] = (
+                float(entry["reward_abs_sum"]) * factor
+            )
 
         if self.db is not None:
             self.db.execute(
@@ -627,6 +1112,14 @@ class VoiceEpisodicMemory:
                 """,
                 (factor,),
             )
+            self.db.execute(
+                """
+                UPDATE voice_semantic_memory
+                SET expected_reward = expected_reward * ?,
+                    reward_abs_sum = reward_abs_sum * ?
+                """,
+                (factor, factor),
+            )
             self.db.commit()
 
         self._last_forgetting_at = now_value
@@ -637,6 +1130,7 @@ class VoiceEpisodicMemory:
             "factor": float(factor),
             "predictions": int(len(self._values)),
             "memory_scenes": int(len(self._consolidation)),
+            "semantic_entries": int(len(self._semantic)),
         }
         return dict(self._last_forgetting_diag)
 
@@ -798,6 +1292,15 @@ class VoiceEpisodicMemory:
             prediction_error=episode.prediction_error,
             now=episode.time,
         )
+        semantic_updates = self._update_semantics(
+            context=episode.context,
+            channel_id=episode.channel_id,
+            user_ids=episode.user_ids,
+            action=episode.action,
+            actual_reward=episode.actual_reward,
+            now=episode.time,
+            persist=True,
+        )
 
         if self.db is not None:
             self.db.execute(
@@ -875,6 +1378,7 @@ class VoiceEpisodicMemory:
             "memory_replays": int(
                 memory_entry["replay_count"]
             ),
+            "semantic_updates": semantic_updates,
             "source": episode.source,
         }
 
@@ -1055,6 +1559,14 @@ class VoiceEpisodicMemory:
             "consolidated_threshold": float(
                 self.consolidated_threshold
             ),
+            "semantic_enabled": bool(
+                self.semantic_memory_enabled
+            ),
+            "semantic_entries": int(len(self._semantic)),
+            "semantic_recall_min_observations": int(
+                self.semantic_recall_min_observations
+            ),
+            "top_semantics": self.semantic_summary(16),
             "forgetting": dict(self._last_forgetting_diag),
             "top_memories": self.consolidation_summary(12),
             "recent": self.recent(12),
