@@ -222,6 +222,7 @@ class MuchaClient(discord.Client):
         self._voice_prediction_pending: dict[int, list[dict]] = {}
         self._voice_prediction_corrections: dict[int, list[dict]] = {}
         self._voice_prediction_last: dict[int, dict] = {}
+        self._information_gain_last: dict[int, dict] = {}
         self._last_external_activity = time.monotonic()
         self._memory_replay_last = 0.0
         self._memory_replay_count = 0
