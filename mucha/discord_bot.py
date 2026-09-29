@@ -212,6 +212,12 @@ class MuchaClient(discord.Client):
             consolidated_threshold=(
                 cfg.voice.episodic_consolidated_threshold
             ),
+            semantic_memory_enabled=(
+                cfg.voice.semantic_memory_enabled
+            ),
+            semantic_recall_min_observations=(
+                cfg.voice.semantic_recall_min_observations
+            ),
         )
         self._voice_prediction_pending: dict[int, list[dict]] = {}
         self._voice_prediction_corrections: dict[int, list[dict]] = {}
@@ -529,6 +535,10 @@ class MuchaClient(discord.Client):
             "episodic_forgetting_half_life_days",
             "episodic_forgetting_interval_seconds",
             "episodic_consolidated_threshold",
+            "semantic_memory_enabled",
+            "semantic_recall_min_observations",
+            "semantic_recall_magnitude",
+            "semantic_recall_steps",
             "minimum_dwell_seconds",
             "maximum_dwell_seconds",
             "overstay_punish_amount",
@@ -970,6 +980,18 @@ class MuchaClient(discord.Client):
             ),
             ("voice", "episodic_consolidated_threshold"): (
                 float, 0.0, 1.0
+            ),
+            ("voice", "semantic_memory_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "semantic_recall_min_observations"): (
+                int, 1, 1000
+            ),
+            ("voice", "semantic_recall_magnitude"): (
+                float, 0.0, 4.0
+            ),
+            ("voice", "semantic_recall_steps"): (
+                int, 1, 12
             ),
             ("voice", "minimum_dwell_seconds"): (int, 0, 86400),
             ("voice", "maximum_dwell_seconds"): (int, 1, 86400),
@@ -7145,6 +7167,17 @@ class MuchaClient(discord.Client):
             "prediction_scene_key": None,
             "prediction_expected": {},
             "episodic_recall": {},
+            "semantic_recall": {},
+            "semantic_guided": {},
+            "semantic_memory_enabled": bool(
+                self.cfg.voice.semantic_memory_enabled
+            ),
+            "semantic_entries": int(
+                episodic_diag.get("semantic_entries", 0)
+            ),
+            "semantic_top": list(
+                episodic_diag.get("top_semantics", [])
+            )[:8],
             "episodic_persistent": bool(
                 self.voice_episodes.db is not None
             ),
@@ -7551,9 +7584,28 @@ class MuchaClient(discord.Client):
             if self.cfg.voice.episodic_prediction_enabled
             else {}
         )
+        semantic_recall = (
+            self.voice_episodes.semantic_recall(
+                prediction_context,
+                prediction_actions,
+                channel_id=(
+                    current.id
+                    if current is not None
+                    else None
+                ),
+                user_ids=prediction_user_ids,
+                min_observations=(
+                    self.cfg.voice
+                    .semantic_recall_min_observations
+                ),
+            )
+            if self.cfg.voice.semantic_memory_enabled
+            else {}
+        )
         debug["prediction_context"] = prediction_context
         debug["prediction_scene_key"] = prediction_scene_key
         debug["prediction_expected"] = dict(prediction_expected)
+        debug["semantic_recall"] = dict(semantic_recall)
         last_prediction = self._voice_prediction_last.get(
             guild.id
         )
@@ -7723,6 +7775,61 @@ class MuchaClient(discord.Client):
                         for key, value in episodic_recall.items()
                     }
 
+            semantic_guided = {}
+            if (
+                connectome_voice_control
+                and self.cfg.voice.semantic_memory_enabled
+                and semantic_recall
+            ):
+                semantic_scale = max(
+                    0.0,
+                    min(
+                        4.0,
+                        float(
+                            self.cfg.voice.semantic_recall_magnitude
+                        ),
+                    ),
+                )
+                for action_name, recall in semantic_recall.items():
+                    signal = float(
+                        (recall or {}).get("signal", 0.0)
+                    )
+                    magnitude = semantic_scale * signal
+                    if abs(magnitude) <= 0.001:
+                        continue
+                    semantic_guided[action_name] = (
+                        self.brain.inject_action_guided_signed_sensory(
+                            action_name,
+                            (
+                                "semantic-recall:"
+                                f"{guild.id}:"
+                                f"{action_name}"
+                            ),
+                            magnitude,
+                            width=192,
+                            hops=3,
+                        )
+                    )
+                if semantic_guided:
+                    debug["semantic_guided"] = {
+                        key: {
+                            "mode": str(value.get("mode", "")),
+                            "neurons": int(
+                                value.get("neurons", 0)
+                            ),
+                            "reach_max": float(
+                                value.get("reach_max", 0.0)
+                            ),
+                            "magnitude": float(
+                                value.get("magnitude", 0.0)
+                            ),
+                            "valence": str(
+                                value.get("valence", "neutral")
+                            ),
+                        }
+                        for key, value in semantic_guided.items()
+                    }
+
             if connectome_voice_control:
                 if chaser_active:
                     panic_scale = max(
@@ -7797,6 +7904,7 @@ class MuchaClient(discord.Client):
                     or float(homeostasis["social_fatigue"]) > 0.0
                     or float(homeostasis["habituation"]) > 0.0
                     or float(homeostasis["exploration"]) > 0.0
+                    or bool(semantic_guided)
                 )
                 propagation_steps = max(
                     2,
@@ -7807,6 +7915,11 @@ class MuchaClient(discord.Client):
                         self.cfg.voice.motivation_propagation_steps
                     )
                     if motivation_active
+                    else 2,
+                    int(
+                        self.cfg.voice.semantic_recall_steps
+                    )
+                    if semantic_guided
                     else 2,
                 )
                 debug["motivation_propagation_steps"] = (
