@@ -303,7 +303,7 @@ Najważniejsze widoki:
 | `/details` | szczegółowy stan Muchy |
 | `/connectome` | graf connectome i action circuits |
 | `/neuromap` | mapa mózgu, signal flow i attractory |
-| `/associations` | mapa skojarzeń słów |
+| `/associations` | **Mowa / Language Brain** — live trace doboru słów, wpływu connectomu i recurrent feedback |
 | `/affinity` | relacje i Neural Social Memory |
 | `/config` | edytor konfiguracji |
 | `/public` | publiczny widok read-only |
@@ -320,6 +320,40 @@ Zakładka `/details` jest podzielona na:
 6. **Neurony** — surowy stan aktywnych neuronów.
 
 Rozwinięte sekcje diagnostyczne zachowują stan podczas live refreshu.
+
+## Mowa / Language Brain
+
+Zakładka `/associations` została przebudowana z samej mapy skojarzeń na pełny podgląd procesu generacji języka.
+
+Pokazuje na żywo ostatnią wygenerowaną wypowiedź oraz każdy krok modelu słów:
+
+```text
+kontekst / working memory
+→ trigram + bigram + unigram
+→ znormalizowany mix kandydatów
+→ language_word_score() z connectomu
+→ mnożnik brain score
+→ ważone losowanie 0–1
+→ wybrane słowo
+→ recurrent feedback do connectomu
+→ brain.step()
+→ kolejny wybór z nowego stanu mózgu
+```
+
+Dla każdego kroku można zobaczyć:
+
+- top kandydatów,
+- bazowy udział modelu języka,
+- częstotliwość, reward, recent boost i repeat penalty,
+- `brain_score` konkretnego słowa,
+- mnożnik connectomu,
+- finalne prawdopodobieństwo wyboru,
+- dokładny los `0..1` i przedział, w który trafił,
+- informację czy wybrane słowo zostało odesłane jako recurrent feedback.
+
+Connectome nie tworzy słów spoza słownika. Najpierw model online wyznacza kandydatów, a aktualny stan connectomu może zwiększyć lub zmniejszyć ich szanse.
+
+Stara mapa skojarzeń nadal jest dostępna niżej na tej samej stronie jako pomocniczy widok pamięci słów.
 
 ## Neuro-map
 
