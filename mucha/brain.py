@@ -2699,6 +2699,89 @@ class FlyBrain:
             )
         return diag
 
+    def inject_action_guided_signed_sensory(
+        self,
+        action: str,
+        key: str,
+        magnitude: float,
+        *,
+        width: int = 192,
+        hops: int = 3,
+    ) -> dict:
+        """Inject signed semantic valence through sensory cells reaching action.
+
+        Positive recall excites the structurally guided sensory route while
+        negative recall inhibits the same route. The action score itself is
+        never edited directly.
+        """
+        magnitude = max(
+            -4.0,
+            min(4.0, float(magnitude)),
+        )
+        pool, reach_weights, diag = (
+            self._action_guided_sensory_pool(
+                action,
+                key,
+                width=width,
+                hops=hops,
+            )
+        )
+        if abs(magnitude) > 0.0 and len(pool):
+            idx = self._backend_indices(pool)
+            jitter = self.compute.random_uniform(
+                0.88,
+                1.12,
+                size=len(pool),
+            )
+            if self.compute.is_gpu:
+                structural = self.compute.asarray(
+                    reach_weights,
+                    dtype=np.float32,
+                )
+            else:
+                structural = reach_weights
+            self.state[idx] += (
+                np.float32(magnitude)
+                * structural
+                * jitter
+            )
+            self.xp.clip(
+                self.state,
+                -3.0,
+                3.0,
+                out=self.state,
+            )
+            self.eligibility[idx] = self.xp.maximum(
+                self.eligibility[idx],
+                np.float32(
+                    min(
+                        1.0,
+                        0.20 + 0.42 * abs(magnitude),
+                    )
+                ),
+            )
+
+        diag = dict(diag)
+        diag["magnitude"] = float(magnitude)
+        diag["signed"] = True
+        diag["valence"] = (
+            "positive"
+            if magnitude > 0.0
+            else "negative"
+            if magnitude < 0.0
+            else "neutral"
+        )
+        self._last_guided_cue = diag
+        if abs(magnitude) > 0.0 and len(pool):
+            self._queue_signal_cue(
+                key,
+                magnitude,
+                pool,
+                kind="semantic-memory-sensory",
+                action=action,
+            )
+        return diag
+
     def _absolute_connectome(self) -> scipy_sparse.csr_matrix:
         if self._absolute_connectome_cpu is None:
             matrix = self.c.matrix.copy().tocsr()
