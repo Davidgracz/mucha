@@ -1765,6 +1765,7 @@ class MuchaClient(discord.Client):
                 and pending.get("trace") is not None
             ):
                 correction_queue.append({
+                    "kind": "prediction_error",
                     "amount": correction,
                     "action": pending_action,
                     "trace": pending["trace"],
@@ -1773,6 +1774,82 @@ class MuchaClient(discord.Client):
                     "decision_age_seconds": age,
                     "source": source,
                 })
+
+            information_gain = max(
+                0.0,
+                float(episode.get("information_gain", 0.0)),
+            )
+            intrinsic_reward = 0.0
+            if (
+                self.cfg.voice.uncertainty_exploration_enabled
+                and information_gain
+                >= float(self.cfg.voice.information_gain_min_delta)
+            ):
+                intrinsic_reward = min(
+                    max(
+                        0.0,
+                        float(
+                            self.cfg.voice
+                            .information_gain_reward_max
+                        ),
+                    ),
+                    max(
+                        0.0,
+                        float(
+                            self.cfg.voice
+                            .information_gain_reward_scale
+                        ),
+                    )
+                    * information_gain,
+                )
+                intrinsic_reward *= credit_share
+                if (
+                    intrinsic_reward > 1e-9
+                    and pending.get("trace") is not None
+                ):
+                    correction_queue.append({
+                        "kind": "information_gain",
+                        "amount": intrinsic_reward,
+                        "action": pending_action,
+                        "trace": pending["trace"],
+                        "information_gain": information_gain,
+                        "uncertainty_before": float(
+                            episode.get(
+                                "semantic_uncertainty_before",
+                                1.0,
+                            )
+                        ),
+                        "uncertainty_after": float(
+                            episode.get(
+                                "semantic_uncertainty_after",
+                                1.0,
+                            )
+                        ),
+                        "credit_share": credit_share,
+                        "decision_age_seconds": age,
+                        "source": "information gain",
+                    })
+            if information_gain > 0.0:
+                self._information_gain_last[guild.id] = {
+                    "action": pending_action,
+                    "information_gain": information_gain,
+                    "uncertainty_before": float(
+                        episode.get(
+                            "semantic_uncertainty_before",
+                            1.0,
+                        )
+                    ),
+                    "uncertainty_after": float(
+                        episode.get(
+                            "semantic_uncertainty_after",
+                            1.0,
+                        )
+                    ),
+                    "intrinsic_reward": intrinsic_reward,
+                    "credit_share": credit_share,
+                    "source": source,
+                    "updated_at": time.time(),
+                }
 
         if last_episode is not None:
             self._voice_prediction_last[guild.id] = last_episode
@@ -7687,26 +7764,44 @@ class MuchaClient(discord.Client):
             )
             if corrections:
                 total_correction = 0.0
+                prediction_total = 0.0
+                information_total = 0.0
+                information_count = 0
                 for correction in corrections:
+                    amount_value = float(correction["amount"])
                     self.brain.reward(
-                        float(correction["amount"]),
+                        amount_value,
                         action=str(correction["action"]),
                         trace=correction["trace"],
                     )
-                    total_correction += float(correction["amount"])
+                    total_correction += amount_value
+                    if (
+                        str(correction.get("kind", "prediction_error"))
+                        == "information_gain"
+                    ):
+                        information_total += amount_value
+                        information_count += 1
+                    else:
+                        prediction_total += amount_value
                 self.brain.step(
                     max(1, min(3, len(corrections)))
                 )
                 debug["prediction_correction_applied"] = float(
-                    total_correction
+                    prediction_total
                 )
                 debug["prediction_corrections_applied"] = int(
-                    len(corrections)
+                    len(corrections) - information_count
+                )
+                debug["information_gain_reward_applied"] = float(
+                    information_total
+                )
+                debug["information_gain_rewards_applied"] = int(
+                    information_count
                 )
                 self._last_brain_event = (
-                    "PREDICTION ERROR • temporal credit • "
-                    f"{len(corrections)} traces • "
-                    f"{total_correction:+.3f}"
+                    "LEARNING CREDIT • "
+                    f"prediction {prediction_total:+.3f} • "
+                    f"information {information_total:+.3f}"
                 )
 
             for ch, humans in channels:
