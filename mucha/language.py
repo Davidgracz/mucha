@@ -1369,22 +1369,66 @@ class OnlineLanguage:
                     "final_weight": float(final_weight),
                 }
             start_total = sum(weight for _, weight in weighted)
-            start_debug = []
-            for packed_item, weight in sorted(
+            start_base_total = sum(
+                float(meta.get("base_weight", 0.0))
+                for meta in start_meta.values()
+            )
+            start_roll = self.rng.random() if weighted else 0.0
+            start_target = start_roll * start_total
+            start_upto = 0.0
+            packed = None
+            for packed_item, weight in weighted:
+                start_from = (
+                    start_upto / start_total
+                    if start_total > 0.0
+                    else 0.0
+                )
+                start_upto += weight
+                start_to = (
+                    start_upto / start_total
+                    if start_total > 0.0
+                    else 0.0
+                )
+                meta = start_meta.setdefault(packed_item, {})
+                meta["selection_from"] = start_from
+                meta["selection_to"] = start_to
+                if packed is None and start_upto >= start_target:
+                    packed = packed_item
+            if packed is None and weighted:
+                packed = weighted[-1][0]
+
+            ranked_start = sorted(
                 weighted,
                 key=lambda item: item[1],
                 reverse=True,
-            )[:12]:
+            )
+            visible_start = ranked_start[:12]
+            if (
+                packed is not None
+                and all(item[0] != packed for item in visible_start)
+            ):
+                chosen_weight = next(
+                    weight
+                    for item, weight in weighted
+                    if item == packed
+                )
+                visible_start.append((packed, chosen_weight))
+
+            start_debug = []
+            for packed_item, weight in visible_start:
                 pa, pb = packed_item.split("\u0000", 1)
                 meta = start_meta.get(packed_item, {})
+                base_weight = float(meta.get("base_weight", weight))
                 start_debug.append({
                     "token": (
                         pa
                         if pb == WORD_END
                         else f"{pa} {pb}"
                     ),
-                    "base_weight": float(
-                        meta.get("base_weight", weight)
+                    "base_weight": (
+                        base_weight / start_base_total
+                        if start_base_total > 0.0
+                        else 0.0
                     ),
                     "final_weight": float(weight),
                     "choice_share": (
@@ -1396,17 +1440,18 @@ class OnlineLanguage:
                     "brain_multiplier": float(
                         meta.get("brain_multiplier", 1.0)
                     ),
+                    "selection_from": meta.get("selection_from"),
+                    "selection_to": meta.get("selection_to"),
                     "sources": {
                         "sentence_start": {
                             "normalized_contribution": (
-                                float(weight) / start_total
-                                if start_total > 0.0
+                                base_weight / start_base_total
+                                if start_base_total > 0.0
                                 else 0.0
                             )
                         }
                     },
                 })
-            packed = self._weighted_choice(weighted)
             if packed:
                 a, b = packed.split("\u0000", 1)
                 feedback_a = feed_selected_word(a)
@@ -1419,6 +1464,7 @@ class OnlineLanguage:
                     "history": [],
                     "context_tail": list(ctx[-4:]),
                     "source_mix": {"sentence_start": 1.0},
+                    "selection_roll": start_roll,
                     "selected": (
                         a if b == WORD_END else f"{a} {b}"
                     ),
