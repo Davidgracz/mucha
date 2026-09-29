@@ -7876,6 +7876,7 @@ class MuchaClient(discord.Client):
         brain_decision = None
         reward_opportunity_diag = None
         voice_context_diag = None
+        uncertainty_curiosity_diag = None
 
         async with self._brain_lock:
             corrections = self._voice_prediction_corrections.pop(
@@ -8083,6 +8084,60 @@ class MuchaClient(discord.Client):
                         for key, value in semantic_guided.items()
                     }
 
+            if (
+                connectome_voice_control
+                and self.cfg.voice.uncertainty_exploration_enabled
+                and curiosity_uncertainty > 0.001
+            ):
+                curiosity_magnitude = (
+                    max(
+                        0.0,
+                        min(
+                            4.0,
+                            float(
+                                self.cfg.voice
+                                .uncertainty_curiosity_magnitude
+                            ),
+                        ),
+                    )
+                    * max(
+                        0.0,
+                        min(1.0, curiosity_uncertainty),
+                    )
+                )
+                uncertainty_curiosity_diag = (
+                    self.brain.inject_internal_state_cue(
+                        "curiosity",
+                        curiosity_magnitude,
+                        key=(
+                            "internal-state:curiosity:"
+                            f"uncertainty:{guild.id}"
+                        ),
+                    )
+                )
+                debug["uncertainty_curiosity_cue"] = {
+                    "uncertainty": float(curiosity_uncertainty),
+                    "magnitude": float(curiosity_magnitude),
+                    "entry_neurons": int(
+                        uncertainty_curiosity_diag.get(
+                            "entry_neurons",
+                            0,
+                        )
+                    ),
+                    "attractor_neurons": int(
+                        uncertainty_curiosity_diag.get(
+                            "attractor_neurons",
+                            0,
+                        )
+                    ),
+                    "target_actions": list(
+                        uncertainty_curiosity_diag.get(
+                            "target_actions",
+                            [],
+                        )
+                    ),
+                }
+
             if connectome_voice_control:
                 if chaser_active:
                     panic_scale = max(
@@ -8158,6 +8213,7 @@ class MuchaClient(discord.Client):
                     or float(homeostasis["habituation"]) > 0.0
                     or float(homeostasis["exploration"]) > 0.0
                     or bool(semantic_guided)
+                    or uncertainty_curiosity_diag is not None
                 )
                 propagation_steps = max(
                     2,
@@ -8173,6 +8229,11 @@ class MuchaClient(discord.Client):
                         self.cfg.voice.semantic_recall_steps
                     )
                     if semantic_guided
+                    else 2,
+                    int(
+                        self.cfg.voice.uncertainty_curiosity_steps
+                    )
+                    if uncertainty_curiosity_diag is not None
                     else 2,
                 )
                 debug["motivation_propagation_steps"] = (
