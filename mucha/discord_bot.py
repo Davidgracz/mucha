@@ -5336,6 +5336,38 @@ class MuchaClient(discord.Client):
         graph["last_action"] = self._last_brain_action
         graph["language_diag"] = self.language.diagnostics()
         graph["generation_trace"] = self.language.generation_trace()
+        graph["language_config"] = {
+            "word_model_probability": (
+                self.cfg.language.word_model_probability
+            ),
+            "word_frequency_exponent": (
+                self.cfg.language.word_frequency_exponent
+            ),
+            "word_arousal_flatten": (
+                self.cfg.language.word_arousal_flatten
+            ),
+            "word_recent_window_seconds": (
+                self.cfg.language.word_recent_window_seconds
+            ),
+            "word_recent_boost": (
+                self.cfg.language.word_recent_boost
+            ),
+            "connectome_word_control_strength": (
+                self.cfg.language.connectome_word_control_strength
+            ),
+            "connectome_word_control_candidates": (
+                self.cfg.language.connectome_word_control_candidates
+            ),
+            "connectome_word_feedback_enabled": (
+                self.cfg.language.connectome_word_feedback_enabled
+            ),
+            "connectome_word_feedback_steps": (
+                self.cfg.language.connectome_word_feedback_steps
+            ),
+            "connectome_word_feedback_magnitude": (
+                self.cfg.language.connectome_word_feedback_magnitude
+            ),
+        }
         return graph
 
     async def _neuromap_dashboard_snapshot(
