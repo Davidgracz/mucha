@@ -7747,10 +7747,100 @@ class MuchaClient(discord.Client):
             if self.cfg.voice.semantic_memory_enabled
             else {}
         )
+        channel_uncertainties: dict[int, float] = {}
+        uncertainty_rows: list[dict] = []
+        curiosity_uncertainty = 0.0
+        if self.cfg.voice.uncertainty_exploration_enabled:
+            uncertainty_actions = (
+                "voice_join",
+                "voice_move",
+                "stay",
+            )
+            social_rows: list[dict] = []
+            for channel, humans in channels:
+                uncertainty = self.voice_episodes.semantic_uncertainty(
+                    prediction_context,
+                    uncertainty_actions,
+                    channel_id=channel.id,
+                    user_ids=[int(member.id) for member in humans],
+                )
+                value = max(
+                    0.0,
+                    min(
+                        1.0,
+                        float(
+                            uncertainty.get(
+                                "uncertainty",
+                                1.0,
+                            )
+                        ),
+                    ),
+                )
+                channel_uncertainties[int(channel.id)] = value
+                row = {
+                    "channel_id": int(channel.id),
+                    "channel": str(channel.name),
+                    "human_count": int(len(humans)),
+                    "uncertainty": value,
+                    "familiarity": float(
+                        uncertainty.get("familiarity", 0.0)
+                    ),
+                    "observations": int(
+                        uncertainty.get("observations", 0)
+                    ),
+                    "known_pairs": int(
+                        uncertainty.get("known_pairs", 0)
+                    ),
+                    "possible_pairs": int(
+                        uncertainty.get("possible_pairs", 0)
+                    ),
+                    "top_unknown": list(
+                        uncertainty.get("concepts", [])
+                    )[:3],
+                }
+                uncertainty_rows.append(row)
+                if humans:
+                    social_rows.append(row)
+
+            ranked_uncertainty = (
+                social_rows if social_rows else uncertainty_rows
+            )
+            ranked_uncertainty.sort(
+                key=lambda row: (
+                    float(row["uncertainty"]),
+                    -int(row["observations"]),
+                ),
+                reverse=True,
+            )
+            if ranked_uncertainty:
+                curiosity_uncertainty = float(
+                    ranked_uncertainty[0]["uncertainty"]
+                )
+            uncertainty_rows.sort(
+                key=lambda row: (
+                    float(row["uncertainty"]),
+                    -int(row["observations"]),
+                ),
+                reverse=True,
+            )
+            for row in debug["channels"]:
+                value = channel_uncertainties.get(
+                    int(row["id"]),
+                    0.0,
+                )
+                row["semantic_uncertainty"] = float(value)
+
         debug["prediction_context"] = prediction_context
         debug["prediction_scene_key"] = prediction_scene_key
         debug["prediction_expected"] = dict(prediction_expected)
         debug["semantic_recall"] = dict(semantic_recall)
+        debug["uncertainty_overall"] = float(
+            curiosity_uncertainty
+        )
+        debug["uncertainty_channels"] = uncertainty_rows[:12]
+        debug["information_gain_last"] = dict(
+            self._information_gain_last.get(guild.id, {})
+        )
         last_prediction = self._voice_prediction_last.get(
             guild.id
         )
