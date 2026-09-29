@@ -49,7 +49,7 @@ button{border:0;border-radius:11px;padding:11px 16px;background:var(--a);color:#
 <body><main>
 <div class="top">
  <div class="brand"><div class="logo">⚙</div><div><h1>Konfiguracja Muchy</h1><div class="sub">Edytujesz aktywne ustawienia. Zapis trafia do config.local.toml, a Mucha automatycznie uruchamia się ponownie.</div></div></div>
- <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/public">👁 Publiczny</a><a href="/logout">Wyloguj</a></div>
+ <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🗣 Mowa</a><a href="/affinity">🤝 Affinity</a><a class="active" href="/config">⚙ Konfiguracja</a><a href="/public">👁 Publiczny</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <div class="intro">
@@ -397,7 +397,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 @media(max-width:900px){.grid{grid-template-columns:1fr}.span2{grid-column:auto}.kpis{grid-template-columns:1fr 1fr}.phrases{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 </style></head><body><main>
 <div class="top"><div><h1>🤝 Affinity / Zasady relacji</h1><div class="sub">Live podgląd tego, co zwiększa i obniża stosunek Muchy do użytkowników.</div></div>
-<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a class="active" href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
+<div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🗣 Mowa</a><a class="active" href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div></div>
 
 <div class="grid">
   <div class="card span2">
@@ -517,264 +517,321 @@ ASSOCIATIONS_HTML = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mucha — Mapa skojarzeń</title>
+<title>Mucha — Language Brain</title>
 <style>
-:root{--bg:#050910;--panel:#0d151e;--panel2:#08111a;--line:#203247;--txt:#eef7ff;--muted:#7f92a5;--cyan:#55ead0;--blue:#6da8ff;--good:#58df98;--bad:#ff7474;--warn:#ffd166}
-*{box-sizing:border-box}body{margin:0;color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:radial-gradient(circle at 18% 0%,rgba(85,234,208,.10),transparent 30%),radial-gradient(circle at 84% 5%,rgba(109,168,255,.10),transparent 31%),linear-gradient(180deg,#050910,#07101a)}
-main{max-width:1880px;margin:auto;padding:22px 28px 30px}.top{display:flex;justify-content:space-between;gap:18px;align-items:center;margin-bottom:16px}.brand{display:flex;gap:13px;align-items:center}.logo{font-size:38px}h1{margin:0;font-size:25px}.sub{color:var(--muted);font-size:12px;margin-top:4px;max-width:760px;line-height:1.45}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#bacada;text-decoration:none;border:1px solid var(--line);background:#0b141d;padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{background:linear-gradient(90deg,var(--cyan),#7ce5d4);border-color:var(--cyan);color:#04120e;font-weight:850}
-.hero{display:grid;grid-template-columns:repeat(5,minmax(150px,1fr));gap:12px;margin-bottom:14px}.kpi,.card{background:linear-gradient(180deg,rgba(13,21,30,.97),rgba(8,15,23,.97));border:1px solid var(--line);border-radius:17px;box-shadow:0 18px 50px rgba(0,0,0,.14)}.kpi{padding:14px 16px}.kpi small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.11em;margin-bottom:6px}.kpi strong{display:block;font-size:18px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.kpi em{display:block;color:#8799aa;font-size:9px;font-style:normal;margin-top:5px}
-.toolbar{display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:12px;padding:11px 13px;border:1px solid var(--line);border-radius:14px;background:rgba(9,16,24,.88)}.toolgroup{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.toolgroup label{font-size:9px;color:#7f94a7;text-transform:uppercase;letter-spacing:.1em}.toolgroup output{min-width:24px;text-align:right;font-size:10px;color:#c8d7e5;font-weight:800}.toolgroup input[type=range]{width:120px;accent-color:var(--cyan)}.btn{border:1px solid #294057;background:#08121b;color:#9eb2c3;border-radius:999px;padding:7px 11px;font-size:9px;font-weight:850;letter-spacing:.05em;cursor:pointer}.btn:hover{border-color:#4b6e8a;color:white}.btn.on{color:#04120e;background:var(--cyan);border-color:var(--cyan)}
-.grid{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:14px;align-items:start}.card{padding:15px;min-width:0}.head{display:flex;justify-content:space-between;gap:10px;align-items:center;margin-bottom:11px}.head h2{margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#9eb0c1}.live{font-size:9px;color:var(--good);font-weight:850;letter-spacing:.1em}.graph{height:min(78vh,900px);min-height:680px;border:1px solid #17283a;border-radius:15px;overflow:hidden;position:relative;background:radial-gradient(circle at 50% 50%,rgba(85,234,208,.035),transparent 46%),linear-gradient(180deg,#050b12,#06101a)}.graph canvas{width:100%;height:100%;display:block}.tip{position:absolute;display:none;pointer-events:none;z-index:4;width:235px;padding:10px 11px;background:rgba(5,10,16,.97);border:1px solid #31506c;border-radius:11px;font-size:10px;line-height:1.55;box-shadow:0 16px 45px rgba(0,0,0,.35)}.graph-hint{position:absolute;left:12px;bottom:12px;padding:6px 9px;border:1px solid #1b3042;border-radius:999px;background:rgba(5,11,18,.78);color:#6f8498;font-size:9px;pointer-events:none}
-.side{display:flex;flex-direction:column;gap:14px;position:sticky;top:12px}.ins{min-height:205px}.empty{color:var(--muted);font-size:11px;line-height:1.55;padding:6px 0}.word-title{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:12px}.word-title h3{margin:0;font-size:21px}.word-title span{font-size:9px;color:var(--cyan);border:1px solid rgba(85,234,208,.32);background:rgba(85,234,208,.07);padding:5px 7px;border-radius:999px}.meta{display:grid;grid-template-columns:1fr 1fr;gap:8px}.meta div{padding:10px;background:var(--panel2);border:1px solid #17283a;border-radius:10px}.meta small{display:block;color:#74899d;font-size:8px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}.meta b{font-size:12px}.assoc{display:flex;flex-direction:column;gap:7px;max-height:510px;overflow:auto;padding-right:3px}.row{display:grid;grid-template-columns:minmax(0,1fr) 54px;gap:10px;padding:10px;border:1px solid #17283a;background:var(--panel2);border-radius:10px;font-size:10px;cursor:pointer;transition:.12s ease}.row:hover{border-color:#3b617e;background:#0a1722}.row b{font-size:11px}.row small{display:block;color:var(--muted);margin-top:4px;line-height:1.45}.weight{text-align:right;font-size:12px!important;color:#dceaf5}.pos{color:var(--good)}.neg{color:var(--bad)}.note{margin-top:10px;color:#71869a;font-size:9px;line-height:1.55}.legend{display:flex;gap:14px;flex-wrap:wrap;color:#75899c;font-size:9px;margin-top:9px}.legend i{display:inline-block;width:14px;height:3px;border-radius:999px;margin-right:5px;vertical-align:middle}.lstruct{background:var(--blue)}.lpos{background:var(--good)}.lneg{background:var(--bad)}
-@media(max-width:1280px){.grid{grid-template-columns:minmax(0,1fr) 350px}.graph{min-height:620px}.hero{grid-template-columns:repeat(3,1fr)}}@media(max-width:980px){main{padding:16px}.top{align-items:flex-start;flex-direction:column}.grid{grid-template-columns:1fr}.side{position:static}.graph{height:650px;min-height:0}}@media(max-width:650px){main{padding:11px}.hero{grid-template-columns:1fr 1fr}.graph{height:540px}.toolbar{align-items:flex-start}.toolgroup input[type=range]{width:95px}.meta{grid-template-columns:1fr}}
+:root{
+ --bg:#050910;--panel:#0c141d;--panel2:#08111a;--panel3:#0a1722;--line:#203247;
+ --txt:#eef7ff;--muted:#7f92a5;--cyan:#55ead0;--blue:#6da8ff;--violet:#b58cff;
+ --good:#58df98;--bad:#ff7474;--warn:#ffd166;--orange:#ffad66
+}
+*{box-sizing:border-box}html{scroll-behavior:smooth}
+body{margin:0;color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+ background:radial-gradient(circle at 14% 0%,rgba(85,234,208,.10),transparent 27%),
+ radial-gradient(circle at 88% 0%,rgba(109,168,255,.10),transparent 30%),
+ linear-gradient(180deg,#050910,#07101a 54%,#050a10)}
+main{max-width:1880px;margin:auto;padding:22px 28px 36px}
+.top{display:flex;justify-content:space-between;gap:18px;align-items:center;margin-bottom:16px}
+.brand{display:flex;gap:13px;align-items:center}.logo{font-size:38px}h1{margin:0;font-size:25px}
+.sub{color:var(--muted);font-size:12px;margin-top:4px;max-width:900px;line-height:1.5}
+.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#bacada;text-decoration:none;border:1px solid var(--line);
+ background:#0b141d;padding:8px 11px;border-radius:10px;font-size:12px}
+.nav a.active{background:linear-gradient(90deg,var(--cyan),#7ce5d4);border-color:var(--cyan);color:#04120e;font-weight:850}
+.notice{display:flex;gap:10px;align-items:flex-start;padding:11px 13px;margin-bottom:13px;border:1px solid #244057;
+ border-radius:13px;background:rgba(8,17,26,.86);font-size:10px;line-height:1.55;color:#9db0c1}
+.notice b{color:#dceaf5}.help{display:inline-grid;place-items:center;width:16px;height:16px;border-radius:50%;
+ border:1px solid #38566e;color:#8feadd;background:#0a151e;font:800 9px/1 ui-monospace,Consolas,monospace;cursor:help;vertical-align:middle}
+.help:hover,.help:focus{border-color:var(--cyan);color:white}
+.tooltip{position:fixed;z-index:99;display:none;width:min(380px,calc(100vw - 24px));padding:12px 13px;
+ border:1px solid #35536c;border-radius:13px;background:#061019;box-shadow:0 18px 55px rgba(0,0,0,.55);pointer-events:none}
+.tooltip.show{display:block}.tooltip b{display:block;font-size:12px;margin-bottom:5px}.tooltip p{margin:0;color:#a8bac8;font-size:10px;line-height:1.55}
+.tooltip em{display:block;margin-top:7px;padding-top:7px;border-top:1px solid #1a2b39;color:#72dccc;font-size:10px;font-style:normal;line-height:1.5}
+
+.hero{display:grid;grid-template-columns:repeat(6,minmax(135px,1fr));gap:10px;margin-bottom:13px}
+.kpi,.card,.stage,.step-card{background:linear-gradient(180deg,rgba(13,21,30,.97),rgba(8,15,23,.97));
+ border:1px solid var(--line);border-radius:16px;box-shadow:0 16px 44px rgba(0,0,0,.12)}
+.kpi{padding:12px 14px;min-width:0}.kpi small{display:flex;gap:5px;align-items:center;color:var(--muted);font-size:8px;
+ text-transform:uppercase;letter-spacing:.1em;margin-bottom:5px}.kpi strong{display:block;font-size:17px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.kpi em{display:block;color:#8498aa;font-size:9px;font-style:normal;margin-top:4px;line-height:1.35}
+.good{color:var(--good)!important}.bad{color:var(--bad)!important}.warn{color:var(--warn)!important}.cyan{color:var(--cyan)!important}
+
+.process{display:grid;grid-template-columns:repeat(7,minmax(120px,1fr));gap:7px;margin-bottom:14px}
+.stage{padding:11px;min-width:0;position:relative}.stage:after{content:"→";position:absolute;right:-11px;top:50%;transform:translateY(-50%);z-index:2;color:#3d5a70;font-size:17px}
+.stage:last-child:after{display:none}.stage small{display:flex;align-items:center;gap:5px;color:#74899d;font-size:8px;text-transform:uppercase;letter-spacing:.11em;margin-bottom:5px}
+.stage strong{display:block;font-size:12px;line-height:1.35;word-break:break-word}.stage p{margin:5px 0 0;color:#73889b;font-size:8px;line-height:1.4}
+.stage.active{border-color:#376a70;background:linear-gradient(180deg,rgba(22,49,52,.72),rgba(8,17,26,.97))}
+.stage.blue{border-color:#304d70}.stage.violet{border-color:#4b3d68}.stage.goodstage{border-color:#315b4b}
+
+.grid{display:grid;grid-template-columns:minmax(0,1.45fr) minmax(330px,.55fr);gap:13px;align-items:start}
+.card{padding:14px;min-width:0}.card.full{grid-column:1/-1}.head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:10px}
+.head h2{display:flex;align-items:center;gap:6px;margin:0;font-size:11px;text-transform:uppercase;letter-spacing:.11em;color:#a6b8c8}
+.live{font-size:9px;color:var(--good);font-weight:850;letter-spacing:.1em}
+.output{font-size:22px;font-weight:800;line-height:1.45;padding:15px;border:1px solid #264254;background:
+ linear-gradient(135deg,rgba(85,234,208,.07),rgba(109,168,255,.035));border-radius:13px;min-height:66px;word-break:break-word}
+.context{margin-top:8px;padding:10px 11px;background:#071019;border:1px solid #172a3b;border-radius:11px;color:#a9bac8;font-size:10px;line-height:1.5;max-height:120px;overflow:auto}
+.context b{color:#d8e8f3}
+
+.state-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.statebox{padding:10px;border:1px solid #17283a;background:var(--panel2);border-radius:10px}
+.statebox small{display:flex;align-items:center;gap:5px;color:#74899c;font-size:8px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:5px}
+.statebox b{font-size:12px}.bar{height:7px;background:#071019;border:1px solid #172a38;border-radius:999px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan));border-radius:999px}
+
+.formulas{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.formula{padding:11px;border:1px solid #1b3042;border-radius:11px;background:#071019;min-width:0}
+.formula small{display:flex;gap:5px;align-items:center;color:#8196a9;font-size:8px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}
+.formula code{display:block;color:#d8e7f2;font:10px/1.5 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:normal;word-break:break-word}
+.formula p{margin:6px 0 0;color:#74899b;font-size:8px;line-height:1.45}
+
+.attempt-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.tab{border:1px solid #294259;background:#08121b;color:#9db1c2;border-radius:999px;padding:7px 10px;font-size:9px;font-weight:800;cursor:pointer}
+.tab.on{background:var(--cyan);border-color:var(--cyan);color:#04130f}.tab.reject{border-color:#5b363b;color:#e7a1a7}
+.trace-summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px;color:#8fa2b3;font-size:9px}.chip{display:inline-flex;align-items:center;gap:4px;padding:4px 7px;border-radius:999px;border:1px solid #263c50;background:#08121b;color:#9fb3c4;font-size:8px}
+.chip.tri{border-color:#425a80}.chip.bi{border-color:#3a665e}.chip.uni{border-color:#5d4b72}.chip.feedback{border-color:#34614c;color:#8de2ad}.chip.selected{border-color:var(--cyan);color:var(--cyan)}
+.steps{display:flex;flex-direction:column;gap:9px}.step-card{overflow:hidden}.step-head{display:grid;grid-template-columns:56px minmax(150px,1fr) auto auto;gap:9px;align-items:center;padding:10px 12px;cursor:pointer;background:#0a141e}
+.step-head:hover{background:#0d1924}.step-no{font:800 9px/1 ui-monospace,Consolas,monospace;color:#70879a}.chosen{font-size:14px;font-weight:850;color:#dcebf4;word-break:break-word}
+.step-meta{color:#8499aa;font-size:8px;text-align:right}.roll{font:800 9px/1 ui-monospace,Consolas,monospace;color:#8ee7da}
+.step-body{display:none;border-top:1px solid #1b2d3d;padding:11px}.step-card.open .step-body{display:block}.step-card.open .step-head{background:#0d1a24}
+.source-line{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:9px}.explain{padding:8px 9px;border:1px dashed #2a4153;border-radius:9px;color:#8fa2b1;font-size:9px;line-height:1.5;margin-bottom:9px}
+
+.tablewrap{overflow:auto;border:1px solid #17283a;border-radius:10px}table{width:100%;border-collapse:collapse;font-size:9px;min-width:840px}
+th,td{padding:7px 8px;border-bottom:1px solid #152636;text-align:right;white-space:nowrap}th{position:sticky;top:0;background:#0a141d;color:#7890a3;font-size:8px;text-transform:uppercase;letter-spacing:.07em;z-index:1}
+th:first-child,td:first-child{text-align:left}.selected-row{background:rgba(85,234,208,.075)}.selected-row td:first-child{color:var(--cyan);font-weight:850}
+.brainhigh{color:var(--good)}.brainlow{color:#f1a3a3}.interval{font-family:ui-monospace,SFMono-Regular,Consolas,monospace;color:#8398aa}
+.sources{display:flex;gap:3px;justify-content:flex-end}.src{font-size:7px;padding:2px 4px;border:1px solid #274056;border-radius:4px;color:#9db0c1}
+
+.mapgrid{display:grid;grid-template-columns:1fr 1fr;gap:9px}.list{display:flex;flex-direction:column;gap:6px;max-height:430px;overflow:auto}.assoc-row{display:grid;grid-template-columns:minmax(0,1fr) 65px 65px;gap:8px;padding:8px 9px;border:1px solid #17283a;background:#071019;border-radius:9px;font-size:9px;align-items:center}
+.assoc-row b{font-size:10px}.assoc-row small{display:block;color:#74899c;margin-top:3px}.assoc-row span{text-align:right;font-variant-numeric:tabular-nums}
+.empty{padding:10px;color:#7b8fa1;font-size:10px;line-height:1.5}.footer{text-align:right;color:#607588;font-size:9px;margin-top:12px}
+
+@media(max-width:1450px){.hero{grid-template-columns:repeat(3,1fr)}.process{grid-template-columns:repeat(4,1fr)}.stage:nth-child(4):after{display:none}}
+@media(max-width:1080px){main{padding:16px}.top{align-items:flex-start;flex-direction:column}.grid{grid-template-columns:1fr}.formulas{grid-template-columns:1fr 1fr}.process{grid-template-columns:repeat(2,1fr)}.stage:nth-child(even):after{display:none}.mapgrid{grid-template-columns:1fr}}
+@media(max-width:650px){main{padding:11px}.hero{grid-template-columns:1fr 1fr}.process{grid-template-columns:1fr}.stage:after{display:none}.formulas,.state-grid{grid-template-columns:1fr}.step-head{grid-template-columns:44px 1fr}.step-meta,.roll{display:none}}
 </style>
 </head>
 <body><main>
 <div class="top">
- <div class="brand"><div class="logo">🕸</div><div><h1>Mapa skojarzeń Muchy</h1><div class="sub">Czytelny widok relacji słów z connectomu. Domyślnie pokazuje tylko najważniejsze węzły i krawędzie; suwaki pozwalają odsłonić więcej.</div></div></div>
- <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a class="active" href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
+ <div class="brand"><div class="logo">🗣</div><div><h1>Mowa / Language Brain</h1>
+ <div class="sub">Live podgląd tego, jak Mucha składa wypowiedź: pamięć słów → kandydaci → score connectomu → losowanie → feedback wybranego słowa z powrotem do sieci.</div></div></div>
+ <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a class="active" href="/associations">🗣 Mowa</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
 </div>
+
+<div class="notice"><span>ℹ️</span><div><b>To jest trace algorytmu generacji, nie ukryty monolog ani „świadomość”.</b> Pokazuje rzeczywiste dane użyte przez kod: kontekst, wagi Markova, brain score, probabilistyczny wybór i recurrent feedback. Najedź na <span class="help" data-help="trace">?</span>, jeśli chcesz wiedzieć dokładnie, jak czytać tę stronę.</div></div>
 
 <section class="hero">
- <div class="kpi"><small>Węzły widoczne</small><strong id="nodes">—</strong><em id="nodes-total">z — dostępnych</em></div>
- <div class="kpi"><small>Krawędzie widoczne</small><strong id="edges">—</strong><em id="edges-total">z — dostępnych</em></div>
- <div class="kpi"><small>Najsilniejsze</small><strong id="strongest">—</strong><em id="strongest-w">—</em></div>
- <div class="kpi"><small>Reward trace</small><strong id="reward">—</strong><em>bieżący ślad nagrody</em></div>
- <div class="kpi"><small>Tick</small><strong id="tick">—</strong><em id="source">runtime</em></div>
+ <div class="kpi"><small>Generator <span class="help" data-help="generator">?</span></small><strong id="gen">—</strong><em id="gen-sub">czekam na wypowiedź</em></div>
+ <div class="kpi"><small>Arousal <span class="help" data-help="arousal">?</span></small><strong id="arousal">—</strong><em>wpływa na backoff i losowość</em></div>
+ <div class="kpi"><small>Słownik <span class="help" data-help="vocab">?</span></small><strong id="vocab">—</strong><em id="vocab-sub">—</em></div>
+ <div class="kpi"><small>Connectome word control <span class="help" data-help="brain-control">?</span></small><strong id="brain-control">—</strong><em id="brain-control-sub">—</em></div>
+ <div class="kpi"><small>Ocenione brain score <span class="help" data-help="brain-score">?</span></small><strong id="brain-eval">—</strong><em id="brain-mean">—</em></div>
+ <div class="kpi"><small>Recurrent feedback <span class="help" data-help="feedback">?</span></small><strong id="feedback">—</strong><em id="feedback-sub">—</em></div>
 </section>
 
-<div class="toolbar">
- <div class="toolgroup">
-  <label for="node-limit">Węzły</label><input id="node-limit" type="range" min="8" max="28" value="18" step="1"><output id="node-limit-out">18</output>
-  <label for="edge-limit">Krawędzie</label><input id="edge-limit" type="range" min="6" max="50" value="16" step="1"><output id="edge-limit-out">16</output>
- </div>
- <div class="toolgroup">
-  <button class="btn on" id="labels-auto">ETYKIETY AUTO</button>
-  <button class="btn" id="labels-all">WSZYSTKIE ETYKIETY</button>
-  <button class="btn" id="reset-layout">ROZŁÓŻ PONOWNIE</button>
-  <button class="btn" id="clear-selection">WYCZYŚĆ WYBÓR</button>
- </div>
-</div>
+<section class="process">
+ <div class="stage active"><small>1 • KONTEKST <span class="help" data-help="context">?</span></small><strong id="p-context">—</strong><p>Working memory / ostatnia rozmowa.</p></div>
+ <div class="stage"><small>2 • PAMIĘĆ JĘZYKA <span class="help" data-help="markov">?</span></small><strong>trigram + bigram + unigram</strong><p>Model wyuczony wyłącznie z rozmów.</p></div>
+ <div class="stage blue"><small>3 • MIX WAG <span class="help" data-help="mix">?</span></small><strong id="p-mix">—</strong><p>Historia kontra eksploracja.</p></div>
+ <div class="stage violet"><small>4 • CONNECTOME <span class="help" data-help="brain-score">?</span></small><strong id="p-brain">—</strong><p>Każdy top kandydat dostaje brain score.</p></div>
+ <div class="stage"><small>5 • LOSOWANIE <span class="help" data-help="random">?</span></small><strong id="p-roll">—</strong><p>Wybór ważony, nie zawsze argmax.</p></div>
+ <div class="stage goodstage"><small>6 • FEEDBACK <span class="help" data-help="feedback">?</span></small><strong id="p-feedback">—</strong><p>Wybrane słowo zmienia stan mózgu.</p></div>
+ <div class="stage goodstage"><small>7 • WYPOWIEDŹ</small><strong id="p-output">—</strong><p>Kolejne słowo liczy się już z nowego stanu.</p></div>
+</section>
 
 <section class="grid">
  <div class="card">
-  <div class="head"><h2>Connectome word graph</h2><span class="live" id="live">LIVE</span></div>
-  <div class="graph" id="wrap">
-   <canvas id="canvas"></canvas>
-   <div class="tip" id="tip"></div>
-   <div class="graph-hint">Kliknij słowo, aby podświetlić tylko jego bezpośrednie skojarzenia.</div>
-  </div>
-  <div class="legend"><span><i class="lstruct"></i> struktura connectomu</span><span><i class="lpos"></i> dodatni learned bias</span><span><i class="lneg"></i> ujemny learned bias</span></div>
-  <div class="note">Mapa nie ma osobnej bazy relacji. Węzły są populacjami słów w connectomie, a waga krawędzi łączy strukturę macierzy, wyuczony plastic bias oraz bieżącą aktywność pary.</div>
+  <div class="head"><h2>Ostatnia wygenerowana wypowiedź <span class="help" data-help="output">?</span></h2><span class="live" id="live">ŁĄCZENIE…</span></div>
+  <div class="output" id="output">Czekam, aż Mucha coś wygeneruje…</div>
+  <div class="context"><b>Kontekst wejściowy:</b> <span id="context">—</span></div>
  </div>
 
- <div class="side">
-  <div class="card ins">
-   <div class="head"><h2>Wybrane słowo</h2><span id="event" class="live">—</span></div>
-   <div id="inspector" class="empty">Kliknij słowo na mapie. Pozostałe węzły zostaną przygaszone, a jego relacje będą łatwiejsze do odczytania.</div>
+ <div class="card">
+  <div class="head"><h2>Stan przed / wokół generacji <span class="help" data-help="state">?</span></h2></div>
+  <div class="state-grid">
+   <div class="statebox"><small>Focus attention</small><b id="focus">—</b><div class="bar"><i id="focusbar" style="width:0"></i></div></div>
+   <div class="statebox"><small>Dominujący attractor</small><b id="internal">—</b><div class="bar"><i id="internalbar" style="width:0"></i></div></div>
+   <div class="statebox"><small>speak readout</small><b id="speak">—</b><div class="bar"><i id="speakbar" style="width:0"></i></div></div>
+   <div class="statebox"><small>Reward trace</small><b id="reward">—</b><div class="bar"><i id="rewardbar" style="width:0"></i></div></div>
   </div>
-  <div class="card">
-   <div class="head"><h2>Najsilniejsze połączenia</h2><span id="method" class="live">CONNECTOME</span></div>
-   <div id="assoc" class="assoc"></div>
+ </div>
+
+ <div class="card full">
+  <div class="head"><h2>Dokładny algorytm doboru słowa <span class="help" data-help="formula">?</span></h2></div>
+  <div class="formulas">
+   <div class="formula"><small>A • Waga z pamięci</small><code>raw = n^exponent × exp(reward) × recent × repeat_penalty</code><p>n = ile razy przejście wystąpiło; reward i świeżość zmieniają jego atrakcyjność.</p></div>
+   <div class="formula"><small>B • Interpolacja</small><code>LM = tri·P3 + bi·P2 + uni·P1</code><p>Każde źródło jest najpierw normalizowane osobno. Arousal i długość wypowiedzi przesuwają wagę z trigramów w stronę krótszej pamięci.</p></div>
+   <div class="formula"><small>C • Connectome</small><code>brain× = exp(strength × 2 × (brain_score − 0.5))</code><p>0.5 = neutralnie. Powyżej 0.5 connectome podbija kandydata, poniżej osłabia.</p></div>
+   <div class="formula"><small>D • Finalna waga</small><code>final = LM × brain×</code><p>Connectome nie wymyśla słowa spoza modelu. Zmienia szanse kandydatów wyuczonych przez model języka.</p></div>
+   <div class="formula"><small>E • Losowanie</small><code>P(word) = final / Σ final</code><p>Los 0–1 wpada w przedział jednego kandydata. Dlatego czasem wygrywa słowo inne niż top 1.</p></div>
+   <div class="formula"><small>F • Recurrent feedback</small><code>wybrane słowo → output/sensory → brain.step() → następny wybór</code><p>Po wyborze słowo wraca do connectomu i zmienia score kandydatów następnego kroku.</p></div>
+  </div>
+ </div>
+
+ <div class="card full">
+  <div class="head"><h2>Live trace ostatniej generacji <span class="help" data-help="steps">?</span></h2><div id="attempt-tabs" class="attempt-tabs"></div></div>
+  <div id="trace-summary" class="trace-summary"></div>
+  <div id="steps" class="steps"><div class="empty">Brak trace — poczekaj na pierwszą wypowiedź.</div></div>
+ </div>
+
+ <div class="card full">
+  <div class="head"><h2>Pamięć skojarzeń słów <span class="help" data-help="associations">?</span></h2><span style="color:var(--muted);font-size:9px">sekcja pomocnicza — nie jest generatorem sama w sobie</span></div>
+  <div class="mapgrid">
+   <div><div style="font-size:9px;color:#8195a7;margin-bottom:7px;text-transform:uppercase;letter-spacing:.08em">Najsilniejsze aktywne słowa</div><div class="list" id="word-list"></div></div>
+   <div><div style="font-size:9px;color:#8195a7;margin-bottom:7px;text-transform:uppercase;letter-spacing:.08em">Najsilniejsze relacje</div><div class="list" id="edge-list"></div></div>
   </div>
  </div>
 </section>
+
+<div class="footer">Mucha • live language telemetry • /associations pozostaje URL-em kompatybilności</div>
+<div class="tooltip" id="tooltip"></div>
 </main>
 
 <script>
-const $=id=>document.getElementById(id),canvas=$("canvas"),ctx=canvas.getContext("2d"),wrap=$("wrap"),tip=$("tip");
-let raw={nodes:[],edges:[]},data={nodes:[],edges:[]},points=new Map(),hover=null,selected=null,mouse={x:-9999,y:-9999},dpr=1;
-let nodeLimit=18,edgeLimit=16,labelMode="auto",layoutEpoch=0;
-const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
-const nfmt=n=>Number(n||0).toLocaleString("pl-PL");
-const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-
-function resize(){const r=wrap.getBoundingClientRect();dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0)}
-function seed(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
-
-function rebuildData(){
- const rankedEdges=(raw.edges||[]).slice().sort((a,b)=>Number(b.weight||0)-Number(a.weight||0));
- const score=new Map((raw.nodes||[]).map(n=>[n.id,2.2*Number(n.salience||0)+1.1*Number(n.brain_score||0)]));
- rankedEdges.forEach((e,i)=>{const bonus=Math.max(0,1-i/Math.max(1,rankedEdges.length));score.set(e.source,(score.get(e.source)||0)+bonus*Number(e.weight||0));score.set(e.target,(score.get(e.target)||0)+bonus*Number(e.weight||0))});
- const keep=(raw.nodes||[]).slice().sort((a,b)=>(score.get(b.id)||0)-(score.get(a.id)||0)).slice(0,nodeLimit);
- const keepIds=new Set(keep.map(n=>n.id));
- const edges=rankedEdges.filter(e=>keepIds.has(e.source)&&keepIds.has(e.target)).slice(0,edgeLimit);
- const connected=new Set(edges.flatMap(e=>[e.source,e.target]));
- const nodes=keep.slice().sort((a,b)=>Number(connected.has(b.id))-Number(connected.has(a.id))||Number(b.salience||0)-Number(a.salience||0));
- data={nodes,edges};
- syncPoints();
- renderStats();
- renderRows();
- if(selected&&!nodes.some(n=>n.id===selected.id)){selected=null;inspect(null)}
+const $=id=>document.getElementById(id);
+const HELP={
+ trace:["Co dokładnie oglądasz?","To zapis danych z algorytmu generacji: nie prywatne rozumowanie. Każdy krok pochodzi z wag modelu, score connectomu i faktycznego losowania.","Najważniejsze są: LM base → brain score → final share → przedział losowania → selected."],
+ generator:["Generator","Mucha ma generator hybrydowy. Zwykle wybiera model słów, a czasem fallback znakowy.","WORDS daje pełny trace kandydatów. CHARACTERS pokaże powód fallbacku i liczbę kroków znakowych."],
+ arousal:["Arousal","Efektywny poziom pobudzenia używany podczas generacji.","Wyższy arousal spłaszcza rozkład i zwiększa backoff/eksplorację, więc wypowiedź jest mniej zachowawcza."],
+ vocab:["Słownik","Liczba unikalnych tokenów słownych wyuczonych online.","Connectome word control włącza się dopiero po osiągnięciu skonfigurowanego minimum słownika."],
+ "brain-control":["Connectome word control","Dla top kandydatów model pyta live connectome o language_word_score(token).","Connectome nie tworzy słów od zera. Przeważa kandydatów, które już podał model językowy."],
+ "brain-score":["Brain score 0–1","Odczyt bieżącej preferencji connectomu dla konkretnego słowa. Łączy aktywność sensory/output i mniejszy składnik plastic bias.","0.5 jest neutralne; >0.5 zwiększa wagę; <0.5 ją zmniejsza."],
+ feedback:["Recurrent feedback","Po wybraniu słowa jego populacja output i sensory zostaje pobudzona, a connectome wykonuje kolejne ticki.","Następne słowo jest więc wybierane z innego stanu mózgu niż poprzednie."],
+ context:["Kontekst","Tekst wejściowy podany do generatora. Może pochodzić z wiadomości, STT albo Working Memory przy wypowiedzi spontanicznej.","Model wykorzystuje końcówkę kontekstu jako podpowiedź, ale celowo karze zbyt dokładne kopiowanie promptu."],
+ markov:["Pamięć języka","Online word unigram/bigram/trigram w SQLite. Wszystkie przejścia są nauczone z Discorda/STT.","Trigram pamięta dwie poprzednie pozycje, bigram jedną, unigram daje szeroki fallback."],
+ mix:["Mix trigram / bigram / unigram","Trzy osobno znormalizowane źródła są interpolowane. Wagi zmieniają się wraz z arousal i długością generacji.","Mniejsza dominacja trigramu = większa możliwość tworzenia nowych kombinacji."],
+ random:["Losowanie ważone","Po korekcie connectomu wszystkie finalne wagi są normalizowane do prawdopodobieństw, a kod losuje punkt 0–1.","Tabela pokazuje przedział każdego kandydata i dokładny roll dla danego kroku."],
+ output:["Wynik","Finalny tekst wygenerowany w ostatnim wywołaniu generatora.","Jeśli model odrzucił wcześniejszą próbę jako zbyt podobną do kontekstu, zobaczysz kilka attemptów."],
+ state:["Stan runtime'u","Bieżący Attention, dominujący internal attractor, speak readout i reward trace.","To kontekst diagnostyczny. Trace słów zapisuje dokładne score kandydatów z chwili generacji."],
+ formula:["Wzory","To skrócona wersja dokładnych obliczeń użytych przez generator słów.","W tabeli możesz przejść od bazowej wagi modelu do korekty connectomu i finalnej szansy."],
+ steps:["Kroki słowo po słowie","Każda karta odpowiada jednemu wyborowi w modelu słów. Kandydaci są sortowani wg finalnej wagi, ale selected może pochodzić z niższej pozycji przez losowanie.","Kliknij krok, aby rozwinąć pełną tabelę kandydatów."],
+ associations:["Pamięć skojarzeń","To pomocniczy widok strukturalnych/uczonych relacji pomiędzy słowami w connectomie.","Nie jest osobną bazą 'myśli'. Pokazuje jak reprezentacje słów są powiązane w bieżącym stanie i plastyczności."]
+};
+function esc(v){return String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]))}
+function num(v,d=3){return Number(v||0).toFixed(d)}
+function pct(v){return (Math.max(0,Math.min(1,Number(v||0)))*100).toFixed(1)+"%"}
+function nfmt(v){return Number(v||0).toLocaleString("pl-PL")}
+function age(ts){if(!ts)return "—";const s=Math.max(0,Date.now()/1000-Number(ts));return s<60?s.toFixed(0)+" s":(s/60).toFixed(1)+" min"}
+function bindHelp(){
+ document.querySelectorAll("[data-help]").forEach(x=>{if(x.dataset.bound)return;x.dataset.bound="1";
+  const show=()=>{const h=HELP[x.dataset.help],t=$("tooltip");if(!h||!t)return;t.innerHTML="<b>"+esc(h[0])+"</b><p>"+esc(h[1])+"</p><em>"+esc(h[2])+"</em>";t.classList.add("show");
+   const r=x.getBoundingClientRect(),w=Math.min(380,innerWidth-24);t.style.width=w+"px";t.style.left=Math.max(10,Math.min(innerWidth-w-10,r.left+r.width/2-w/2))+"px";t.style.top=(r.bottom+8)+"px";
+   const tr=t.getBoundingClientRect();if(tr.bottom>innerHeight-10)t.style.top=Math.max(10,r.top-tr.height-8)+"px"};
+  x.onmouseenter=show;x.onfocus=show;x.onmouseleave=()=>$("tooltip").classList.remove("show");x.onblur=()=>$("tooltip").classList.remove("show");
+ })}
 }
-
-function resetLayout(){
- points.clear();layoutEpoch++;
- syncPoints(true);
+let raw=null,attemptIndex=0;
+function acceptedAttempt(trace){
+ const a=trace.attempts||[];return a.findIndex(x=>x.accepted)>=0?a.findIndex(x=>x.accepted):Math.max(0,a.length-1)
 }
-
-function syncPoints(force=false){
- const r=wrap.getBoundingClientRect(),cx=r.width/2,cy=r.height/2,R=Math.min(r.width,r.height)*.38;
- const total=Math.max(1,data.nodes.length);
- data.nodes.forEach((n,i)=>{
-  if(!force&&points.has(n.id))return;
-  const ring=i<8?0.54:0.90;
-  const a=2*Math.PI*(i/total+seed(n.id+"|"+layoutEpoch)*.14);
-  points.set(n.id,{x:cx+Math.cos(a)*R*ring,y:cy+Math.sin(a)*R*ring,vx:0,vy:0})
- });
- for(const key of [...points.keys()])if(!data.nodes.some(n=>n.id===key))points.delete(key)
+function renderHero(d){
+ const tr=d.generation_trace||{},ld=d.language_diag||{},attempts=tr.attempts||[];
+ const a=attempts[attemptIndex]||attempts[acceptedAttempt(tr)]||{};
+ $("gen").textContent=String(tr.generator||ld.last_generator||"—").toUpperCase();
+ const roll=tr.word_model_roll;
+ $("gen-sub").textContent=roll==null?"brak losu modelu":("word roll "+num(roll,3)+" / p "+num(tr.word_model_probability,2));
+ $("arousal").textContent=pct(tr.arousal||0);
+ $("vocab").textContent=nfmt(ld.word_vocab||a.vocab||0);
+ $("vocab-sub").textContent="minimum connectome "+nfmt(ld.connectome_word_control_min_vocab||a.min_vocab||0);
+ const bc=ld.connectome_word_control_last||{};
+ $("brain-control").textContent=(a.brain_active??bc.active)?"ACTIVE":"inactive";
+ $("brain-control").className=(a.brain_active??bc.active)?"good":"";
+ $("brain-control-sub").textContent="strength "+num(tr.brain_control_strength??a.control_strength??0,2)+" • top "+nfmt(tr.brain_candidate_limit??a.candidate_limit??0);
+ $("brain-eval").textContent=nfmt(a.brain_scores_evaluated??bc.evaluated??0);
+ $("brain-mean").textContent="mean "+num(a.brain_mean_score??bc.mean_score??0.5,3);
+ $("feedback").textContent=(a.brain_feedback_active??bc.recurrent_feedback)?"ON":"OFF";
+ $("feedback").className=(a.brain_feedback_active??bc.recurrent_feedback)?"good":"";
+ const cfg=d.language_config||{};
+ $("feedback-sub").textContent=nfmt(a.feedback_words??bc.feedback_words??0)+" słów • "+num(cfg.connectome_word_feedback_magnitude||0,2)+" × "+nfmt(cfg.connectome_word_feedback_steps||0)+" tick";
 }
-
-function neighborhood(){
- if(!selected)return null;
- const set=new Set([selected.id]);
- data.edges.forEach(e=>{if(e.source===selected.id)set.add(e.target);if(e.target===selected.id)set.add(e.source)});
- return set
+function renderProcess(d){
+ const tr=d.generation_trace||{},a=(tr.attempts||[])[attemptIndex]||{},steps=a.steps||[],last=steps[steps.length-1]||{};
+ $("p-context").textContent=tr.context?tr.context.slice(-70):"brak kontekstu";
+ const mix=last.source_mix||{};
+ $("p-mix").textContent=Object.entries(mix).map(([k,v])=>k+" "+pct(v)).join(" • ")||"—";
+ $("p-brain").textContent=a.brain_active?("mean "+num(a.brain_mean_score||0.5,3)):"neutral / OFF";
+ $("p-roll").textContent=last.selection_roll==null?"—":num(last.selection_roll,4);
+ $("p-feedback").textContent=last.feedback_applied?"applied":"—";
+ $("p-output").textContent=tr.result?tr.result.slice(0,75):"—";
 }
-
-function physics(){
- const r=wrap.getBoundingClientRect(),nodes=data.nodes,by=id=>points.get(id);
- for(let i=0;i<nodes.length;i++){
-  const a=by(nodes[i].id);if(!a)continue;
-  for(let j=i+1;j<nodes.length;j++){
-   const b=by(nodes[j].id);if(!b)continue;
-   let dx=b.x-a.x,dy=b.y-a.y,d2=Math.max(180,dx*dx+dy*dy),d=Math.sqrt(d2);
-   const minDist=110;
-   const repel=5200/d2+(d<minDist?(minDist-d)*.045:0);
-   a.vx-=dx/d*repel;a.vy-=dy/d*repel;b.vx+=dx/d*repel;b.vy+=dy/d*repel
-  }
+function renderState(d){
+ const att=d.attention||{},g=(att.guilds||[]).find(x=>x.focus)||(att.guilds||[])[0]||{},f=g.focus||null;
+ $("focus").textContent=f?String(f.label||f.key)+" • "+num(f.score,2):"—";$("focusbar").style.width=pct(f?.score||0);
+ const ins=d.internal_states||{},name=ins.dominant||"—",lvl=Number(ins.dominant_level||0);
+ $("internal").textContent=name+" • "+pct(lvl);$("internalbar").style.width=pct(lvl);
+ const speak=Number((d.scores||{}).speak||0);$("speak").textContent=num(speak,3);$("speakbar").style.width=pct(speak);
+ const rt=Number((d.brain_diag||{}).reward_trace||0);$("reward").textContent=(rt>=0?"+":"")+num(rt,3);$("rewardbar").style.width=pct(Math.min(1,Math.abs(rt)));
+}
+function sourceHTML(c){
+ const src=c.sources||{};
+ return Object.entries(src).map(([k,v])=>{
+  const title="n="+String(v.n??"—")+" reward="+num(v.reward||0,3)+" recent×="+num(v.recent_multiplier||1,2)+" repeat×="+num(v.repeat_penalty||1,2);
+  return "<span class='src' title='"+esc(title)+"'>"+esc(k)+" "+pct(v.normalized_contribution||0)+"</span>"
+ }).join("")
+}
+function renderSteps(d){
+ const tr=d.generation_trace||{},attempts=tr.attempts||[];
+ const tabs=$("attempt-tabs");
+ if(!attempts.length){
+  tabs.innerHTML="";$("trace-summary").innerHTML="";$("steps").innerHTML="<div class='empty'>Brak trace. Poczekaj, aż Mucha wygeneruje tekst.</div>";return
  }
- data.edges.forEach(e=>{
-  const a=by(e.source),b=by(e.target);if(!a||!b)return;
-  let dx=b.x-a.x,dy=b.y-a.y,d=Math.max(1,Math.hypot(dx,dy));
-  const target=150+70*(1-Number(e.weight||0));
-  const f=(d-target)*(.00065+.0015*Number(e.weight||0));
-  a.vx+=dx*f;a.vy+=dy*f;b.vx-=dx*f;b.vy-=dy*f
- });
- const cx=r.width/2,cy=r.height/2;
- nodes.forEach(n=>{
-  const p=by(n.id);if(!p)return;
-  p.vx+=(cx-p.x)*.00032;p.vy+=(cy-p.y)*.00032;
-  p.vx*=.86;p.vy*=.86;
-  p.x=clamp(p.x+p.vx,48,r.width-48);p.y=clamp(p.y+p.vy,48,r.height-58)
- })
-}
-
-function edgeColor(e,a){const learned=Number(e.learned||0);if(learned>.10)return "rgba(88,223,152,"+a+")";if(learned<-.10)return "rgba(255,116,116,"+a+")";return "rgba(109,168,255,"+a+")"}
-
-function importantLabels(){
- const ids=new Set(),edgeTop=data.edges.slice(0,8);
- edgeTop.forEach(e=>{ids.add(e.source);ids.add(e.target)});
- data.nodes.slice().sort((a,b)=>Number(b.salience||0)-Number(a.salience||0)).slice(0,8).forEach(n=>ids.add(n.id));
- if(selected)ids.add(selected.id);if(hover)ids.add(hover.id);
- return ids
-}
-
-function drawLabel(n,p,alpha){
- const text=n.id,rad=11+13*Number(n.salience||0),y=p.y+rad+16;
- ctx.font="600 11px system-ui";
- const w=ctx.measureText(text).width+12;
- ctx.fillStyle="rgba(4,10,16,"+(0.76*alpha)+")";
- ctx.strokeStyle="rgba(38,62,82,"+(0.72*alpha)+")";
- ctx.lineWidth=1;
- ctx.beginPath();
- if(ctx.roundRect)ctx.roundRect(p.x-w/2,y-12,w,18,7);else ctx.rect(p.x-w/2,y-12,w,18);
- ctx.fill();ctx.stroke();
- ctx.fillStyle="rgba(234,245,255,"+alpha+")";ctx.textAlign="center";ctx.textBaseline="middle";ctx.fillText(text,p.x,y-3)
-}
-
-function draw(){
- physics();
- const r=wrap.getBoundingClientRect(),near=neighborhood(),labels=importantLabels();
- ctx.clearRect(0,0,r.width,r.height);
-
- data.edges.forEach(e=>{
-  const a=points.get(e.source),b=points.get(e.target);if(!a||!b)return;
-  const focus=!selected||e.source===selected.id||e.target===selected.id;
-  const w=Number(e.weight||0),alpha=focus?(.16+.72*w):.035;
-  ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.strokeStyle=edgeColor(e,alpha);ctx.lineWidth=focus?(.8+4.2*w):.55;ctx.stroke()
- });
-
- hover=null;
- for(const n of data.nodes){
-  const p=points.get(n.id);if(!p)continue;
-  const rad=11+13*Number(n.salience||0);
-  if(Math.hypot(mouse.x-p.x,mouse.y-p.y)<=rad+7)hover=n;
-  const focus=!near||near.has(n.id),alpha=focus?1:.16;
-  ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);
-  ctx.fillStyle=(selected&&selected.id===n.id)?"rgba(85,234,208,.96)":"rgba(15,35,50,"+(.94*alpha)+")";
-  ctx.fill();
-  ctx.strokeStyle="rgba(85,234,208,"+((.23+.72*Number(n.brain_score||0))*alpha)+")";
-  ctx.lineWidth=(selected&&selected.id===n.id)?3.4:1.4+2.1*Number(n.salience||0);
-  ctx.stroke();
-  const showLabel=labelMode==="all"||labels.has(n.id)||!!near&&near.has(n.id);
-  if(showLabel)drawLabel(n,p,alpha)
- }
-
- if(hover){
-  const p=points.get(hover.id);
-  tip.style.display="block";
-  tip.style.left=Math.max(8,Math.min(r.width-250,p.x+18))+"px";
-  tip.style.top=Math.max(8,Math.min(r.height-132,p.y+18))+"px";
-  tip.innerHTML="<b style='font-size:12px'>"+esc(hover.id)+"</b><br>brain score <b>"+Number(hover.brain_score||0).toFixed(3)+"</b><br>activation <b>"+Number(hover.activation||0).toFixed(4)+"</b><br>plastic bias <b>"+Number(hover.plastic_bias||0).toFixed(5)+"</b>"
- }else tip.style.display="none";
- requestAnimationFrame(draw)
-}
-
-function inspect(n){
- selected=n;
- if(!n){
-  $("inspector").className="empty";
-  $("inspector").textContent="Kliknij słowo na mapie. Pozostałe węzły zostaną przygaszone, a jego relacje będą łatwiejsze do odczytania.";
-  renderRows();
+ if(attemptIndex>=attempts.length)attemptIndex=acceptedAttempt(tr);
+ tabs.innerHTML=attempts.map((a,i)=>"<button class='tab "+(i===attemptIndex?"on ":"")+(a.rejected_reason?"reject":"")+"' data-attempt='"+i+"'>PRÓBA "+(i+1)+(a.accepted?" ✓":a.rejected_reason?" ✕":"")+"</button>").join("");
+ tabs.querySelectorAll("[data-attempt]").forEach(b=>b.onclick=()=>{attemptIndex=Number(b.dataset.attempt);renderAll(raw)});
+ const a=attempts[attemptIndex]||{},steps=a.steps||[];
+ $("trace-summary").innerHTML=[
+  "<span class='chip'>mode "+esc(a.mode||tr.generator||"—")+"</span>",
+  "<span class='chip'>vocab "+nfmt(a.vocab||0)+"</span>",
+  "<span class='chip'>brain "+(a.brain_active?"ACTIVE":"OFF")+"</span>",
+  "<span class='chip'>evaluated "+nfmt(a.brain_scores_evaluated||0)+"</span>",
+  "<span class='chip feedback'>feedback "+nfmt(a.feedback_words||0)+"</span>",
+  a.rejected_reason?"<span class='chip' style='border-color:#653f44;color:#ff9ca4'>odrzucona: "+esc(a.rejected_reason)+"</span>":""
+ ].join("");
+ if(!steps.length){
+  $("steps").innerHTML=tr.generator==="characters"
+   ?"<div class='empty'><b>Generator znakowy.</b><br>Word model nie został wybrany lub nie wyprodukował użytecznej wypowiedzi. Powód: "+esc(tr.char_fallback_reason||"—")+" • kroki znakowe: "+nfmt(tr.char_steps||0)+".</div>"
+   :"<div class='empty'>Ta próba nie doszła do wyboru słów.</div>";
   return
  }
- $("inspector").className="";
- const related=data.edges.filter(e=>e.source===n.id||e.target===n.id).sort((a,b)=>Number(b.weight||0)-Number(a.weight||0));
- $("inspector").innerHTML="<div class='word-title'><h3>"+esc(n.id)+"</h3><span>"+related.length+" relacji</span></div><div class='meta'><div><small>brain score</small><b>"+Number(n.brain_score||0).toFixed(3)+"</b></div><div><small>salience</small><b>"+Number(n.salience||0).toFixed(3)+"</b></div><div><small>activation</small><b>"+Number(n.activation||0).toFixed(5)+"</b></div><div><small>plastic bias</small><b>"+Number(n.plastic_bias||0).toFixed(6)+"</b></div><div><small>liczba wystąpień</small><b>"+nfmt(n.count)+"</b></div><div><small>language reward</small><b>"+Number(n.language_reward||0).toFixed(3)+"</b></div></div>";
- renderRows()
+ $("steps").innerHTML=steps.map((s,idx)=>{
+  const cand=s.candidates||[],mix=s.source_mix||{},roll=s.selection_roll;
+  const rows=cand.map((x,rank)=>{
+   const selected=String(x.token)===String(s.selected),bs=x.brain_score;
+   const brainCls=bs==null?"":Number(bs)>.53?"brainhigh":Number(bs)<.47?"brainlow":"";
+   const interval=x.selection_from==null?"—":num(x.selection_from,3)+"–"+num(x.selection_to,3);
+   return "<tr class='"+(selected?"selected-row":"")+"'><td>"+(selected?"▶ ":"")+(rank+1)+". "+esc(x.token)+"</td>"+
+    "<td>"+pct(x.base_weight||0)+"</td><td class='"+brainCls+"'>"+(bs==null?"—":num(bs,3))+"</td>"+
+    "<td>"+num(x.brain_multiplier||1,3)+"×</td><td>"+pct(x.choice_share||0)+"</td><td class='interval'>"+interval+"</td><td><div class='sources'>"+sourceHTML(x)+"</div></td></tr>"
+  }).join("");
+  const mixHtml=Object.entries(mix).map(([k,v])=>"<span class='chip "+(k==="trigram"?"tri":k==="bigram"?"bi":k==="unigram"?"uni":"")+"'>"+esc(k)+" "+pct(v)+"</span>").join("");
+  return "<div class='step-card "+(idx===0?"open":"")+"' data-step='"+idx+"'><div class='step-head'><div class='step-no'>KROK "+(s.step||idx+1)+"</div>"+
+   "<div class='chosen'>"+esc(s.selected||"STOP / END")+"</div><div class='step-meta'>"+esc((s.history||[]).join(" → ")||"start")+"</div>"+
+   "<div class='roll'>"+(roll==null?"START":"roll "+num(roll,4))+"</div></div>"+
+   "<div class='step-body'><div class='source-line'>"+mixHtml+(s.feedback_applied?"<span class='chip feedback'>↻ feedback do connectomu</span>":"")+"</div>"+
+   "<div class='explain'>LM base jest wagą po interpolacji pamięci języka. Brain score zmienia ją mnożnikiem. Final share to rzeczywista szansa w losowaniu. "+(roll==null?"Ten krok pochodzi z wyboru początku zdania.":"Los "+num(roll,4)+" wpada w przedział zaznaczonego słowa.")+"</div>"+
+   "<div class='tablewrap'><table><thead><tr><th>Kandydat</th><th>LM base</th><th>Brain</th><th>Brain ×</th><th>Final P</th><th>Przedział losu</th><th>Źródła</th></tr></thead><tbody>"+rows+"</tbody></table></div></div></div>"
+ }).join("");
+ document.querySelectorAll(".step-card .step-head").forEach(h=>h.onclick=()=>h.parentElement.classList.toggle("open"))
 }
-
-function renderStats(){
- $("nodes").textContent=nfmt(data.nodes.length);$("nodes-total").textContent="z "+nfmt(raw.node_count||0)+" dostępnych";
- $("edges").textContent=nfmt(data.edges.length);$("edges-total").textContent="z "+nfmt(raw.edge_count||0)+" dostępnych";
- $("reward").textContent=Number(raw.reward_trace||0).toFixed(3);$("tick").textContent=nfmt(raw.ticks);$("source").textContent=raw.source||"runtime";
- const s=(data.edges||[])[0];$("strongest").textContent=s?(s.source+" ↔ "+s.target):"—";$("strongest-w").textContent=s?("waga "+Number(s.weight||0).toFixed(3)):"brak krawędzi";
- $("event").textContent=raw.last_event||"—";$("method").textContent="CONNECTOME"
+function renderAssociations(d){
+ const nodes=(d.nodes||[]).slice().sort((a,b)=>Number(b.salience||0)-Number(a.salience||0)).slice(0,18);
+ $("word-list").innerHTML=nodes.map(n=>"<div class='assoc-row'><div><b>"+esc(n.id)+"</b><small>count "+nfmt(n.count||0)+" • lang reward "+(Number(n.language_reward||0)>=0?"+":"")+num(n.language_reward||0,2)+" • seen "+age(n.last_seen)+"</small></div><span>brain "+num(n.brain_score||0.5,3)+"</span><span>sal "+num(n.salience||0,3)+"</span></div>").join("")||"<div class='empty'>Brak słów do pokazania.</div>";
+ const edges=(d.edges||[]).slice().sort((a,b)=>Number(b.weight||0)-Number(a.weight||0)).slice(0,22);
+ $("edge-list").innerHTML=edges.map(e=>"<div class='assoc-row'><div><b>"+esc(e.source)+" → "+esc(e.target)+"</b><small>struct "+num(e.structural||0,3)+" • learned "+(Number(e.learned||0)>=0?"+":"")+num(e.learned||0,3)+" • pair a "+num(e.pair_activation||0,3)+"</small></div><span>weight</span><span>"+num(e.weight||0,3)+"</span></div>").join("")||"<div class='empty'>Brak relacji do pokazania.</div>"
 }
-
-function renderRows(){
- let rows=(data.edges||[]).slice();
- if(selected)rows=rows.filter(e=>e.source===selected.id||e.target===selected.id);
- rows=rows.slice(0,14);
- $("assoc").innerHTML=rows.map(e=>"<div class='row' data-a='"+esc(e.source)+"' data-b='"+esc(e.target)+"'><div><b>"+esc(e.source)+" ↔ "+esc(e.target)+"</b><small>structure "+Number(e.structural||0).toFixed(3)+" • learned <span class='"+(Number(e.learned||0)>=0?"pos":"neg")+"'>"+(Number(e.learned||0)>=0?"+":"")+Number(e.learned||0).toFixed(3)+"</span> • activity "+Number(e.pair_activation||0).toFixed(3)+"</small></div><b class='weight'>"+Number(e.weight||0).toFixed(3)+"</b></div>").join("")||"<div class='empty'>Brak widocznych połączeń dla tego ustawienia.</div>";
- document.querySelectorAll(".row").forEach(x=>x.onclick=()=>{const preferred=selected?(x.dataset.a===selected.id?x.dataset.b:x.dataset.a):x.dataset.a;const n=data.nodes.find(n=>n.id===preferred);if(n)inspect(n)})
+function renderAll(d){
+ raw=d||{};
+ const tr=raw.generation_trace||{};
+ if(attemptIndex>=(tr.attempts||[]).length)attemptIndex=acceptedAttempt(tr);
+ renderHero(raw);renderProcess(raw);renderState(raw);renderSteps(raw);renderAssociations(raw);
+ $("output").textContent=tr.result||"Czekam, aż Mucha coś wygeneruje…";
+ $("context").textContent=tr.context||"—";
+ $("live").textContent="LIVE";
+ bindHelp()
 }
-
-function render(d){
- raw=d||{nodes:[],edges:[]};
- rebuildData();
- if(selected){const fresh=data.nodes.find(n=>n.id===selected.id);if(fresh){selected=fresh;inspect(fresh)}else inspect(null)}
- $("live").textContent="LIVE"
+async function update(){
+ try{
+  const r=await fetch("/api/associations",{cache:"no-store"});if(r.status===401){location="/login";return}
+  if(!r.ok)throw new Error("HTTP "+r.status);renderAll(await r.json())
+ }catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}
 }
-
-async function update(){try{const r=await fetch("/api/associations",{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}}
-
-$("node-limit").oninput=e=>{nodeLimit=Number(e.target.value);$("node-limit-out").textContent=nodeLimit;rebuildData()};
-$("edge-limit").oninput=e=>{edgeLimit=Number(e.target.value);$("edge-limit-out").textContent=edgeLimit;rebuildData()};
-$("labels-auto").onclick=()=>{labelMode="auto";$("labels-auto").classList.add("on");$("labels-all").classList.remove("on")};
-$("labels-all").onclick=()=>{labelMode="all";$("labels-all").classList.add("on");$("labels-auto").classList.remove("on")};
-$("reset-layout").onclick=resetLayout;
-$("clear-selection").onclick=()=>inspect(null);
-canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top});
-canvas.addEventListener("mouseleave",()=>{mouse.x=-9999;mouse.y=-9999});
-canvas.addEventListener("click",()=>{if(hover)inspect(hover)});
-window.addEventListener("resize",()=>{resize();resetLayout()});
-resize();draw();setInterval(update,1400);update();
+bindHelp();setInterval(update,1200);update();
 </script>
 </body></html>"""
-
 CONNECTOME_HTML = r"""<!doctype html>
 <html lang="pl">
 <head>
@@ -841,7 +898,7 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
 <body><main>
 <div class="top">
  <div class="brand"><div class="logo">🧬</div><div><h1>Neural Connectome</h1><div class="sub">Live funkcjonalny widok aktywnej części mózgu Muchy — nie jest to rekonstrukcja anatomiczna.</div></div></div>
- <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a class="active" href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
+ <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a class="active" href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🗣 Mowa</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
@@ -1232,7 +1289,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 <body><main>
 <div class="top">
  <div class="brand"><div class="logo">🧠</div><div><h1>Fly Brain Neuro-map</h1><div class="sub">Neuro-map 2.0: aktywność przestrzenna, realny przepływ po krawędziach FAFB, plastyczność i runtime korelacje z zachowaniem Muchy.</div></div></div>
- <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a class="active" href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
+ <div class="nav"><a href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a class="active" href="/neuromap">🧠 Neuro-map</a><a href="/associations">🗣 Mowa</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
@@ -1512,7 +1569,7 @@ PUBLIC_OVERVIEW_HTML = r"""<!doctype html>
 @media(max-width:760px){main{padding:13px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.actions{grid-template-columns:1fr}}
 </style></head><body><main>
 <div class="top"><div class="brand"><div class="logo">🪰</div><div><h1>Mucha — publiczny podgląd</h1><div class="sub">Tryb tylko do odczytu. Nie daje dostępu do konfiguracji, logów ani prywatnych danych użytkowników.</div></div></div>
-<div class="nav"><a class="active" href="/public">🏠 Podgląd</a><a href="/public/connectome">🧬 Connectome</a><a href="/public/neuromap">🧠 Neuro-map</a><a href="/public/associations">🕸 Skojarzenia</a><a href="/login">🔒 Admin</a></div></div>
+<div class="nav"><a class="active" href="/public">🏠 Podgląd</a><a href="/public/connectome">🧬 Connectome</a><a href="/public/neuromap">🧠 Neuro-map</a><a href="/public/associations">🗣 Mowa</a><a href="/login">🔒 Admin</a></div></div>
 <section class="hero">
  <div class="card"><small>Neurony</small><strong id="neurons">—</strong></div>
  <div class="card"><small>Połączenia</small><strong id="connections">—</strong></div>
@@ -1604,7 +1661,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
 <body><main>
 <div class="top">
   <div class="brand"><div class="logo">🪰</div><div><h1>Mucha Control Center</h1><div class="sub">Windows / VPS • Discord • Connectome • Chaser • Audio</div></div></div>
-  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🕸 Skojarzenia</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
+  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🗣 Mowa</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
