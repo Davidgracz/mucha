@@ -97,6 +97,11 @@ def main():
             learning_rate=0.5,
         )
         assert episodes.predict("ctx", "voice_join") == 0.0
+        uncertainty_before = episodes.semantic_uncertainty(
+            "ctx",
+            ["voice_join"],
+        )
+        assert uncertainty_before["uncertainty"] == 1.0
         ep = episodes.observe(
             guild_id=1,
             context="ctx",
@@ -109,6 +114,13 @@ def main():
         assert abs(
             episodes.predict("ctx", "voice_join") - 0.3
         ) < 1e-9
+        uncertainty_after = episodes.semantic_uncertainty(
+            "ctx",
+            ["voice_join"],
+        )
+        assert uncertainty_after["uncertainty"] < uncertainty_before["uncertainty"]
+        assert ep["semantic_uncertainty_before"] > ep["semantic_uncertainty_after"]
+        assert ep["information_gain"] > 0.0
         assert episodes.size() == 1
 
         persistent_path = td / "voice-episodes.sqlite3"
@@ -605,7 +617,17 @@ def main():
         assert "semantic_recall_min_observations" in CONFIG_HTML
         assert "semantic_recall_magnitude" in CONFIG_HTML
         assert "semantic_recall_steps" in CONFIG_HTML
+        assert "uncertainty_exploration_enabled" in CONFIG_HTML
+        assert "uncertainty_curiosity_magnitude" in CONFIG_HTML
+        assert "uncertainty_curiosity_steps" in CONFIG_HTML
+        assert "uncertainty_target_weight" in CONFIG_HTML
+        assert "information_gain_reward_scale" in CONFIG_HTML
+        assert "information_gain_reward_max" in CONFIG_HTML
+        assert "information_gain_min_delta" in CONFIG_HTML
         assert "Pamięć semantyczna" in HTML
+        assert "Curiosity / Uncertainty" in HTML
+        assert "Information gain" in HTML
+        assert "uncertainty_curiosity_cue" in HTML
         assert "semantic-memory" in HTML
         assert "consolidation_enabled" in CONFIG_HTML
         assert "synaptic_consolidation_gain" in CONFIG_HTML
@@ -700,6 +722,11 @@ def main():
         assert "semantic_recall" in bot_source
         assert "semantic_recall_magnitude" in bot_source
         assert "semantic_guided" in bot_source
+        assert "semantic_uncertainty" in bot_source
+        assert "uncertainty_curiosity_magnitude" in bot_source
+        assert "internal-state:curiosity:" in bot_source
+        assert "information_gain" in bot_source
+        assert "uncertainty_target_weight" in bot_source
         assert "prediction_scene_key" in bot_source
         assert "prediction_error_max_correction" in bot_source
         assert "_queue_voice_prediction" in bot_source
