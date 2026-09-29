@@ -4177,6 +4177,7 @@ class MuchaClient(discord.Client):
         now: float,
         current_id: int | None = None,
         preferred_channel_id: int | None = None,
+        uncertainties: dict[int, float] | None = None,
     ) -> tuple[discord.VoiceChannel | None, dict[int, dict]]:
         scored: list[tuple[discord.VoiceChannel, float]] = []
         debug_scores: dict[int, dict] = {}
@@ -4191,12 +4192,30 @@ class MuchaClient(discord.Client):
                 affinity,
                 now,
             )
+            uncertainty = max(
+                0.0,
+                min(
+                    1.0,
+                    float(
+                        (uncertainties or {}).get(ch.id, 0.0)
+                    ),
+                ),
+            )
+            uncertainty_bonus = (
+                float(self.cfg.voice.uncertainty_target_weight)
+                * uncertainty
+                if self.cfg.voice.uncertainty_exploration_enabled
+                else 0.0
+            )
+            score += uncertainty_bonus
             scored.append((ch, score))
             debug_scores[ch.id] = {
                 "exploration_score": score,
                 "visit_age": age,
                 "novelty": novelty,
                 "recent_penalty_factor": recent,
+                "semantic_uncertainty": uncertainty,
+                "uncertainty_target_bonus": uncertainty_bonus,
             }
 
         if not scored:
