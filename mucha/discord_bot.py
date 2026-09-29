@@ -5315,6 +5315,12 @@ class MuchaClient(discord.Client):
                 max_nodes=28,
                 edge_limit=72,
             )
+            graph["attention"] = self._attention_snapshot()
+            graph["internal_states"] = (
+                self.brain.internal_state_diagnostics()
+            )
+            graph["scores"] = self.brain.action_scores()
+            graph["brain_diag"] = self.brain.diagnostics()
 
         metadata = {
             str(row.get("word", "")): row
@@ -5329,6 +5335,7 @@ class MuchaClient(discord.Client):
         graph["last_event"] = self._last_brain_event
         graph["last_action"] = self._last_brain_action
         graph["language_diag"] = self.language.diagnostics()
+        graph["generation_trace"] = self.language.generation_trace()
         return graph
 
     async def _neuromap_dashboard_snapshot(
