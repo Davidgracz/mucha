@@ -712,7 +712,7 @@ function bindHelp(){
    const r=x.getBoundingClientRect(),w=Math.min(380,innerWidth-24);t.style.width=w+"px";t.style.left=Math.max(10,Math.min(innerWidth-w-10,r.left+r.width/2-w/2))+"px";t.style.top=(r.bottom+8)+"px";
    const tr=t.getBoundingClientRect();if(tr.bottom>innerHeight-10)t.style.top=Math.max(10,r.top-tr.height-8)+"px"};
   x.onmouseenter=show;x.onfocus=show;x.onmouseleave=()=>$("tooltip").classList.remove("show");x.onblur=()=>$("tooltip").classList.remove("show");
- })}
+ })
 }
 let raw=null,attemptIndex=0,lastTraceStarted=null;
 function acceptedAttempt(trace){
