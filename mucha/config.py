@@ -44,6 +44,10 @@ class BrainConfig:
     internal_state_arousal_gain: float = 0.18
     internal_state_stress_gain: float = 0.16
     internal_state_satiety_stability_gain: float = 0.08
+    action_policy_enabled: bool = True
+    action_policy_lr: float = 0.06
+    action_policy_max_bias: float = 0.55
+    action_policy_decay: float = 0.999
     steps_per_event: int = 3
     idle_steps: int = 1
     backend: str = "auto"
