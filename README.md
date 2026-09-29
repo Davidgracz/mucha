@@ -580,11 +580,43 @@ attention_mention_boost = 0.35
 
 Stan jest widoczny na żywo w `/details` jako **Attention / Working Memory**.
 
+# Learned Action Policy
+
+Reward i punish uczą teraz trwałą preferencję każdej akcji:
+
+```text
+raw readout connectomu
+→ learned action bias
+→ effective score
+→ decyzja / konkurencja akcji
+```
+
+Policy obejmuje:
+
+- `speak`,
+- `react`,
+- `voice_join`,
+- `voice_move`,
+- `voice_leave`,
+- `explore`,
+- `stay`.
+
+Bias jest ograniczony i nie zastępuje connectomu. Surowy readout nadal pochodzi z aktywności neuronalnej, a warstwa policy jedynie przesuwa jego skuteczną wartość na podstawie wcześniejszych nagród i kar.
+
+Dla akcji progowych, takich jak `speak` i `react`, dashboard pokazuje również **learned raw threshold** — czyli jaki surowy readout connectomu jest aktualnie potrzebny, aby przejść bazowy próg po uwzględnieniu doświadczenia.
+
+Stan policy zapisuje się w:
+
+```text
+state/brain_state.npz
+```
+
+i jest widoczny na żywo w `/details` jako **Learned Action Policy**.
+
 # Najbliższy kierunek rozwoju
 
 Dalsze kierunki:
 
-- learned action policy z mniejszą liczbą ręcznych progów,
 - pamięć semantyczna powstająca z epizodów,
 - curiosity / uncertainty driven exploration,
 - bogatsze sensory voice,
