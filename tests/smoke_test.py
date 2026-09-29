@@ -543,6 +543,13 @@ def main():
         assert "internal_state_recurrent_gain" in CONFIG_HTML
         assert "internal_state_arousal_gain" in CONFIG_HTML
         assert "Internal states / attractors" in CONFIG_HTML
+        assert "Attention / Working Memory" in CONFIG_HTML
+        assert "attention_enabled" in CONFIG_HTML
+        assert "attention_half_life_seconds" in CONFIG_HTML
+        assert "working_memory_seconds" in CONFIG_HTML
+        assert "attention_reinject_magnitude" in CONFIG_HTML
+        assert "Attention / Working Memory" in HTML
+        assert "renderAttention" in HTML
         assert "ATTRACTORS" in NEUROMAP_HTML
         assert "renderInternalStates" in NEUROMAP_HTML
         assert "drawAttractors" in NEUROMAP_HTML
@@ -609,10 +616,15 @@ def main():
         assert "_maybe_memory_replay" in bot_source
         assert "memory_replay_reward_scale" in bot_source
         assert "replay_candidates" in bot_source
+        assert "_attention_observe_text" in bot_source
+        assert "_inject_attention_context" in bot_source
+        assert "_attention_language_context" in bot_source
+        assert '"attention": attention_debug' in bot_source
         brain_source = (ROOT / "mucha" / "brain.py").read_text(
             encoding="utf-8"
         )
         assert "_capture_signal_flow_tick" in brain_source
+        assert "attention_score" in brain_source
         assert "signal_flow_snapshot" in brain_source
         assert "effective_weight" in brain_source
         assert "top_synapses" in brain_source
