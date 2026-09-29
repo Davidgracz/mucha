@@ -1189,6 +1189,15 @@ class MuchaClient(discord.Client):
                 int(self.cfg.language.connectome_word_control_candidates),
             ),
         )
+        self.voice_episodes.semantic_memory_enabled = bool(
+            self.cfg.voice.semantic_memory_enabled
+        )
+        self.voice_episodes.semantic_recall_min_observations = max(
+            1,
+            int(
+                self.cfg.voice.semantic_recall_min_observations
+            ),
+        )
 
         self.voice_loop.change_interval(
             seconds=max(1, int(self.cfg.voice.poll_seconds))
