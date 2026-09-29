@@ -209,6 +209,13 @@ class VoiceConfig:
 @dataclass(slots=True)
 class BehaviorConfig:
     idle_tick_seconds: int = 5
+    attention_enabled: bool = True
+    attention_half_life_seconds: float = 45.0
+    working_memory_seconds: int = 120
+    attention_max_items: int = 8
+    attention_reinject_magnitude: float = 0.32
+    attention_topic_words: int = 5
+    attention_mention_boost: float = 0.35
     speak_threshold: float = 0.70
     reaction_threshold: float = 0.73
     reaction_cooldown_seconds: int = 20
