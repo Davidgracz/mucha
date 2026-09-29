@@ -1623,6 +1623,8 @@ class OnlineLanguage:
                     current_attempt["rejected_reason"] = (
                         "too-close-to-context"
                     )
+                    word_text = None
+                    continue
                 if attempt >= 3 or not too_close:
                     if current_attempt is not None:
                         current_attempt["accepted"] = True
