@@ -120,6 +120,15 @@ class OnlineLanguage:
             "feedback_words": 0,
         }
         self._last_generator = "none"
+        self._last_generation_trace: dict = {
+            "status": "idle",
+            "started_at": 0.0,
+            "generator": "none",
+            "context": "",
+            "arousal": 0.0,
+            "attempts": [],
+            "result": "",
+        }
         self._init_schema()
         self._bootstrap_from_legacy_words()
         self._bootstrap_word_model_from_legacy()
@@ -682,6 +691,35 @@ class OnlineLanguage:
             "ready": self.ready(),
         }
 
+    def generation_trace(self) -> dict:
+        """Return the latest observable language-generation trace.
+
+        This is algorithm telemetry: candidate weights, connectome word scores,
+        stochastic selection and recurrent feedback. It is intentionally
+        bounded so the dashboard can display the process without storing an
+        unbounded history.
+        """
+        trace = self._last_generation_trace
+        return {
+            **trace,
+            "attempts": [
+                {
+                    **attempt,
+                    "steps": [
+                        {
+                            **step,
+                            "candidates": [
+                                dict(candidate)
+                                for candidate in step.get("candidates", [])
+                            ],
+                        }
+                        for step in attempt.get("steps", [])
+                    ],
+                }
+                for attempt in trace.get("attempts", [])
+            ],
+        }
+
     def ready(self) -> bool:
         total, unique = self.stats()
         return total >= self.min_chars and unique >= self.min_unique_chars
@@ -932,6 +970,25 @@ class OnlineLanguage:
             brain_active and brain_word_feedback is not None
         )
         brain_feedback_words = 0
+        attempt_trace = {
+            "attempt": len(
+                self._last_generation_trace.get("attempts", [])
+            ) + 1,
+            "mode": "words",
+            "brain_ready": brain_ready,
+            "brain_active": brain_active,
+            "brain_feedback_active": brain_feedback_active,
+            "vocab": vocab,
+            "min_vocab": self.connectome_word_control_min_vocab,
+            "control_strength": self.connectome_word_control_strength,
+            "candidate_limit": self.connectome_word_control_candidates,
+            "steps": [],
+            "result": "",
+            "rejected_reason": "",
+        }
+        self._last_generation_trace.setdefault(
+            "attempts", []
+        ).append(attempt_trace)
         self._brain_word_control_last = {
             "active": brain_active,
             "ready": brain_ready,
@@ -977,7 +1034,7 @@ class OnlineLanguage:
                     return item
             return None
 
-        def feed_selected_word(token: str) -> None:
+        def feed_selected_word(token: str) -> bool:
             nonlocal brain_feedback_words
             if (
                 not brain_feedback_active
@@ -985,7 +1042,7 @@ class OnlineLanguage:
                 or token in punctuation
                 or token == WORD_END
             ):
-                return
+                return False
             previous = previous_lexical_token()
             try:
                 brain_word_feedback(token, previous)
@@ -993,24 +1050,28 @@ class OnlineLanguage:
                 # The connectome state just changed, so candidate scores cached
                 # for the previous word are no longer valid.
                 brain_score_cache.clear()
+                return True
             except Exception:
-                return
+                return False
 
         def choose_mixed(
-            sources: list[tuple[float, list[tuple]]],
+            sources: list[tuple[str, float, list[tuple]]],
             *,
             allow_end: bool = True,
         ) -> str | None:
             combined: dict[str, float] = {}
+            debug: dict[str, dict] = {}
+            source_mix: dict[str, float] = {}
             lexical_count = sum(
                 1 for item in out if item not in punctuation
             )
 
-            for source_weight, rows in sources:
+            for source_name, source_weight, rows in sources:
                 if source_weight <= 0.0 or not rows:
                     continue
+                source_mix[source_name] = float(source_weight)
 
-                local: list[tuple[str, float]] = []
+                local: list[tuple[str, float, dict]] = []
                 for row in rows:
                     token = str(row[0])
                     if not allow_end and token == WORD_END:
@@ -1031,9 +1092,6 @@ class OnlineLanguage:
                     ):
                         repeat_penalty *= 0.04
 
-                    # Do not simply mirror the current prompt. Learned
-                    # transitions still matter, but exact prompt n-grams are
-                    # deliberately less attractive than new combinations.
                     if out and (out[-1], token) in context_bigrams:
                         repeat_penalty *= 0.55
                     if (
@@ -1043,41 +1101,67 @@ class OnlineLanguage:
                     ):
                         repeat_penalty *= 0.38
 
+                    recent_multiplier = self._recent_multiplier(
+                        float(last_seen)
+                    )
+                    raw_weight = self._word_weight(
+                        n,
+                        reward,
+                        last_seen,
+                        arousal,
+                        repeat_penalty,
+                    )
                     local.append(
                         (
                             token,
-                            self._word_weight(
-                                n,
-                                reward,
-                                last_seen,
-                                arousal,
-                                repeat_penalty,
-                            ),
+                            raw_weight,
+                            {
+                                "n": n,
+                                "reward": reward,
+                                "last_seen": last_seen,
+                                "recent_multiplier": recent_multiplier,
+                                "repeat_penalty": repeat_penalty,
+                                "raw_weight": raw_weight,
+                            },
                         )
                     )
 
-                local_total = sum(weight for _, weight in local)
+                local_total = sum(weight for _, weight, _ in local)
                 if local_total <= 0.0:
                     continue
 
-                # Normalize every Markov order independently first. This makes
-                # the interpolation weights meaningful even when one table has
-                # many more candidates or much larger raw counts.
-                for token, weight in local:
-                    combined[token] = combined.get(token, 0.0) + (
+                for token, weight, details in local:
+                    contribution = (
                         source_weight * weight / local_total
                     )
+                    combined[token] = combined.get(token, 0.0) + contribution
+                    item = debug.setdefault(
+                        token,
+                        {
+                            "token": token,
+                            "sources": {},
+                            "base_weight": 0.0,
+                            "brain_score": None,
+                            "brain_multiplier": 1.0,
+                            "final_weight": 0.0,
+                        },
+                    )
+                    item["sources"][source_name] = {
+                        **details,
+                        "normalized_contribution": contribution,
+                    }
+                    item["base_weight"] = float(combined[token])
 
             if not combined:
                 return None
 
+            adjusted = dict(combined)
             if brain_active:
                 ranked = sorted(
                     combined.items(),
                     key=lambda item: item[1],
                     reverse=True,
                 )
-                adjusted = dict(combined)
                 checked = 0
                 for token, base_weight in ranked:
                     if token in punctuation or token == WORD_END:
@@ -1089,14 +1173,47 @@ class OnlineLanguage:
                         * centered
                     )
                     adjusted[token] = base_weight * multiplier
+                    item = debug.setdefault(token, {"token": token})
+                    item["brain_score"] = score
+                    item["brain_multiplier"] = multiplier
                     checked += 1
                     if checked >= self.connectome_word_control_candidates:
                         break
-                combined = adjusted
 
-            selected = self._weighted_choice(list(combined.items()))
+            final_total = sum(max(0.0, value) for value in adjusted.values())
+            for token, final_weight in adjusted.items():
+                item = debug.setdefault(token, {"token": token})
+                item["base_weight"] = float(combined.get(token, 0.0))
+                item["final_weight"] = float(final_weight)
+                item["choice_share"] = (
+                    float(final_weight) / final_total
+                    if final_total > 0.0
+                    else 0.0
+                )
+                item.setdefault("brain_score", None)
+                item.setdefault("brain_multiplier", 1.0)
+                item.setdefault("sources", {})
+
+            selected = self._weighted_choice(list(adjusted.items()))
+            feedback_applied = False
             if selected is not None:
-                feed_selected_word(selected)
+                feedback_applied = feed_selected_word(selected)
+
+            top_candidates = sorted(
+                debug.values(),
+                key=lambda item: float(item.get("final_weight", 0.0)),
+                reverse=True,
+            )[:12]
+            attempt_trace["steps"].append({
+                "step": len(out) + 1,
+                "phase": "word-choice",
+                "history": list(out[-4:]),
+                "context_tail": list(ctx[-4:]),
+                "source_mix": source_mix,
+                "selected": selected,
+                "feedback_applied": feedback_applied,
+                "candidates": top_candidates,
+            })
             return selected
 
         def source_weights(
@@ -1163,9 +1280,9 @@ class OnlineLanguage:
             )
             token = choose_mixed(
                 [
-                    (tri_w, trigram_rows),
-                    (bi_w, bigram_rows),
-                    (uni_w, unigram_rows),
+                    ("trigram", tri_w, trigram_rows),
+                    ("bigram", bi_w, bigram_rows),
+                    ("unigram", uni_w, unigram_rows),
                 ],
                 allow_end=False,
             )
@@ -1201,17 +1318,72 @@ class OnlineLanguage:
                         self.connectome_word_control_strength * centered
                     )
                 weighted.append((packed, weight))
+            start_total = sum(weight for _, weight in weighted)
+            start_debug = []
+            for packed_item, weight in sorted(
+                weighted,
+                key=lambda item: item[1],
+                reverse=True,
+            )[:12]:
+                pa, pb = packed_item.split("\u0000", 1)
+                scores = []
+                if brain_active:
+                    scores.append(get_brain_score(pa))
+                    if pb != WORD_END and pb not in punctuation:
+                        scores.append(get_brain_score(pb))
+                start_debug.append({
+                    "token": (
+                        pa
+                        if pb == WORD_END
+                        else f"{pa} {pb}"
+                    ),
+                    "base_weight": float(weight),
+                    "final_weight": float(weight),
+                    "choice_share": (
+                        float(weight) / start_total
+                        if start_total > 0.0
+                        else 0.0
+                    ),
+                    "brain_score": (
+                        sum(scores) / len(scores)
+                        if scores
+                        else None
+                    ),
+                    "brain_multiplier": 1.0,
+                    "sources": {
+                        "sentence_start": {
+                            "normalized_contribution": (
+                                float(weight) / start_total
+                                if start_total > 0.0
+                                else 0.0
+                            )
+                        }
+                    },
+                })
             packed = self._weighted_choice(weighted)
             if packed:
                 a, b = packed.split("\u0000", 1)
+                feedback_a = feed_selected_word(a)
+                feedback_b = False
+                if b != WORD_END:
+                    feedback_b = feed_selected_word(b)
+                attempt_trace["steps"].append({
+                    "step": 1,
+                    "phase": "sentence-start",
+                    "history": [],
+                    "context_tail": list(ctx[-4:]),
+                    "source_mix": {"sentence_start": 1.0},
+                    "selected": (
+                        a if b == WORD_END else f"{a} {b}"
+                    ),
+                    "feedback_applied": feedback_a or feedback_b,
+                    "candidates": start_debug,
+                })
                 if b == WORD_END:
-                    feed_selected_word(a)
                     out.append(a)
                     state = (WORD_START_B, a)
                 else:
-                    feed_selected_word(a)
                     out.append(a)
-                    feed_selected_word(b)
                     out.append(b)
                     state = (a, b)
 
@@ -1251,9 +1423,9 @@ class OnlineLanguage:
             )
             token = choose_mixed(
                 [
-                    (tri_w, trigram_rows),
-                    (bi_w, bigram_rows),
-                    (uni_w, unigram_rows),
+                    ("trigram", tri_w, trigram_rows),
+                    ("bigram", bi_w, bigram_rows),
+                    ("unigram", uni_w, unigram_rows),
                 ]
             )
 
@@ -1299,6 +1471,14 @@ class OnlineLanguage:
                 brain_feedback_words
             )
 
+        attempt_trace["result"] = text
+        attempt_trace["brain_scores_evaluated"] = len(brain_scores_used)
+        attempt_trace["brain_mean_score"] = (
+            sum(brain_scores_used) / len(brain_scores_used)
+            if brain_scores_used
+            else 0.5
+        )
+        attempt_trace["feedback_words"] = brain_feedback_words
         return text
 
     def _word_output_too_close_to_context(
@@ -1345,13 +1525,40 @@ class OnlineLanguage:
         brain_word_score: Callable[[str], float] | None = None,
         brain_word_feedback: Callable[[str, str | None], None] | None = None,
     ) -> tuple[str | None, list[tuple[str, str, str]]]:
+        effective_arousal = max(0.0, min(1.0, float(arousal)))
+        self._last_generation_trace = {
+            "status": "generating",
+            "started_at": time.time(),
+            "generator": "pending",
+            "context": re.sub(r"\s+", " ", str(context or "")).strip()[-600:],
+            "arousal": effective_arousal,
+            "word_model_probability": self.word_model_probability,
+            "word_model_roll": None,
+            "brain_control_enabled": self.connectome_word_control_enabled,
+            "brain_control_strength": self.connectome_word_control_strength,
+            "brain_candidate_limit": self.connectome_word_control_candidates,
+            "feedback_enabled": brain_word_feedback is not None,
+            "attempts": [],
+            "result": "",
+        }
         if not self.ready():
             self._last_generator = "not-ready"
+            self._last_generation_trace.update({
+                "status": "not-ready",
+                "generator": "not-ready",
+            })
             return None, []
 
+        word_roll = (
+            self.rng.random()
+            if self.hybrid_word_enabled
+            else None
+        )
+        self._last_generation_trace["word_model_roll"] = word_roll
         if (
             self.hybrid_word_enabled
-            and self.rng.random() < self.word_model_probability
+            and word_roll is not None
+            and word_roll < self.word_model_probability
         ):
             word_text = None
             for attempt in range(4):
@@ -1364,22 +1571,46 @@ class OnlineLanguage:
                 if not candidate:
                     continue
                 word_text = candidate
-                if (
-                    attempt >= 3
-                    or not self._word_output_too_close_to_context(
-                        candidate,
-                        context,
+                too_close = self._word_output_too_close_to_context(
+                    candidate,
+                    context,
+                )
+                current_attempt = (
+                    self._last_generation_trace.get("attempts", [])[-1]
+                    if self._last_generation_trace.get("attempts")
+                    else None
+                )
+                if current_attempt is not None and too_close and attempt < 3:
+                    current_attempt["rejected_reason"] = (
+                        "too-close-to-context"
                     )
-                ):
+                if attempt >= 3 or not too_close:
+                    if current_attempt is not None:
+                        current_attempt["accepted"] = True
                     break
             if word_text:
                 self._last_generator = "words"
+                self._last_generation_trace.update({
+                    "status": "complete",
+                    "generator": "words",
+                    "result": word_text,
+                    "completed_at": time.time(),
+                })
                 return (
                     word_text,
                     self._char_trigrams_for_text(word_text),
                 )
 
         self._last_generator = "characters"
+        self._last_generation_trace["generator"] = "characters"
+        self._last_generation_trace["char_fallback_reason"] = (
+            "word-model-not-selected"
+            if (
+                word_roll is not None
+                and word_roll >= self.word_model_probability
+            )
+            else "word-model-produced-no-usable-output"
+        )
         start = self._pick_start(context)
         if start is None:
             return None, []
@@ -1428,7 +1659,15 @@ class OnlineLanguage:
             if last_space > len(text) * 0.55:
                 text = text[:last_space]
 
-        return text[:700], used_trigrams
+        text = text[:700]
+        self._last_generation_trace.update({
+            "status": "complete",
+            "generator": "characters",
+            "result": text,
+            "completed_at": time.time(),
+            "char_steps": len(used_trigrams),
+        })
+        return text, used_trigrams
 
     def reinforce(
         self,
