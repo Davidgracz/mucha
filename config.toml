@@ -197,6 +197,13 @@ exclude_afk_channel = true
 
 [behavior]
 idle_tick_seconds = 5
+attention_enabled = true
+attention_half_life_seconds = 45.0
+working_memory_seconds = 120
+attention_max_items = 8
+attention_reinject_magnitude = 0.32
+attention_topic_words = 5
+attention_mention_boost = 0.35
 speak_threshold = 0.50
 reaction_threshold = 0.62
 reaction_cooldown_seconds = 1
