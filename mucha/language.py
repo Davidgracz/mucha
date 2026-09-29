@@ -1194,7 +1194,35 @@ class OnlineLanguage:
                 item.setdefault("brain_multiplier", 1.0)
                 item.setdefault("sources", {})
 
-            selected = self._weighted_choice(list(adjusted.items()))
+            choice_values = [
+                (token, max(0.0001, float(weight)))
+                for token, weight in adjusted.items()
+            ]
+            choice_total = sum(weight for _, weight in choice_values)
+            selection_roll = self.rng.random()
+            target = selection_roll * choice_total
+            upto = 0.0
+            selected = None
+            for token, weight in choice_values:
+                start_share = (
+                    upto / choice_total
+                    if choice_total > 0.0
+                    else 0.0
+                )
+                upto += weight
+                end_share = (
+                    upto / choice_total
+                    if choice_total > 0.0
+                    else 0.0
+                )
+                item = debug.setdefault(token, {"token": token})
+                item["selection_from"] = start_share
+                item["selection_to"] = end_share
+                if selected is None and upto >= target:
+                    selected = token
+            if selected is None and choice_values:
+                selected = choice_values[-1][0]
+
             feedback_applied = False
             if selected is not None:
                 feedback_applied = feed_selected_word(selected)
@@ -1210,6 +1238,7 @@ class OnlineLanguage:
                 "history": list(out[-4:]),
                 "context_tail": list(ctx[-4:]),
                 "source_mix": source_mix,
+                "selection_roll": selection_roll,
                 "selected": selected,
                 "feedback_applied": feedback_applied,
                 "candidates": top_candidates,
