@@ -166,6 +166,47 @@ def main():
             "Stivi",
         }
         assert restored.diagnostics()["persistent"] is True
+        semantic_before = restored.semantic_recall(
+            "in|need=0|fatigue=1",
+            ["voice_move"],
+            channel_id=555,
+            user_ids=[11, 22],
+            min_observations=2,
+        )
+        assert semantic_before == {}
+        restored.observe(
+            guild_id=7,
+            channel_id=555,
+            channel_name="ASG",
+            user_ids=[11, 22],
+            user_names=["Dawid", "Stivi"],
+            context="in|need=0|fatigue=1",
+            scene_key=scene_key,
+            action="voice_move",
+            actual_reward=0.6,
+            source="semantic smoke",
+        )
+        semantic = restored.semantic_recall(
+            "in|need=0|fatigue=1",
+            ["voice_move", "stay"],
+            channel_id=555,
+            user_ids=[11, 22],
+            min_observations=2,
+        )
+        assert "voice_move" in semantic
+        assert "stay" not in semantic
+        assert semantic["voice_move"]["expected_reward"] > 0.0
+        assert semantic["voice_move"]["confidence"] > 0.0
+        assert semantic["voice_move"]["signal"] > 0.0
+        assert semantic["voice_move"]["contributors"]
+        semantic_top = restored.semantic_summary(8)
+        assert semantic_top
+        assert any(
+            row["action"] == "voice_move"
+            and row["observations"] >= 2
+            for row in semantic_top
+        )
+        assert restored.diagnostics()["semantic_entries"] > 0
         replay_candidates = restored.replay_candidates(
             limit=4,
             max_age_seconds=86400,
@@ -238,6 +279,31 @@ def main():
             )
         ) > 0.25
 
+        state_before_semantic = b.compute.to_cpu(
+            b.state
+        ).copy()
+        semantic_diag = b.inject_action_guided_signed_sensory(
+            "voice_move",
+            "semantic-smoke-negative",
+            -0.55,
+            width=96,
+            hops=3,
+        )
+        assert semantic_diag["action"] == "voice_move"
+        assert semantic_diag["signed"] is True
+        assert semantic_diag["valence"] == "negative"
+        assert semantic_diag["magnitude"] < 0.0
+        assert semantic_diag["neurons"] > 0
+        state_after_semantic = b.compute.to_cpu(
+            b.state
+        )
+        assert np.max(
+            np.abs(
+                state_after_semantic
+                - state_before_semantic
+            )
+        ) > 0.05
+
         state_before_opportunity = b.compute.to_cpu(
             b.state
         ).copy()
@@ -271,7 +337,7 @@ def main():
             connected=False,
             can_join=True,
         )
-        assert voice_out["source"] == "connectome-readout-competition"
+        assert voice_out["source"] == "connectome-readout+learned-policy"
         assert voice_out["action"] in {"voice_join", "stay"}
         assert set(voice_out["candidates"]) == {"voice_join", "stay"}
         assert voice_out["margin"] >= 0.0
@@ -535,6 +601,12 @@ def main():
         assert "memory_replay_max_age_days" in CONFIG_HTML
         assert "episodic_consolidation_gain" in CONFIG_HTML
         assert "episodic_forgetting_half_life_days" in CONFIG_HTML
+        assert "semantic_memory_enabled" in CONFIG_HTML
+        assert "semantic_recall_min_observations" in CONFIG_HTML
+        assert "semantic_recall_magnitude" in CONFIG_HTML
+        assert "semantic_recall_steps" in CONFIG_HTML
+        assert "Pamięć semantyczna" in HTML
+        assert "semantic-memory" in HTML
         assert "consolidation_enabled" in CONFIG_HTML
         assert "synaptic_consolidation_gain" in CONFIG_HTML
         assert "synaptic_consolidation_protection" in CONFIG_HTML
@@ -625,6 +697,9 @@ def main():
         assert "_voice_prediction_context" in bot_source
         assert "_update_pending_voice_scene" in bot_source
         assert "episodic_recall_magnitude" in bot_source
+        assert "semantic_recall" in bot_source
+        assert "semantic_recall_magnitude" in bot_source
+        assert "semantic_guided" in bot_source
         assert "prediction_scene_key" in bot_source
         assert "prediction_error_max_correction" in bot_source
         assert "_queue_voice_prediction" in bot_source
@@ -641,6 +716,8 @@ def main():
         )
         assert "_capture_signal_flow_tick" in brain_source
         assert "attention_score" in brain_source
+        assert "inject_action_guided_signed_sensory" in brain_source
+        assert "semantic-memory-sensory" in brain_source
         assert "action_policy_score" in brain_source
         assert "action_policy_gate" in brain_source
         assert "action_policy_diagnostics" in brain_source
