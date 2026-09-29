@@ -58,6 +58,16 @@ NEGATIVE_REACTION_WEIGHT = {
     "🤮": 1.0, "😡": 0.9, "👎": 0.8, "💩": 0.7, "😒": 0.6,
 }
 
+ATTENTION_STOPWORDS = {
+    "mucha", "muchy", "jest", "jesteś", "jestes", "jako", "który", "ktory",
+    "która", "ktora", "które", "ktore", "tego", "teraz", "tylko", "żeby",
+    "zeby", "albo", "oraz", "więc", "wiec", "bardzo", "tutaj", "tam", "jak",
+    "mam", "masz", "mamy", "mają", "maja", "może", "moze", "będzie", "bedzie",
+    "sobie", "mnie", "ciebie", "jego", "jej", "ich", "się", "sie", "nie",
+    "tak", "ale", "czy", "dla", "przez", "przy", "nad", "pod", "bez", "ten",
+    "taka", "taki", "takie", "być", "byc", "było", "bylo", "była", "byla",
+}
+
 # Natural-language rejection aimed at Mucha. Severity is 0..1 and controls
 # both social affinity damage and the negative reward of the triggering trace.
 VERBAL_REJECTION_PATTERNS: tuple[tuple[re.Pattern[str], str, float], ...] = (
@@ -223,6 +233,8 @@ class MuchaClient(discord.Client):
         self.last_text_channel: dict[int, int] = {}
         self.last_text_context: dict[int, str] = {}
         self.last_text_author: dict[int, int] = {}
+        self._attention_items: dict[int, dict[str, dict]] = {}
+        self._working_memory: dict[int, list[dict]] = {}
         self.voice_arrived: dict[int, float] = {}
         self.sent: dict[int, SentTrace] = {}
         self.paused = False
@@ -409,6 +421,13 @@ class MuchaClient(discord.Client):
             "connectome_word_feedback_magnitude",
         ]
         behavior_fields = [
+            "attention_enabled",
+            "attention_half_life_seconds",
+            "working_memory_seconds",
+            "attention_max_items",
+            "attention_reinject_magnitude",
+            "attention_topic_words",
+            "attention_mention_boost",
             "speak_threshold",
             "reaction_threshold",
             "reaction_cooldown_seconds",
@@ -724,6 +743,13 @@ class MuchaClient(discord.Client):
             ("language", "connectome_word_feedback_magnitude"): (
                 float, 0.0, 1.0
             ),
+            ("behavior", "attention_enabled"): (bool, None, None),
+            ("behavior", "attention_half_life_seconds"): (float, 5.0, 3600.0),
+            ("behavior", "working_memory_seconds"): (int, 10, 3600),
+            ("behavior", "attention_max_items"): (int, 1, 32),
+            ("behavior", "attention_reinject_magnitude"): (float, 0.0, 1.5),
+            ("behavior", "attention_topic_words"): (int, 1, 12),
+            ("behavior", "attention_mention_boost"): (float, 0.0, 1.0),
             ("behavior", "speak_threshold"): (float, 0.0, 1.0),
             ("behavior", "reaction_threshold"): (float, 0.0, 1.0),
             ("behavior", "reaction_cooldown_seconds"): (int, 0, 3600),
@@ -1195,6 +1221,293 @@ class MuchaClient(discord.Client):
             "changed": changed,
             "config": result_config,
             "config_path": str(config_path),
+        }
+
+    def _attention_topic_tokens(self, text: str) -> list[str]:
+        limit = max(1, min(12, int(self.cfg.behavior.attention_topic_words)))
+        normalized = OnlineLanguage.normalize(str(text or "")).lower()
+        words = re.findall(r"[^\W_]{4,}", normalized, flags=re.UNICODE)
+        out: list[str] = []
+        seen: set[str] = set()
+        for word in words:
+            if word in ATTENTION_STOPWORDS or word in seen:
+                continue
+            seen.add(word)
+            out.append(word)
+            if len(out) >= limit:
+                break
+        return out
+
+    def _attention_strength(self, item: dict, now: float) -> float:
+        half_life = max(
+            5.0,
+            float(self.cfg.behavior.attention_half_life_seconds),
+        )
+        age = max(0.0, now - float(item.get("updated", now)))
+        base = max(0.0, min(1.0, float(item.get("strength", 0.0))))
+        return base * math.exp(-math.log(2.0) * age / half_life)
+
+    def _attention_prune(self, guild_id: int, now: float | None = None) -> None:
+        now = time.monotonic() if now is None else float(now)
+        keep_seconds = max(
+            10.0,
+            float(self.cfg.behavior.working_memory_seconds),
+        )
+        items = self._attention_items.get(int(guild_id), {})
+        stale = [
+            key
+            for key, item in items.items()
+            if (
+                now - float(item.get("updated", now)) > keep_seconds
+                or self._attention_strength(item, now) < 0.015
+            )
+        ]
+        for key in stale:
+            items.pop(key, None)
+        if not items:
+            self._attention_items.pop(int(guild_id), None)
+
+        memory = self._working_memory.get(int(guild_id), [])
+        memory = [
+            row
+            for row in memory
+            if now - float(row.get("created", now)) <= keep_seconds
+        ]
+        if memory:
+            self._working_memory[int(guild_id)] = memory[-48:]
+        else:
+            self._working_memory.pop(int(guild_id), None)
+
+    def _attention_touch(
+        self,
+        guild_id: int,
+        key: str,
+        kind: str,
+        label: str,
+        amount: float,
+        source: str,
+    ) -> None:
+        if not self.cfg.behavior.attention_enabled:
+            return
+        now = time.monotonic()
+        guild_id = int(guild_id)
+        items = self._attention_items.setdefault(guild_id, {})
+        old = items.get(key)
+        previous = self._attention_strength(old, now) if old else 0.0
+        amount = max(0.0, min(1.0, float(amount)))
+        strength = min(1.0, previous + amount * (1.0 - previous))
+        items[key] = {
+            "key": key,
+            "kind": kind,
+            "label": str(label),
+            "strength": strength,
+            "updated": now,
+            "source": str(source),
+        }
+
+    def _attention_observe_text(
+        self,
+        guild_id: int,
+        user_id: int,
+        user_name: str,
+        channel_id: int,
+        channel_name: str,
+        text: str,
+        *,
+        source: str,
+        mentioned: bool = False,
+    ) -> None:
+        if not self.cfg.behavior.attention_enabled:
+            return
+
+        mention_boost = (
+            float(self.cfg.behavior.attention_mention_boost)
+            if mentioned
+            else 0.0
+        )
+        self._attention_touch(
+            guild_id,
+            f"user:{int(user_id)}",
+            "user",
+            user_name,
+            min(1.0, 0.48 + mention_boost),
+            source,
+        )
+        self._attention_touch(
+            guild_id,
+            f"channel:{int(channel_id)}",
+            "channel",
+            channel_name,
+            min(1.0, 0.34 + 0.30 * mention_boost),
+            source,
+        )
+
+        topics = self._attention_topic_tokens(text)
+        for index, word in enumerate(topics):
+            self._attention_touch(
+                guild_id,
+                f"topic:{word}",
+                "topic",
+                word,
+                max(0.12, 0.30 - 0.025 * index + 0.15 * mention_boost),
+                source,
+            )
+
+        now = time.monotonic()
+        memory = self._working_memory.setdefault(int(guild_id), [])
+        memory.append({
+            "created": now,
+            "created_at": time.time(),
+            "source": str(source),
+            "user_id": int(user_id),
+            "user": str(user_name),
+            "channel_id": int(channel_id),
+            "channel": str(channel_name),
+            "text": re.sub(r"\s+", " ", str(text or "")).strip()[:240],
+            "topics": topics,
+            "mentioned": bool(mentioned),
+        })
+        self._attention_prune(int(guild_id), now)
+
+    def _attention_ranked(
+        self,
+        guild_id: int,
+        *,
+        include_neural: bool = True,
+    ) -> list[dict]:
+        if not self.cfg.behavior.attention_enabled:
+            return []
+        now = time.monotonic()
+        self._attention_prune(int(guild_id), now)
+        rows: list[dict] = []
+        for item in self._attention_items.get(int(guild_id), {}).values():
+            external = self._attention_strength(item, now)
+            neural = (
+                float(self.brain.attention_score(str(item["key"])))
+                if include_neural
+                else 0.5
+            )
+            # Neural activity modulates the decaying short-term trace rather
+            # than replacing it. At a neutral readout (0.5) score == external.
+            combined = min(
+                1.0,
+                external * (0.72 + 0.56 * max(0.0, min(1.0, neural))),
+            )
+            row = dict(item)
+            row.update({
+                "strength": external,
+                "neural": neural,
+                "score": combined,
+                "age": max(0.0, now - float(item.get("updated", now))),
+            })
+            rows.append(row)
+        rows.sort(
+            key=lambda row: (float(row["score"]), float(row["strength"])),
+            reverse=True,
+        )
+        return rows[: max(1, int(self.cfg.behavior.attention_max_items))]
+
+    def _inject_attention_context(self, guild_id: int) -> None:
+        if not self.cfg.behavior.attention_enabled:
+            return
+        ranked = self._attention_ranked(int(guild_id), include_neural=True)
+        if not ranked:
+            return
+
+        base = max(
+            0.0,
+            min(1.5, float(self.cfg.behavior.attention_reinject_magnitude)),
+        )
+        focus = ranked[0]
+        self.brain.inject(
+            "internal:attention-active",
+            min(0.9, base * float(focus["score"])),
+            96,
+        )
+
+        for index, item in enumerate(ranked):
+            magnitude = (
+                base
+                * float(item["score"])
+                * max(0.45, 1.0 - 0.08 * index)
+            )
+            if magnitude <= 0.01:
+                continue
+            key = str(item["key"])
+            self.brain.inject(
+                "attention:" + key,
+                magnitude,
+                64,
+            )
+            kind = str(item.get("kind", ""))
+            if kind == "user":
+                try:
+                    user_id = int(key.split(":", 1)[1])
+                except (ValueError, IndexError):
+                    user_id = 0
+                if user_id:
+                    self.brain.activate_user_memory(
+                        user_id,
+                        min(0.35, magnitude * 0.45),
+                    )
+            elif kind == "topic":
+                word = key.split(":", 1)[1] if ":" in key else ""
+                if word:
+                    self.brain.inject(
+                        "text:word:" + word,
+                        magnitude * 0.30,
+                        32,
+                    )
+
+    def _attention_language_context(self, guild_id: int) -> str:
+        if not self.cfg.behavior.attention_enabled:
+            return self.last_text_context.get(int(guild_id), "")
+        now = time.monotonic()
+        self._attention_prune(int(guild_id), now)
+        memory = self._working_memory.get(int(guild_id), [])
+        recent = [
+            str(row.get("text", "")).strip()
+            for row in memory[-3:]
+            if str(row.get("text", "")).strip()
+        ]
+        return " | ".join(recent)[-420:]
+
+    def _attention_snapshot(self) -> dict:
+        guild_rows = []
+        now = time.monotonic()
+        for guild in self.guilds:
+            ranked = self._attention_ranked(
+                guild.id,
+                include_neural=True,
+            )
+            memory = self._working_memory.get(guild.id, [])
+            memory_rows = []
+            for row in memory[-8:][::-1]:
+                item = dict(row)
+                item["age"] = max(
+                    0.0,
+                    now - float(row.get("created", now)),
+                )
+                memory_rows.append(item)
+            guild_rows.append({
+                "guild_id": guild.id,
+                "guild": guild.name,
+                "focus": dict(ranked[0]) if ranked else None,
+                "items": ranked,
+                "working_memory": memory_rows,
+            })
+        return {
+            "enabled": bool(self.cfg.behavior.attention_enabled),
+            "half_life_seconds": float(
+                self.cfg.behavior.attention_half_life_seconds
+            ),
+            "working_memory_seconds": int(
+                self.cfg.behavior.working_memory_seconds
+            ),
+            "reinject_magnitude": float(
+                self.cfg.behavior.attention_reinject_magnitude
+            ),
+            "guilds": guild_rows,
         }
 
     def _record_action(
@@ -3895,6 +4208,16 @@ class MuchaClient(discord.Client):
         )
         mentioned = self.user in message.mentions if self.user else False
         channel_name = getattr(message.channel, "name", str(message.channel.id))
+        self._attention_observe_text(
+            message.guild.id,
+            message.author.id,
+            message.author.display_name,
+            message.channel.id,
+            channel_name,
+            message.content,
+            source="text",
+            mentioned=mentioned,
+        )
         self._last_brain_event = f"TEXT • {message.author.display_name} • #{channel_name}" + (" • mention" if mentioned else "")
 
         async with self._brain_lock:
@@ -4858,6 +5181,8 @@ class MuchaClient(discord.Client):
         await self._maybe_memory_replay(now)
         async with self._brain_lock:
             self.brain.consolidate_and_forget(now=wall_now)
+            for guild in self.guilds:
+                self._inject_attention_context(guild.id)
             self.brain.inject("internal:time", 0.035, 32)
             self.brain.step(self.cfg.brain.idle_steps)
             scores = self.brain.action_scores()
@@ -4889,7 +5214,11 @@ class MuchaClient(discord.Client):
                 isinstance(channel, discord.TextChannel)
                 and not self._is_text_channel_blocked(channel)
             ):
-                await self._send_learned(channel, "", scores["explore"])
+                await self._send_learned(
+                    channel,
+                    self._attention_language_context(guild.id),
+                    scores["explore"],
+                )
                 self.last_spontaneous[guild.id] = now
                 break
 
@@ -5032,6 +5361,7 @@ class MuchaClient(discord.Client):
             learning_since_start = (
                 self.brain.learning_since_start_diagnostics()
             )
+            attention_debug = self._attention_snapshot()
 
         language_total, language_unique = self.language.stats()
         language_diag = self.language.diagnostics()
@@ -5184,6 +5514,7 @@ class MuchaClient(discord.Client):
             "last_action": self._last_brain_action,
             "paused": self.paused,
             "voice_debug": list(self._voice_debug.values()),
+            "attention": attention_debug,
             "episodic_memory": self.voice_episodes.diagnostics(),
             "memory_replay": dict(self._memory_replay_debug),
             "audio_debug": dict(self._audio_debug),
@@ -5802,6 +6133,16 @@ class MuchaClient(discord.Client):
         self.last_text_context[guild.id] = text
         self.last_text_author[guild.id] = member.id
         self.language.learn(text)
+        self._attention_observe_text(
+            guild.id,
+            member.id,
+            member.display_name,
+            getattr(channel, "id", 0),
+            channel_name,
+            text,
+            source="voice",
+            mentioned=mentioned,
+        )
 
         affinity = self._user_affinity(member.id)
         async with self._brain_lock:
