@@ -550,6 +550,14 @@ def main():
         assert "attention_reinject_magnitude" in CONFIG_HTML
         assert "Attention / Working Memory" in HTML
         assert "renderAttention" in HTML
+        assert "Jak Mucha doszła do tego, co robi teraz?" in HTML
+        assert "data-help-key=\"decision-flow\"" in HTML
+        assert "const HELP=" in HTML
+        assert "function enhanceHelp()" in HTML
+        assert "mode-simple" in HTML
+        assert "mode-full" in HTML
+        assert "flow-attention" in HTML
+        assert "prediction-error" in HTML
         assert "ATTRACTORS" in NEUROMAP_HTML
         assert "renderInternalStates" in NEUROMAP_HTML
         assert "drawAttractors" in NEUROMAP_HTML
