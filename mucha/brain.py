@@ -122,6 +122,22 @@ class FlyBrain:
         )
         self.reward_trace = 0.0
         self.tick_count = 0
+        self._action_policy_bias: dict[str, float] = {
+            action: 0.0 for action in self.ACTIONS
+        }
+        self._action_policy_reward_ema: dict[str, float] = {
+            action: 0.0 for action in self.ACTIONS
+        }
+        self._action_policy_updates: dict[str, int] = {
+            action: 0 for action in self.ACTIONS
+        }
+        self._last_action_policy_update: dict = {
+            "action": None,
+            "reward": 0.0,
+            "before_bias": 0.0,
+            "after_bias": 0.0,
+            "delta": 0.0,
+        }
         self._pool_cache: dict[tuple[str, int], np.ndarray] = {}
         self._sensory_lookup = set(int(i) for i in self.c.sensory.tolist())
         self._output_lookup = set(int(i) for i in self.c.output.tolist())
@@ -1907,6 +1923,40 @@ class FlyBrain:
             self.reward_trace = float(data["reward_trace"])
         if "tick_count" in data:
             self.tick_count = int(data["tick_count"])
+        if "action_policy_bias" in data:
+            values = np.asarray(
+                data["action_policy_bias"],
+                dtype=np.float32,
+            ).ravel()
+            if len(values) == len(self.ACTIONS):
+                limit = max(
+                    0.0,
+                    float(self.cfg.action_policy_max_bias),
+                )
+                for action, value in zip(self.ACTIONS, values):
+                    self._action_policy_bias[action] = max(
+                        -limit,
+                        min(limit, float(value)),
+                    )
+        if "action_policy_reward_ema" in data:
+            values = np.asarray(
+                data["action_policy_reward_ema"],
+                dtype=np.float32,
+            ).ravel()
+            if len(values) == len(self.ACTIONS):
+                for action, value in zip(self.ACTIONS, values):
+                    self._action_policy_reward_ema[action] = float(value)
+        if "action_policy_updates" in data:
+            values = np.asarray(
+                data["action_policy_updates"],
+                dtype=np.int64,
+            ).ravel()
+            if len(values) == len(self.ACTIONS):
+                for action, value in zip(self.ACTIONS, values):
+                    self._action_policy_updates[action] = max(
+                        0,
+                        int(value),
+                    )
 
     def save(self) -> None:
         p = self.cfg.state_file
@@ -1980,6 +2030,27 @@ class FlyBrain:
             ),
             reward_trace=np.float32(self.reward_trace),
             tick_count=np.int64(self.tick_count),
+            action_policy_bias=np.asarray(
+                [
+                    self._action_policy_bias[action]
+                    for action in self.ACTIONS
+                ],
+                dtype=np.float32,
+            ),
+            action_policy_reward_ema=np.asarray(
+                [
+                    self._action_policy_reward_ema[action]
+                    for action in self.ACTIONS
+                ],
+                dtype=np.float32,
+            ),
+            action_policy_updates=np.asarray(
+                [
+                    self._action_policy_updates[action]
+                    for action in self.ACTIONS
+                ],
+                dtype=np.int64,
+            ),
         )
         tmp.replace(p)
 
@@ -3903,6 +3974,7 @@ class FlyBrain:
         if action == "speak":
             self._refresh_adaptive_speak_pool()
 
+        policy_update = self._learn_action_policy(action, amount)
         after = self.action_scores()
         impact = {name: after[name] - before[name] for name in self.ACTIONS}
 
@@ -3947,6 +4019,7 @@ class FlyBrain:
             "before": before,
             "after": after,
             "impact": impact,
+            "action_policy": policy_update,
             "top_changed": top_changed,
         }
         self._signal_learning_history.append({
@@ -4408,6 +4481,160 @@ class FlyBrain:
                 3.2 * raw + 0.08 * self.reward_trace
             )
         return scores
+
+    @staticmethod
+    def _policy_logit(value: float) -> float:
+        value = max(1e-5, min(1.0 - 1e-5, float(value)))
+        return math.log(value / (1.0 - value))
+
+    def action_policy_score(
+        self,
+        action: str,
+        raw_score: float,
+    ) -> float:
+        raw_score = max(0.0, min(1.0, float(raw_score)))
+        if (
+            not self.cfg.action_policy_enabled
+            or action not in self.ACTIONS
+        ):
+            return raw_score
+        bias = float(self._action_policy_bias.get(action, 0.0))
+        return _sigmoid(self._policy_logit(raw_score) + bias)
+
+    def action_policy_scores(
+        self,
+        raw_scores: dict[str, float] | None = None,
+    ) -> dict[str, float]:
+        raw = raw_scores if raw_scores is not None else self.action_scores()
+        return {
+            action: self.action_policy_score(
+                action,
+                float(raw.get(action, 0.0)),
+            )
+            for action in self.ACTIONS
+        }
+
+    def action_policy_gate(
+        self,
+        action: str,
+        raw_score: float,
+        base_threshold: float,
+    ) -> dict:
+        raw_score = max(0.0, min(1.0, float(raw_score)))
+        base_threshold = max(
+            1e-5,
+            min(1.0 - 1e-5, float(base_threshold)),
+        )
+        bias = (
+            float(self._action_policy_bias.get(action, 0.0))
+            if self.cfg.action_policy_enabled
+            else 0.0
+        )
+        effective = self.action_policy_score(action, raw_score)
+        learned_raw_threshold = _sigmoid(
+            self._policy_logit(base_threshold) - bias
+        )
+        return {
+            "action": str(action),
+            "enabled": bool(self.cfg.action_policy_enabled),
+            "raw_score": raw_score,
+            "bias": bias,
+            "effective_score": effective,
+            "base_threshold": base_threshold,
+            "learned_raw_threshold": learned_raw_threshold,
+            "passed": bool(effective >= base_threshold),
+            "reward_ema": float(
+                self._action_policy_reward_ema.get(action, 0.0)
+            ),
+            "updates": int(
+                self._action_policy_updates.get(action, 0)
+            ),
+        }
+
+    def _learn_action_policy(
+        self,
+        action: str | None,
+        amount: float,
+    ) -> dict:
+        if (
+            not self.cfg.action_policy_enabled
+            or action not in self.ACTIONS
+        ):
+            return {
+                "enabled": bool(self.cfg.action_policy_enabled),
+                "action": action,
+                "reward": float(amount),
+                "delta": 0.0,
+            }
+
+        decay = max(
+            0.90,
+            min(1.0, float(self.cfg.action_policy_decay)),
+        )
+        for name in self.ACTIONS:
+            self._action_policy_bias[name] = float(
+                self._action_policy_bias.get(name, 0.0)
+            ) * decay
+
+        before = float(self._action_policy_bias.get(action, 0.0))
+        lr = max(0.0, min(1.0, float(self.cfg.action_policy_lr)))
+        delta = lr * float(max(-1.0, min(1.0, amount)))
+        limit = max(
+            0.0,
+            min(3.0, float(self.cfg.action_policy_max_bias)),
+        )
+        after = max(-limit, min(limit, before + delta))
+        self._action_policy_bias[action] = after
+
+        old_ema = float(
+            self._action_policy_reward_ema.get(action, 0.0)
+        )
+        self._action_policy_reward_ema[action] = (
+            0.92 * old_ema + 0.08 * float(amount)
+        )
+        self._action_policy_updates[action] = (
+            int(self._action_policy_updates.get(action, 0)) + 1
+        )
+        self._last_action_policy_update = {
+            "enabled": True,
+            "action": action,
+            "reward": float(amount),
+            "before_bias": before,
+            "after_bias": after,
+            "delta": after - before,
+            "updates": self._action_policy_updates[action],
+        }
+        return dict(self._last_action_policy_update)
+
+    def action_policy_diagnostics(self) -> dict:
+        raw = self.action_scores()
+        effective = self.action_policy_scores(raw)
+        return {
+            "enabled": bool(self.cfg.action_policy_enabled),
+            "learning_rate": float(self.cfg.action_policy_lr),
+            "max_bias": float(self.cfg.action_policy_max_bias),
+            "decay": float(self.cfg.action_policy_decay),
+            "last_update": dict(self._last_action_policy_update),
+            "actions": {
+                action: {
+                    "raw_score": float(raw[action]),
+                    "bias": float(
+                        self._action_policy_bias.get(action, 0.0)
+                    ),
+                    "effective_score": float(effective[action]),
+                    "reward_ema": float(
+                        self._action_policy_reward_ema.get(
+                            action,
+                            0.0,
+                        )
+                    ),
+                    "updates": int(
+                        self._action_policy_updates.get(action, 0)
+                    ),
+                }
+                for action in self.ACTIONS
+            },
+        }
 
     def inject_voice_decision_context(
         self,
@@ -4889,25 +5116,26 @@ class FlyBrain:
     ) -> dict:
         """Let action readouts compete; the adapter only masks impossible acts."""
         scores = self.action_scores()
+        policy_scores = self.action_policy_scores(scores)
         if connected:
             candidates = {
-                "stay": float(scores["stay"]),
+                "stay": float(policy_scores["stay"]),
             }
             if can_move:
                 candidates["voice_move"] = float(
-                    scores["voice_move"]
+                    policy_scores["voice_move"]
                 )
             if can_leave:
                 candidates["voice_leave"] = float(
-                    scores["voice_leave"]
+                    policy_scores["voice_leave"]
                 )
         else:
             candidates = {
-                "stay": float(scores["stay"]),
+                "stay": float(policy_scores["stay"]),
             }
             if can_join:
                 candidates["voice_join"] = float(
-                    scores["voice_join"]
+                    policy_scores["voice_join"]
                 )
 
         ranked = sorted(
@@ -5009,8 +5237,18 @@ class FlyBrain:
                 winner_score - runner_score
             ),
             "candidates": candidates,
+            "raw_candidates": {
+                name: float(scores[name])
+                for name in candidates
+            },
             "scores": scores,
-            "source": "connectome-readout-competition",
+            "policy_scores": policy_scores,
+            "policy": self.action_policy_diagnostics(),
+            "source": (
+                "connectome-readout+learned-policy"
+                if self.cfg.action_policy_enabled
+                else "connectome-readout-competition"
+            ),
             "tie_band": tie_band,
             "tie_break": tie_break,
             "tie_evidence_margin": tie_evidence_margin,
@@ -6366,5 +6604,6 @@ class FlyBrain:
             "forgetting": dict(self._last_forgetting_diag),
             "internal_states": self.internal_state_diagnostics(),
             "action_pools": self.action_pool_diagnostics(),
+            "action_policy": self.action_policy_diagnostics(),
             "neuromodulation": self.neuromodulator_diagnostics(),
         }
