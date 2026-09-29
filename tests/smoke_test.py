@@ -808,35 +808,35 @@ def main():
         assert strongest_after < strongest_before
 
         policy_before = b.action_policy_diagnostics()
-        speak_bias_before = policy_before["actions"]["speak"]["bias"]
-        raw_speak = b.action_scores()["speak"]
+        react_bias_before = policy_before["actions"]["react"]["bias"]
+        raw_react = b.action_scores()["react"]
         gate_before = b.action_policy_gate(
-            "speak",
-            raw_speak,
-            0.50,
+            "react",
+            raw_react,
+            0.62,
         )
         b.reward(
             1.0,
-            action="speak",
+            action="react",
             trace=edge_trace,
         )
         policy_after = b.action_policy_diagnostics()
-        speak_bias_after = policy_after["actions"]["speak"]["bias"]
-        assert speak_bias_after > speak_bias_before
+        react_bias_after = policy_after["actions"]["react"]["bias"]
+        assert react_bias_after > react_bias_before
         assert (
-            policy_after["actions"]["speak"]["effective_score"]
-            >= policy_after["actions"]["speak"]["raw_score"]
+            policy_after["actions"]["react"]["effective_score"]
+            >= policy_after["actions"]["react"]["raw_score"]
         )
         gate_after = b.action_policy_gate(
-            "speak",
-            b.action_scores()["speak"],
-            0.50,
+            "react",
+            b.action_scores()["react"],
+            0.62,
         )
         assert (
             gate_after["learned_raw_threshold"]
             < gate_before["learned_raw_threshold"]
         )
-        assert policy_after["last_update"]["action"] == "speak"
+        assert policy_after["last_update"]["action"] == "react"
 
         b.save()
         reloaded = FlyBrain(c, cfg)
