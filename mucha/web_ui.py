@@ -714,7 +714,7 @@ function bindHelp(){
   x.onmouseenter=show;x.onfocus=show;x.onmouseleave=()=>$("tooltip").classList.remove("show");x.onblur=()=>$("tooltip").classList.remove("show");
  })}
 }
-let raw=null,attemptIndex=0;
+let raw=null,attemptIndex=0,lastTraceStarted=null;
 function acceptedAttempt(trace){
  const a=trace.attempts||[];return a.findIndex(x=>x.accepted)>=0?a.findIndex(x=>x.accepted):Math.max(0,a.length-1)
 }
@@ -816,6 +816,10 @@ function renderAssociations(d){
 function renderAll(d){
  raw=d||{};
  const tr=raw.generation_trace||{};
+ if(lastTraceStarted!==tr.started_at){
+  lastTraceStarted=tr.started_at;
+  attemptIndex=acceptedAttempt(tr);
+ }
  if(attemptIndex>=(tr.attempts||[]).length)attemptIndex=acceptedAttempt(tr);
  renderHero(raw);renderProcess(raw);renderState(raw);renderSteps(raw);renderAssociations(raw);
  $("output").textContent=tr.result||"Czekam, aż Mucha coś wygeneruje…";
