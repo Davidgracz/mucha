@@ -1337,14 +1337,17 @@ class OnlineLanguage:
                 "ORDER BY n DESC LIMIT 250"
             ).fetchall()
             weighted: list[tuple[str, float]] = []
+            start_meta: dict[str, dict] = {}
             for row_index, (a, b, n, last_seen) in enumerate(rows):
                 if a in punctuation:
                     continue
                 packed = str(a) + "\u0000" + str(b)
-                weight = (
+                base_weight = (
                     (max(1.0, float(n)) ** 0.78)
                     * self._recent_multiplier(float(last_seen))
                 )
+                brain_score = None
+                brain_multiplier = 1.0
                 if (
                     brain_active
                     and row_index < self.connectome_word_control_candidates
@@ -1352,11 +1355,19 @@ class OnlineLanguage:
                     scores = [get_brain_score(str(a))]
                     if b != WORD_END and b not in punctuation:
                         scores.append(get_brain_score(str(b)))
-                    centered = ((sum(scores) / len(scores)) - 0.5) * 2.0
-                    weight *= math.exp(
+                    brain_score = sum(scores) / len(scores)
+                    centered = (brain_score - 0.5) * 2.0
+                    brain_multiplier = math.exp(
                         self.connectome_word_control_strength * centered
                     )
-                weighted.append((packed, weight))
+                final_weight = base_weight * brain_multiplier
+                weighted.append((packed, final_weight))
+                start_meta[packed] = {
+                    "base_weight": float(base_weight),
+                    "brain_score": brain_score,
+                    "brain_multiplier": float(brain_multiplier),
+                    "final_weight": float(final_weight),
+                }
             start_total = sum(weight for _, weight in weighted)
             start_debug = []
             for packed_item, weight in sorted(
@@ -1365,30 +1376,26 @@ class OnlineLanguage:
                 reverse=True,
             )[:12]:
                 pa, pb = packed_item.split("\u0000", 1)
-                scores = []
-                if brain_active:
-                    scores.append(get_brain_score(pa))
-                    if pb != WORD_END and pb not in punctuation:
-                        scores.append(get_brain_score(pb))
+                meta = start_meta.get(packed_item, {})
                 start_debug.append({
                     "token": (
                         pa
                         if pb == WORD_END
                         else f"{pa} {pb}"
                     ),
-                    "base_weight": float(weight),
+                    "base_weight": float(
+                        meta.get("base_weight", weight)
+                    ),
                     "final_weight": float(weight),
                     "choice_share": (
                         float(weight) / start_total
                         if start_total > 0.0
                         else 0.0
                     ),
-                    "brain_score": (
-                        sum(scores) / len(scores)
-                        if scores
-                        else None
+                    "brain_score": meta.get("brain_score"),
+                    "brain_multiplier": float(
+                        meta.get("brain_multiplier", 1.0)
                     ),
-                    "brain_multiplier": 1.0,
                     "sources": {
                         "sentence_start": {
                             "normalized_contribution": (
