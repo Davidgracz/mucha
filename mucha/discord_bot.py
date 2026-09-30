@@ -146,6 +146,11 @@ class MuchaClient(discord.Client):
         506193122460434443,
         784590857633267713,
     })
+    # Mucha must never JOIN/MOVE into a voice channel occupied by these users.
+    # This is a hard technical exclusion, not an affinity/preference signal.
+    HARD_BLOCKED_VOICE_USER_IDS = frozenset({
+        297724966571474944,
+    })
 
     def __init__(self, cfg: Config):
         intents = discord.Intents.default()
@@ -731,6 +736,11 @@ class MuchaClient(discord.Client):
                     "name": channel.name,
                     "guild": guild.name,
                     "blocked": channel.id in blocked_voice,
+                    "hard_blocked_user_present": (
+                        self._voice_channel_has_hard_blocked_user(
+                            channel
+                        )
+                    ),
                 })
         return data
 
@@ -3553,6 +3563,16 @@ class MuchaClient(discord.Client):
             return False
         return int(channel_id) in self.cfg.voice.blocked_voice_channel_ids
 
+    def _voice_channel_has_hard_blocked_user(
+        self,
+        channel: object,
+    ) -> bool:
+        return any(
+            int(getattr(member, "id", 0))
+            in self.HARD_BLOCKED_VOICE_USER_IDS
+            for member in getattr(channel, "members", [])
+        )
+
     def _is_voice_guild_blocked(self, guild: object) -> bool:
         guild_id = getattr(guild, "id", None)
         if guild_id is None:
@@ -3843,6 +3863,8 @@ class MuchaClient(discord.Client):
                 if ch.id == current.id:
                     continue
                 if self._is_voice_channel_blocked(ch):
+                    continue
+                if self._voice_channel_has_hard_blocked_user(ch):
                     continue
                 if (
                     self.cfg.voice.exclude_afk_channel
@@ -6578,6 +6600,8 @@ class MuchaClient(discord.Client):
                         continue
                     if self._is_voice_channel_blocked(channel):
                         continue
+                    if self._voice_channel_has_hard_blocked_user(channel):
+                        continue
                     if (
                         self.cfg.voice.exclude_afk_channel
                         and guild.afk_channel is not None
@@ -6831,6 +6855,8 @@ class MuchaClient(discord.Client):
             if current is not None and channel.id == current.id:
                 continue
             if self._is_voice_channel_blocked(channel):
+                continue
+            if self._voice_channel_has_hard_blocked_user(channel):
                 continue
             if (
                 self.cfg.voice.exclude_afk_channel
@@ -10524,6 +10550,9 @@ class MuchaClient(discord.Client):
             )
             deadly = deadly_remaining > 0.0
             blocked_voice = self._is_voice_channel_blocked(ch)
+            hard_blocked_user_here = (
+                self._voice_channel_has_hard_blocked_user(ch)
+            )
             chaser_here = bool(
                 chaser_active
                 and chaser_id
@@ -10533,6 +10562,7 @@ class MuchaClient(discord.Client):
                 not is_afk
                 and not deadly
                 and not blocked_voice
+                and not hard_blocked_user_here
                 and not chaser_here
                 and not social_blocked
                 and view_ok
@@ -10551,6 +10581,7 @@ class MuchaClient(discord.Client):
                 "deadly": deadly,
                 "deadly_remaining": deadly_remaining,
                 "blocked_voice": blocked_voice,
+                "hard_blocked_user_here": hard_blocked_user_here,
                 "chaser_here": chaser_here,
                 "social_blocked": social_blocked,
                 "disliked_users": [
@@ -10571,6 +10602,7 @@ class MuchaClient(discord.Client):
                 "current": bool(current and current.id == ch.id),
                 "status": "OK" if eligible else (
                     "⛔ BLOKADA" if blocked_voice else
+                    "🚫 USER BLOCK" if hard_blocked_user_here else
                     "🕷 CHASER" if chaser_here else
                     (
                         "🙅 NIELUBI " + ", ".join(
