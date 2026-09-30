@@ -3428,6 +3428,67 @@ class VoiceEpisodicMemory:
             for action in actions
         }
 
+    def prediction_details(
+        self,
+        context: str,
+        action: str,
+        *,
+        scene_key: str = "",
+    ) -> dict:
+        """Return the learned reward prediction plus evidence strength."""
+        generic, generic_n = self._predict_exact(
+            context,
+            action,
+            "",
+        )
+        scene, scene_n = (
+            self._predict_exact(
+                context,
+                action,
+                scene_key,
+            )
+            if scene_key
+            else (0.0, 0)
+        )
+        observations = int(generic_n + scene_n)
+        confidence = (
+            1.0 - math.exp(-float(observations) / 4.0)
+            if observations > 0
+            else 0.0
+        )
+        return {
+            "expected_reward": float(
+                self.predict(
+                    context,
+                    action,
+                    scene_key=scene_key,
+                )
+            ),
+            "observations": observations,
+            "confidence": float(confidence),
+            "generic_reward": float(generic),
+            "generic_observations": int(generic_n),
+            "scene_reward": float(scene),
+            "scene_observations": int(scene_n),
+            "scene_key": str(scene_key or ""),
+        }
+
+    def predictions_detailed(
+        self,
+        context: str,
+        actions: list[str] | tuple[str, ...],
+        *,
+        scene_key: str = "",
+    ) -> dict[str, dict]:
+        return {
+            str(action): self.prediction_details(
+                context,
+                str(action),
+                scene_key=scene_key,
+            )
+            for action in actions
+        }
+
     @staticmethod
     def _episode_dict(row: VoiceEpisode) -> dict:
         return {
