@@ -7297,6 +7297,11 @@ class MuchaClient(discord.Client):
             for vc in self.voice_clients
         )
         autonomous_contexts = self._autonomous_candidate_contexts()
+        autonomous_rows: list[dict] = []
+        selected_plan: dict | None = None
+        autonomous_decision: dict | None = None
+        autonomous_trace = None
+
         async with self._brain_lock:
             self.brain.consolidate_and_forget(now=wall_now)
             for guild in self.guilds:
@@ -7308,7 +7313,7 @@ class MuchaClient(discord.Client):
             )
             self.brain.inject("internal:time", 0.035, 32)
             self.brain.step(self.cfg.brain.idle_steps)
-            autonomous_rows = []
+
             for context in autonomous_contexts:
                 candidate_set = self.brain.autonomous_action_candidates(
                     can_speak=bool(context["can_speak"]),
@@ -7319,6 +7324,9 @@ class MuchaClient(discord.Client):
                         context["voice_target_count"]
                     ),
                     can_explore=bool(context["can_explore"]),
+                    can_voice_move=bool(
+                        context.get("can_voice_move", True)
+                    ),
                     contextual_reward_predictions=dict(
                         context.get(
                             "contextual_reward_predictions",
@@ -7330,16 +7338,149 @@ class MuchaClient(discord.Client):
                     **context,
                     "candidate_set": candidate_set,
                 })
+
+            if (
+                self.cfg.behavior.autonomous_loop_enabled
+                and autonomous_rows
+            ):
+                selected_plan = max(
+                    autonomous_rows,
+                    key=lambda row: float(
+                        row.get("candidate_set", {})
+                        .get("competition_preview", {})
+                        .get("score", 0.0)
+                    ),
+                )
+                current_dwell = float(
+                    selected_plan.get("dwell_elapsed", 0.0)
+                )
+                minimum_dwell = max(
+                    1.0,
+                    float(self.cfg.voice.minimum_dwell_seconds),
+                )
+                maximum_dwell = max(
+                    minimum_dwell,
+                    float(self.cfg.voice.maximum_dwell_seconds),
+                )
+                overstay = max(0.0, current_dwell - maximum_dwell)
+                overstay_level = min(
+                    1.0,
+                    overstay
+                    / max(
+                        1.0,
+                        float(self.cfg.voice.threat_ramp_seconds),
+                    ),
+                )
+                self.brain.inject_voice_decision_context(
+                    int(selected_plan["guild_id"]),
+                    selected_plan.get("current_voice_id"),
+                    connected=bool(
+                        selected_plan.get("connected_voice", False)
+                    ),
+                    dwell_progress=(
+                        current_dwell / minimum_dwell
+                        if selected_plan.get("connected_voice")
+                        else 0.0
+                    ),
+                    overstay_level=overstay_level,
+                    human_count=int(
+                        selected_plan.get("current_human_count", 0)
+                    ),
+                    alternatives=int(
+                        selected_plan.get("voice_target_count", 0)
+                    ),
+                    outside_seconds=float(
+                        selected_plan.get("outside_seconds", 0.0)
+                    ),
+                    available_humans=int(
+                        selected_plan.get("available_humans", 0)
+                    ),
+                    social_drive_level=float(
+                        selected_plan.get("social_drive_level", 0.0)
+                    ),
+                    social_fatigue_level=float(
+                        selected_plan.get(
+                            "social_fatigue_level",
+                            0.0,
+                        )
+                    ),
+                    habituation_level=float(
+                        selected_plan.get("habituation_level", 0.0)
+                    ),
+                    exploration_drive_level=float(
+                        selected_plan.get(
+                            "exploration_drive_level",
+                            0.0,
+                        )
+                    ),
+                )
+
+                reward_opportunity = selected_plan.get(
+                    "reward_opportunity"
+                )
+                if reward_opportunity is not None:
+                    self.brain.inject_voice_reward_opportunity(
+                        int(selected_plan["guild_id"]),
+                        int(reward_opportunity["channel_id"]),
+                        human_count=int(
+                            reward_opportunity.get("human_count", 0)
+                        ),
+                        strength=float(
+                            selected_plan.get(
+                                "reward_opportunity_effective_strength",
+                                0.0,
+                            )
+                        ),
+                    )
+
+                autonomous_decision = (
+                    self.brain.autonomous_action_decision(
+                        selected_plan["candidate_set"],
+                        predicted_reward_gain=float(
+                            self.cfg.behavior
+                            .autonomous_predicted_reward_gain
+                        ),
+                        propagation_steps=int(
+                            self.cfg.behavior
+                            .autonomous_prediction_steps
+                        ),
+                    )
+                )
+                autonomous_trace = self.brain.capture_learning_trace()
+                selected_plan["candidate_set"][
+                    "autonomous_decision"
+                ] = autonomous_decision
+                selected_plan["candidate_set"][
+                    "prediction_executed"
+                ] = True
+
             self._autonomous_candidate_debug = {
-                "stage": "24B",
+                "stage": "24D",
+                "enabled": bool(
+                    self.cfg.behavior.autonomous_loop_enabled
+                ),
                 "updated_at": wall_now,
                 "guilds": autonomous_rows,
+                "selected_guild_id": (
+                    int(selected_plan["guild_id"])
+                    if selected_plan is not None
+                    else None
+                ),
+                "decision": (
+                    dict(autonomous_decision)
+                    if autonomous_decision is not None
+                    else None
+                ),
                 "executed": False,
+                "last_execution": self._autonomous_candidate_debug.get(
+                    "last_execution"
+                ),
                 "note": (
-                    "24C predicts learned reward; no autonomous execution "
-                    "until 24D"
+                    "predicted reward is neural sensory evidence; "
+                    "action_competition remains the final selector"
                 ),
             }
+
             scores = self.brain.action_scores()
             spontaneous_gate = self._behavior_gate(
                 "speak",
@@ -7349,6 +7490,7 @@ class MuchaClient(discord.Client):
                     self.cfg.behavior.speak_threshold + 0.08,
                 ),
             )
+
         self.voice_episodes.apply_forgetting(now=wall_now)
 
         if now - self._last_save >= self.cfg.behavior.save_every_seconds:
@@ -7356,6 +7498,34 @@ class MuchaClient(discord.Client):
                 self.brain.save()
             self._last_save = now
 
+        if self.cfg.behavior.autonomous_loop_enabled:
+            if (
+                selected_plan is not None
+                and autonomous_decision is not None
+            ):
+                execution = await self._execute_autonomous_action(
+                    selected_plan,
+                    autonomous_decision,
+                    autonomous_trace,
+                )
+                autonomous_decision["executed"] = bool(
+                    execution.get("executed", False)
+                )
+                selected_plan["candidate_set"]["executed"] = bool(
+                    execution.get("executed", False)
+                )
+                selected_plan["candidate_set"][
+                    "execution"
+                ] = dict(execution)
+                self._autonomous_candidate_debug[
+                    "executed"
+                ] = bool(execution.get("executed", False))
+                self._autonomous_candidate_debug[
+                    "last_execution"
+                ] = dict(execution)
+            return
+
+        # Legacy spontaneous path remains available only when 24D is disabled.
         if not self.cfg.language.spontaneous_text or not self.language.ready():
             return
         if not spontaneous_gate["passed"]:
