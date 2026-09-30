@@ -700,6 +700,28 @@ information_gain_min_delta = 0.01
 
 Stan jest widoczny w `/details` jako **Curiosity / Uncertainty**, razem z najbardziej nieznanymi kanałami, cue do attractora i ostatnim information gain.
 
+# Live System Telemetry
+
+Prywatny dashboard ma szybki kanał telemetryczny odświeżany domyślnie co **250 ms**.
+
+Na `/` i `/details` są widoczne:
+
+- użycie CPU całego systemu,
+- użycie CPU procesu Muchy,
+- RAM całego systemu,
+- RAM procesu Muchy,
+- liczba wątków procesu,
+- zajętość i wolne miejsce na dysku,
+- GPU utilization,
+- zajętość VRAM,
+- temperatura GPU.
+
+CPU/RAM/dysk są odczytywane przez `psutil`. Telemetria NVIDIA jest pobierana przez `nvidia-smi` w osobnej pętli i cache'owana, więc szybkie odświeżanie dashboardu nie uruchamia osobnego procesu `nvidia-smi` przy każdym requestcie.
+
+Jeżeli NVIDIA / `nvidia-smi` nie jest dostępne, panel pokazuje `GPU unavailable` i pozostała telemetria działa normalnie.
+
+Cięższe dane, takie jak logi systemd i status usług, pozostają na wolniejszym interwale, aby sam dashboard nie powodował niepotrzebnego obciążenia.
+
 # Najbliższy kierunek rozwoju
 
 Dalsze kierunki:
