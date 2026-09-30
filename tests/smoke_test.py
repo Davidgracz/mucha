@@ -776,6 +776,8 @@ def main():
         assert "renderAttention" in HTML
         assert "Jak Mucha doszła do tego, co robi teraz?" in HTML
         assert "data-help-key=\"decision-flow\"" in HTML
+        assert "Dlaczego zrobiła X?" in HTML
+        assert "renderDecisionTrace" in HTML
         assert "const HELP=" in HTML
         assert "function enhanceHelp()" in HTML
         assert "mode-simple" in HTML
@@ -825,6 +827,9 @@ def main():
         assert "tie_break" in bot_source
         assert "action_policy_gate" in bot_source
         assert '"action_policy": action_policy_debug' in bot_source
+        assert '"decision_trace": decision_trace' in bot_source
+        assert "_decision_trace_snapshot" in bot_source
+        assert "_text_decision_debug" in bot_source
         assert "inject_voice_decision_context" in bot_source
         assert "_last_social_drive_punish" in bot_source
         assert "neural social drive outside voice" in bot_source
