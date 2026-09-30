@@ -302,6 +302,7 @@ class MuchaClient(discord.Client):
             "executed": False,
             "last_execution": None,
         }
+        self._autonomous_history = deque(maxlen=120)
         self._last_autonomous_explore: dict[int, float] = {}
         self._reaction_debug: dict = {
             "score": 0.0,
@@ -7295,6 +7296,106 @@ class MuchaClient(discord.Client):
             result["detail"] = f"{type(exc).__name__}: {exc}"
             return result
 
+
+    def _remember_autonomous_execution(
+        self,
+        plan: dict,
+        decision: dict,
+        execution: dict,
+    ) -> None:
+        """Keep a compact, dashboard-safe history of 24D decisions."""
+        candidate_set = dict(plan.get("candidate_set", {}))
+        rows = dict(candidate_set.get("rows", {}))
+        candidates = []
+        for action in candidate_set.get("candidate_actions", []):
+            row = dict(rows.get(action, {}))
+            candidates.append({
+                "action": str(action),
+                "display_action": (
+                    "noop" if str(action) == "stay" else str(action)
+                ),
+                "feasible": bool(row.get("feasible", False)),
+                "technical_reason": str(
+                    row.get("technical_reason", "")
+                ),
+                "effective_score": float(
+                    row.get("effective_score", 0.0)
+                ),
+                "drive_support": float(
+                    row.get("drive_support", 0.0)
+                ),
+                "state_support": float(
+                    row.get("state_support", 0.0)
+                ),
+                "predicted_reward": float(
+                    row.get("predicted_reward", 0.0)
+                ),
+                "prediction_confidence": float(
+                    row.get("prediction_confidence", 0.0)
+                ),
+                "prediction_source": str(
+                    row.get("prediction_source", "")
+                ),
+            })
+
+        competition = dict(decision.get("competition", {}))
+        entry = {
+            "time": float(execution.get("time", time.time())),
+            "guild_id": int(plan.get("guild_id", 0)),
+            "guild": str(plan.get("guild", "")),
+            "action": str(decision.get("action", "stay")),
+            "display_action": str(
+                decision.get("display_action", "noop")
+            ),
+            "executed": bool(execution.get("executed", False)),
+            "external_effect": bool(
+                execution.get("external_effect", False)
+            ),
+            "success": bool(execution.get("success", False)),
+            "detail": str(execution.get("detail", "")),
+            "predicted_reward": float(
+                decision.get("predicted_reward", 0.0)
+            ),
+            "prediction_confidence": float(
+                decision.get("prediction_confidence", 0.0)
+            ),
+            "prediction_source": str(
+                decision.get("prediction_source", "")
+            ),
+            "competition_score": float(
+                competition.get("score", 0.0)
+            ),
+            "competition_margin": float(
+                competition.get("margin", 0.0)
+            ),
+            "runner_up": str(
+                competition.get("runner_up", "none")
+            ),
+            "tie_break": competition.get("tie_break"),
+            "candidates": candidates,
+            "repeat_count": 1,
+        }
+
+        last = (
+            self._autonomous_history[-1]
+            if self._autonomous_history
+            else None
+        )
+        if (
+            isinstance(last, dict)
+            and not entry["external_effect"]
+            and not last.get("external_effect")
+            and last.get("guild_id") == entry["guild_id"]
+            and last.get("action") == entry["action"]
+            and last.get("detail") == entry["detail"]
+        ):
+            last.update(entry)
+            last["repeat_count"] = int(
+                last.get("repeat_count", 1)
+            ) + 1
+            return
+        self._autonomous_history.append(entry)
+
     @tasks.loop(seconds=5)
     async def idle_loop(self):
         await self.wait_until_ready()
@@ -7556,6 +7657,11 @@ class MuchaClient(discord.Client):
                 self._autonomous_candidate_debug[
                     "last_execution"
                 ] = dict(execution)
+                self._remember_autonomous_execution(
+                    selected_plan,
+                    autonomous_decision,
+                    execution,
+                )
             return
 
         # Legacy spontaneous path remains available only when 24D is disabled.
@@ -8481,6 +8587,9 @@ class MuchaClient(discord.Client):
             "action_policy": action_policy_debug,
             "autonomous_candidates": deepcopy(
                 self._autonomous_candidate_debug
+            ),
+            "autonomous_history": deepcopy(
+                list(self._autonomous_history)[-60:]
             ),
             "episodic_memory": self.voice_episodes.diagnostics(),
             "memory_replay": dict(self._memory_replay_debug),
