@@ -99,7 +99,7 @@ class VoiceSensoryBus:
         duration = max(0.0, last_packet - started)
         user["speaking"] = False
         user["last_turn_seconds"] = duration
-        user["last_stop"] = now
+        user["last_stop"] = last_packet
         if duration > 0.0:
             state["speech_intervals"].append({
                 "start": started,
@@ -107,7 +107,7 @@ class VoiceSensoryBus:
                 "user_id": int(user["user_id"]),
             })
         state["last_turn_user_id"] = int(user["user_id"])
-        state["last_turn_stop"] = now
+        state["last_turn_stop"] = last_packet
         self._append_event(
             state,
             "speech_stop",
