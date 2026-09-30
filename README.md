@@ -532,17 +532,52 @@ Dwie instancje uruchomione z osobnymi katalogami `state/` mogą z czasem wykszta
 
 ---
 
-# Bezpieczeństwo dashboardu
+# Bezpieczeństwo i udostępnianie dashboardu
 
-Na komputerze lokalnym najlepiej używać:
+Lokalny dashboard nasłuchuje wyłącznie na:
 
 ```toml
 host = "127.0.0.1"
 ```
 
-Do zdalnego dostępu rekomendowany jest prywatny VPN, np. **Tailscale**, zamiast publicznego przekierowania portu `8765`.
+Nie trzeba przekierowywać portu `8765` na routerze.
 
-Jeżeli panel jest dostępny poza localhostem, używaj uwierzytelniania i silnego hasła w zmiennej środowiskowej.
+Dashboard ma dwa poziomy dostępu:
+
+- `/public` oraz `/public/*` — publiczny tryb **read-only** dla znajomych,
+- prywatne widoki, `/config` i prywatne `/api/*` — wymagają sesji administratora.
+
+Hasło administratora ustaw w lokalnym pliku `.env`:
+
+```env
+MUCHA_DASHBOARD_PASSWORD=TU_MOCNE_HASLO
+```
+
+Plik `.env` jest ignorowany przez Git i nie powinien być publikowany.
+
+## Szybkie udostępnienie znajomym
+
+Na Windows uruchom:
+
+```bat
+SHARE_DASHBOARD.bat
+```
+
+Skrypt sprawdza, czy Mucha działa lokalnie, a następnie uruchamia Cloudflare Quick Tunnel do `http://127.0.0.1:8765`.
+
+Cloudflare wypisze tymczasowy adres w stylu:
+
+```text
+https://random-words.trycloudflare.com
+```
+
+Znajomym podawaj wyłącznie adres z `/public`:
+
+```text
+https://random-words.trycloudflare.com/public
+```
+
+Quick Tunnel działa tylko tak długo, jak działa proces `cloudflared`, i jest przeznaczony głównie do szybkiego/testowego udostępniania. Do stałego adresu można później utworzyć nazwany Cloudflare Tunnel i podpiąć własną domenę.
 
 ---
 
