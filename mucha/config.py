@@ -44,6 +44,13 @@ class BrainConfig:
     internal_state_arousal_gain: float = 0.18
     internal_state_stress_gain: float = 0.16
     internal_state_satiety_stability_gain: float = 0.08
+    internal_drives_enabled: bool = True
+    internal_drive_neural_gain: float = 0.42
+    internal_drive_social_need_per_minute: float = 0.035
+    internal_drive_curiosity_per_minute: float = 0.022
+    internal_drive_exploration_per_minute: float = 0.016
+    internal_drive_boredom_per_minute: float = 0.045
+    internal_drive_caution_decay_per_minute: float = 0.055
     action_policy_enabled: bool = True
     action_policy_lr: float = 0.06
     action_policy_max_bias: float = 0.55
