@@ -16,7 +16,7 @@ from mucha.connectome import Connectome
 from mucha.brain import FlyBrain
 from mucha.episodic import VoiceEpisodicMemory
 from mucha.language import OnlineLanguage
-from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, HTML, OVERVIEW_HTML, PUBLIC_OVERVIEW_HTML
+from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, HTML, OVERVIEW_HTML, PUBLIC_OVERVIEW_HTML, WebDashboard
 
 
 def main():
@@ -626,6 +626,15 @@ def main():
         assert "information_gain_min_delta" in CONFIG_HTML
         assert "Pamięć semantyczna" in HTML
         assert "Curiosity / Uncertainty" in HTML
+        assert "CPU system" in HTML
+        assert "GPU / VRAM" in HTML
+        assert "/api/system" in HTML
+        assert "const LIVE_REFRESH_MS=250;" in OVERVIEW_HTML
+        assert "CPU system" in OVERVIEW_HTML
+        assert "CPU Mucha" in OVERVIEW_HTML
+        assert "RAM Mucha" in OVERVIEW_HTML
+        assert "Temperatura GPU" in OVERVIEW_HTML
+        assert "/api/system" in OVERVIEW_HTML
         assert "Information gain" in HTML
         assert "uncertainty_curiosity_cue" in HTML
         assert "semantic-memory" in HTML
@@ -738,6 +747,40 @@ def main():
         assert "_inject_attention_context" in bot_source
         assert "_attention_language_context" in bot_source
         assert '"attention": attention_debug' in bot_source
+        web_ui_source = (ROOT / "mucha" / "web_ui.py").read_text(
+            encoding="utf-8"
+        )
+        assert "_system_status" in web_ui_source
+        assert "_gpu_monitor_loop" in web_ui_source
+        assert "_query_gpu_status" in web_ui_source
+        assert "nvidia-smi" in web_ui_source
+        assert 'app.router.add_get("/api/system"' in web_ui_source
+        requirements_source = (ROOT / "requirements.txt").read_text(
+            encoding="utf-8"
+        )
+        assert "psutil" in requirements_source
+
+        async def _empty_snapshot():
+            return {}
+
+        dashboard = WebDashboard(
+            snapshot_provider=_empty_snapshot,
+            host="127.0.0.1",
+            port=8765,
+            auto_open=False,
+            refresh_ms=250,
+        )
+        system_diag = dashboard._system_status()
+        assert system_diag["cpu_count"] >= 1
+        assert 0.0 <= system_diag["cpu_percent"]
+        assert system_diag["mem_total"] > 0
+        assert system_diag["mem_used"] >= 0
+        assert system_diag["disk_total"] > 0
+        assert system_diag["disk_free"] >= 0
+        assert system_diag["process"]["pid"] > 0
+        assert system_diag["process"]["memory_bytes"] > 0
+        assert "gpu" in system_diag
+
         brain_source = (ROOT / "mucha" / "brain.py").read_text(
             encoding="utf-8"
         )
