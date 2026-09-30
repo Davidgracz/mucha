@@ -1240,3 +1240,36 @@ Dalsze kierunki:
 Najważniejsza zasada Muchy:
 
 **jak najwięcej zachowania ma wynikać z connectomu, jego aktualnego stanu i doświadczenia, a jak najmniej z ręcznie zakodowanych decyzji.**
+
+---
+
+# Stage 24A — Homeostatic Internal Drives
+
+Mucha ma teraz pięć wolnozmiennych potrzeb wewnętrznych:
+
+- `social_need` — potrzeba kontaktu,
+- `curiosity` — ciekawość,
+- `exploration` — potrzeba eksploracji,
+- `caution` — ostrożność po zagrożeniu lub negatywnym rewardzie,
+- `boredom` — nuda narastająca przy braku bodźców.
+
+Drive'y nie wybierają akcji bezpośrednio. Ich wartości są mapowane na istniejące neuronalne attractory (`social_need`, `curiosity`, `stress`, `satiety`, `arousal`) i wchodzą do connectomu przez sensory entry pools. Dopiero aktywność sieci wpływa później na readouty akcji.
+
+Homeostaza jest aktualizowana w `idle_loop`: cisza podnosi potrzebę kontaktu, ciekawość, eksplorację i nudę, kontakt z ludźmi obniża potrzebę społeczną, aktywność ogranicza nudę, a ostrożność samoistnie wygasa. Chaser i negatywny reward zwiększają ostrożność. Pozytywny reward, udana interakcja i eksploracja zaspokajają odpowiednie potrzeby.
+
+Stan drive'ów jest zapisywany w `brain_state.npz`, więc nie zeruje się po restarcie procesu.
+
+Konfiguracja:
+
+```toml
+internal_drives_enabled = true
+internal_drive_neural_gain = 0.42
+internal_drive_social_need_per_minute = 0.035
+internal_drive_curiosity_per_minute = 0.022
+internal_drive_exploration_per_minute = 0.016
+internal_drive_boredom_per_minute = 0.045
+internal_drive_caution_decay_per_minute = 0.055
+```
+
+To jest warstwa 24A. Następny etap 24B może użyć tych potrzeb do autonomicznego generowania kandydatów akcji, przy zachowaniu `STAY/NOOP` jako normalnej konkurującej możliwości.
+
