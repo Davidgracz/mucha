@@ -6770,6 +6770,9 @@ class MuchaClient(discord.Client):
                     dwell_elapsed if connected else 0.0
                 ),
                 "dwell_remaining": float(dwell_remaining),
+                "outside_seconds": float(outside_seconds),
+                "current_human_count": int(len(current_humans)),
+                "available_humans": int(len(available_human_ids)),
                 "can_voice_move": can_voice_move,
                 "voice_target_count": int(len(targets)),
                 "voice_targets": targets[:12],
