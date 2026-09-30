@@ -898,6 +898,12 @@ def main():
         assert "data-help-key=\"decision-flow\"" in HTML
         assert "Dlaczego zrobiła X?" in HTML
         assert "renderDecisionTrace" in HTML
+        assert "Historia Decision Trace" in HTML
+        assert "renderDecisionTraceHistory" in HTML
+        assert "selectDecisionTrace" in HTML
+        assert "setDecisionTraceFilter" in HTML
+        assert 'id="trace-live-btn"' in HTML
+        assert 'id="decision-trace-history"' in HTML
         assert "const HELP=" in HTML
         assert "function enhanceHelp()" in HTML
         assert "mode-simple" in HTML
@@ -951,7 +957,11 @@ def main():
         assert "action_policy_gate" in bot_source
         assert '"action_policy": action_policy_debug' in bot_source
         assert '"decision_trace": decision_trace' in bot_source
+        assert '"decision_trace_history": decision_trace_history' in bot_source
         assert "_decision_trace_snapshot" in bot_source
+        assert "_remember_decision_trace" in bot_source
+        assert "_decision_trace_history_snapshot" in bot_source
+        assert "deque(maxlen=48)" in bot_source
         assert "_text_decision_debug" in bot_source
         assert "inject_voice_decision_context" in bot_source
         assert "_last_social_drive_punish" in bot_source
@@ -1004,6 +1014,16 @@ def main():
             encoding="utf-8"
         )
         assert "_system_status" in web_ui_source
+        assert "_safe_public_state" in web_ui_source
+        safe_public_block = web_ui_source.split(
+            "def _safe_public_state",
+            1,
+        )[1].split(
+            "async def _public_state",
+            1,
+        )[0]
+        assert "decision_trace_history" not in safe_public_block
+        assert "decision_trace" not in safe_public_block
         assert "_gpu_monitor_loop" in web_ui_source
         assert "_query_gpu_status" in web_ui_source
         assert "nvidia-smi" in web_ui_source
