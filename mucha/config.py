@@ -293,7 +293,7 @@ class WebUIConfig:
     host: str = "127.0.0.1"
     port: int = 8765
     auto_open: bool = True
-    refresh_ms: int = 500
+    refresh_ms: int = 250
     history_points: int = 180
     auth_enabled: bool = True
     auth_username: str = "admin"
