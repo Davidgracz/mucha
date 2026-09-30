@@ -5712,7 +5712,7 @@ class MuchaClient(discord.Client):
             else self._memory_replay_last
         )
         since_last = max(0.0, now - last_cycle)
-        if self._memory_replay_last > 0.0 and since_last < interval:
+        if last_cycle > 0.0 and since_last < interval:
             self._memory_replay_debug.update({
                 "state": "WAITING",
                 "reason": "interval",
@@ -6033,18 +6033,22 @@ class MuchaClient(discord.Client):
         )
         if replayed:
             last = replayed[-1]
+            replay_prefix = (
+                "SLEEP REPLAY → "
+                if sleep_mode
+                else "REPLAY → "
+            )
             self._last_brain_action = (
-                (
-                    "SLEEP REPLAY → "
-                    if sleep_mode
-                    else "REPLAY → "
-                )
-                f"{last['action']} "
+                f"{replay_prefix}{last['action']} "
                 f"{last['replay_reward']:+.3f}"
             )
             guild = self.get_guild(int(last["guild_id"]))
             self._record_action(
-                "memory_replay",
+                (
+                    "sleep_replay"
+                    if sleep_mode
+                    else "memory_replay"
+                ),
                 (
                     f"{last['action']} • "
                     f"{last['channel_name'] or 'poza VC'} • "
