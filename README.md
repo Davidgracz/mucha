@@ -735,6 +735,30 @@ information_gain_min_delta = 0.01
 
 Stan jest widoczny w `/details` jako **Curiosity / Uncertainty**, razem z najbardziej nieznanymi kanałami, cue do attractora i ostatnim information gain.
 
+# Rich Voice Sensory Dynamics
+
+Voice Sensory Bus mierzy teraz nie tylko obecność ludzi i bieżących mówców, ale również dynamikę rozmowy z realnych callbacków PCM.
+
+W oknie ostatnich ~60 sekund liczone są m.in.:
+
+- udział czasu, w którym faktycznie trwała mowa,
+- liczba unikalnych mówców,
+- zmiany mówcy,
+- zdarzenia overlap / crosstalk,
+- średni czas przekazania tury między osobami,
+- średnia i najdłuższa długość tury,
+- dominacja jednego rozmówcy,
+- intensywność rozmowy,
+- tryb sceny: QUIET / CONVERSATION / DIALOGUE / MONOLOGUE / CROSSTALK,
+- tempo mowy ostatniej transkrypcji,
+- oczekiwanie na odpowiedź po TTS Muchy oraz realny reply latency.
+
+Te wartości nie są bezpośrednimi bonusami do JOIN/MOVE/LEAVE/STAY. Są kodowane jako `voice:sensory:...` i trafiają do zwykłych populacji sensorycznych connectomu. Wpływ na zachowanie pojawia się dopiero po propagacji i przez wyuczone ścieżki.
+
+Panel `/details` pokazuje te dane live w sekcji **Voice Sensory Bus — LIVE**, a najważniejsze sygnały trafiają również do Decision Trace.
+
+---
+
 # Sleep / Offline Consolidation
 
 Mucha ma teraz osobny stan **SLEEP**, uruchamiany po dłuższym okresie realnej ciszy na Discordzie.
@@ -852,10 +876,10 @@ Cięższe dane, takie jak logi systemd i status usług, pozostają na wolniejszy
 
 Dalsze kierunki:
 
-- bogatsze sensory voice i lepsze kodowanie dynamiki rozmowy,
 - historia Decision Trace, aby można było cofać się po kilku ostatnich decyzjach zamiast oglądać wyłącznie najnowszą,
+- bogatsza długoterminowa reprezentacja ludzi, kanałów i powtarzalnych sytuacji,
 - dalsza redukcja ręcznie zakodowanych wyjątków na rzecz sygnałów sensorycznych i konkurencji readoutów connectomu,
-- bogatsza długoterminowa reprezentacja ludzi, kanałów i powtarzalnych sytuacji.
+- uczenie reakcji na dynamikę rozmowy z rewardu zamiast ręcznego mapowania scen na decyzje.
 
 ---
 
