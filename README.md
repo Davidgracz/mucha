@@ -1460,3 +1460,52 @@ Przy `autonomous_loop_enabled = false` pozostaje legacy spontaneous text path or
 
 Następny etap 24E dotyczy dashboardu i pełnej obserwowalności tego pipeline'u.
 
+---
+
+# Stage 24E — Autonomy Dashboard
+
+24E dodaje prywatną zakładkę:
+
+```text
+/autonomy
+```
+
+która pokazuje na żywo cały pipeline 24A → 24D bez mieszania go z ogólnym dashboardem.
+
+Widok zawiera:
+
+- status zunifikowanej pętli 24D,
+- finalnego winnera,
+- wynik wykonania i informację, czy akcja miała efekt zewnętrzny,
+- predicted reward oraz confidence,
+- wszystkie akcje z 24B, również technicznie zablokowane,
+- `technical_reason`, np. `motor-refractory` albo brak celu voice,
+- `effective_score`,
+- `drive_support`,
+- `state_support`,
+- predicted reward i confidence każdego kandydata,
+- signed sensory prediction cues,
+- finalny runner-up, margin i tie-break,
+- historię decyzji autonomii.
+
+Powtarzające się decyzje `NOOP / STAY` bez efektu zewnętrznego są kompresowane w historii do jednego wpisu z licznikiem `×N`, dzięki czemu łatwo zobaczyć okresy bezczynności bez zalewania interfejsu.
+
+Przy wielu serwerach można przełączać zakładki guildów. Finalna decyzja jest oznaczana wyłącznie przy serwerze faktycznie wybranym przez scheduler w danym ticku; pozostałe pokazują swój zestaw kandydatów bez fałszywego przypisywania winnera.
+
+Najważniejsze pola mają tooltipy po najechaniu kursorem, wyjaśniające m.in. różnicę między feasibility, score, predicted reward, confidence i finalnym neural winnerem.
+
+Dashboard odświeża się z częstotliwością `web_ui.refresh_ms` i korzysta z istniejącego prywatnego `/api/state`.
+
+Dodatkowo ustawienia 24D są dostępne z edytora konfiguracji dashboardu:
+
+```toml
+behavior.autonomous_loop_enabled
+behavior.autonomous_predicted_reward_gain
+behavior.autonomous_prediction_steps
+behavior.autonomous_explore_cooldown_seconds
+```
+
+Snapshot runtime zawiera też `autonomous_history`, a smoke test pilnuje obecności strony, routingu, historii, tooltipowego pipeline'u oraz kontrolek konfiguracji.
+
+24E zamyka etap 24 i przygotowuje projekt do Stage 25 — integracji One Brain.
+
