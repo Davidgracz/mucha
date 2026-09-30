@@ -1656,6 +1656,9 @@ def main():
         assert "_maybe_memory_replay" in bot_source
         assert "_sleep_tick" in bot_source
         assert "_note_external_activity" in bot_source
+        assert "completed_cycle = int(self._sleep_cycle)" in bot_source
+        assert "session can begin from cycle 0 after sleep_idle_seconds" in bot_source
+        assert "automatycznie uzbroi kolejną sesję" in CONFIG_HTML
         assert "sleep-offline-consolidation" in bot_source
         assert '"sleep": dict(self._sleep_debug)' in bot_source
         assert "memory_replay_reward_scale" in bot_source
