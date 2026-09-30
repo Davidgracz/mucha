@@ -328,6 +328,33 @@ def main():
         assert first_sensory["speakers"][0]["id"] == 11
         assert first_sensory["other_voice_humans"] == 1
         assert first_sensory["other_familiar_humans"] == 1
+        assert first_sensory["unique_speakers_60s"] == 1
+        assert first_sensory["speech_ratio_60s"] > 0.0
+        assert first_sensory["conversation_mode"] in {
+            "CONVERSATION",
+            "MONOLOGUE",
+        }
+
+        sensory_bus.note_tts(
+            7,
+            555,
+            "testowa odpowiedź",
+            now=100.21,
+        )
+        pending_tts = sensory_bus.snapshot(
+            7,
+            connected=True,
+            channel_id=555,
+            channel_name="ASG",
+            current_members=[
+                {"id": 11, "name": "Dawid", "affinity": 0.42},
+                {"id": 22, "name": "Stivi", "affinity": 0.18},
+            ],
+            other_members=[],
+            now=100.22,
+        )
+        assert pending_tts["tts_pending_reply"] is True
+        assert pending_tts["tts_age_seconds"] is not None
 
         sensory_bus.note_pcm(
             7,
@@ -362,6 +389,12 @@ def main():
         assert overlap_sensory["overlap_count"] == 1
         assert overlap_sensory["reply_after_tts"] is True
         assert overlap_sensory["reply_user_id"] == 11
+        assert overlap_sensory["tts_pending_reply"] is False
+        assert overlap_sensory["unique_speakers_60s"] == 2
+        assert overlap_sensory["speaker_switches_60s"] >= 1
+        assert overlap_sensory["overlap_events_60s"] >= 1
+        assert overlap_sensory["conversation_intensity"] > 0.0
+        assert 0.0 <= overlap_sensory["speaker_dominance"] <= 1.0
 
         state_before_voice_sensory = b.compute.to_cpu(
             b.state
@@ -379,6 +412,14 @@ def main():
             row["key"].startswith("voice:sensory:")
             for row in voice_sensory_diag["cues"]
         )
+        assert any(
+            row["key"].startswith(
+                "voice:sensory:conversation-mode:"
+            )
+            for row in voice_sensory_diag["cues"]
+        )
+        assert voice_sensory_diag["unique_speakers_60s"] == 2
+        assert voice_sensory_diag["speaker_switches_60s"] >= 1
         state_after_voice_sensory = b.compute.to_cpu(
             b.state
         )
@@ -406,6 +447,31 @@ def main():
         assert quiet_sensory["speaker_count"] == 0
         assert quiet_sensory["overlap_count"] == 0
         assert quiet_sensory["silence_seconds"] > 0.5
+        assert quiet_sensory["speech_seconds_60s"] > 0.0
+        assert quiet_sensory["mean_turn_seconds"] > 0.0
+
+        sensory_bus.note_pcm(
+            7,
+            555,
+            11,
+            "Dawid",
+            now=102.00,
+        )
+        handoff_sensory = sensory_bus.snapshot(
+            7,
+            connected=True,
+            channel_id=555,
+            channel_name="ASG",
+            current_members=[
+                {"id": 11, "name": "Dawid", "affinity": 0.42},
+                {"id": 22, "name": "Stivi", "affinity": 0.18},
+            ],
+            other_members=[],
+            now=102.10,
+        )
+        assert handoff_sensory["handoff_count_60s"] >= 1
+        assert handoff_sensory["mean_handoff_seconds"] is not None
+        assert handoff_sensory["mean_handoff_seconds"] > 0.0
 
         state_before_social_drive = b.compute.to_cpu(
             b.state
@@ -776,6 +842,10 @@ def main():
         assert "information_gain_min_delta" in CONFIG_HTML
         assert "Pamięć semantyczna" in HTML
         assert "Curiosity / Uncertainty" in HTML
+        assert "Tryb rozmowy" in HTML
+        assert "Speech ratio 60s" in HTML
+        assert "Zmiany mówcy 60s" in HTML
+        assert "Dynamika 60s" in HTML
         assert "CPU system" in HTML
         assert "GPU / VRAM" in HTML
         assert "/api/system" in HTML
@@ -883,6 +953,7 @@ def main():
         assert "social_fatigue_level" in bot_source
         assert "exploration_drive_level" in bot_source
         assert "VoiceEpisodicMemory" in bot_source
+        assert "_voice_sensory.note_tts" in bot_source
         assert "_voice_prediction_context" in bot_source
         assert "_update_pending_voice_scene" in bot_source
         assert "episodic_recall_magnitude" in bot_source
