@@ -2075,6 +2075,124 @@ class FlyBrain:
         }
 
 
+    def action_reward_prediction(
+        self,
+        action: str,
+        contextual_prediction: dict | None = None,
+    ) -> dict:
+        """Predict reward from learned outcomes, never from hand action bonuses."""
+        action = str(action)
+        if action not in self.ACTIONS:
+            raise ValueError(f"unknown action: {action}")
+
+        global_reward = max(
+            -1.0,
+            min(
+                1.0,
+                float(
+                    self._action_policy_reward_ema.get(
+                        action,
+                        0.0,
+                    )
+                ),
+            ),
+        )
+        global_observations = max(
+            0,
+            int(self._action_policy_updates.get(action, 0)),
+        )
+        global_confidence = (
+            1.0 - math.exp(-float(global_observations) / 6.0)
+            if global_observations > 0
+            else 0.0
+        )
+
+        contextual_reward = 0.0
+        contextual_observations = 0
+        contextual_confidence = 0.0
+        if contextual_prediction:
+            contextual_reward = max(
+                -1.0,
+                min(
+                    1.0,
+                    float(
+                        contextual_prediction.get(
+                            "expected_reward",
+                            0.0,
+                        )
+                    ),
+                ),
+            )
+            contextual_observations = max(
+                0,
+                int(
+                    contextual_prediction.get(
+                        "observations",
+                        0,
+                    )
+                ),
+            )
+            contextual_confidence = max(
+                0.0,
+                min(
+                    1.0,
+                    float(
+                        contextual_prediction.get(
+                            "confidence",
+                            (
+                                1.0
+                                - math.exp(
+                                    -float(contextual_observations)
+                                    / 4.0
+                                )
+                                if contextual_observations > 0
+                                else 0.0
+                            ),
+                        )
+                    ),
+                ),
+            )
+
+        total_weight = global_confidence + contextual_confidence
+        if total_weight > 1e-9:
+            predicted_reward = (
+                global_reward * global_confidence
+                + contextual_reward * contextual_confidence
+            ) / total_weight
+        else:
+            predicted_reward = 0.0
+
+        confidence = (
+            1.0
+            - (1.0 - global_confidence)
+            * (1.0 - contextual_confidence)
+        )
+        if contextual_confidence > 0.0 and global_confidence > 0.0:
+            source = "global-action-history+episodic-context"
+        elif contextual_confidence > 0.0:
+            source = "episodic-context"
+        elif global_confidence > 0.0:
+            source = "global-action-history"
+        else:
+            source = "unobserved-neutral-prior"
+
+        return {
+            "action": action,
+            "predicted_reward": float(predicted_reward),
+            "confidence": float(confidence),
+            "source": source,
+            "global_reward": float(global_reward),
+            "global_observations": int(global_observations),
+            "global_confidence": float(global_confidence),
+            "contextual_reward": float(contextual_reward),
+            "contextual_observations": int(
+                contextual_observations
+            ),
+            "contextual_confidence": float(
+                contextual_confidence
+            ),
+        }
+
     def autonomous_action_candidates(
         self,
         *,
@@ -2082,6 +2200,7 @@ class FlyBrain:
         connected_voice: bool,
         voice_target_count: int,
         can_explore: bool = True,
+        contextual_reward_predictions: dict[str, dict] | None = None,
     ) -> dict:
         """Build an autonomous action set without executing any action.
 
@@ -2210,6 +2329,14 @@ class FlyBrain:
                     "level": level,
                 })
 
+            reward_prediction = self.action_reward_prediction(
+                action,
+                (
+                    contextual_reward_predictions.get(action)
+                    if contextual_reward_predictions
+                    else None
+                ),
+            )
             rows[action] = {
                 "action": action,
                 "display_action": (
@@ -2227,6 +2354,16 @@ class FlyBrain:
                 "state_support": float(state_support),
                 "supporting_drives": supporting_drives,
                 "supporting_states": supporting_states,
+                "predicted_reward": float(
+                    reward_prediction["predicted_reward"]
+                ),
+                "prediction_confidence": float(
+                    reward_prediction["confidence"]
+                ),
+                "prediction_source": str(
+                    reward_prediction["source"]
+                ),
+                "reward_prediction": reward_prediction,
             }
 
         candidates = [
@@ -2255,6 +2392,16 @@ class FlyBrain:
             ),
             reverse=True,
         )
+        reward_ranked = sorted(
+            candidates,
+            key=lambda action: (
+                float(rows[action]["predicted_reward"]),
+                float(rows[action]["prediction_confidence"]),
+                float(rows[action]["effective_score"]),
+            ),
+            reverse=True,
+        )
+        reward_winner = reward_ranked[0] if reward_ranked else "stay"
         return {
             "candidate_actions": candidates,
             "display_candidates": [
@@ -2262,6 +2409,11 @@ class FlyBrain:
                 for action in candidates
             ],
             "motivation_order": ranked,
+            "predicted_reward_order": reward_ranked,
+            "predicted_reward_winner": reward_winner,
+            "predicted_reward_winner_display": (
+                "noop" if reward_winner == "stay" else reward_winner
+            ),
             "rows": rows,
             "competition_preview": competition,
             "winner_preview": str(
@@ -2282,8 +2434,10 @@ class FlyBrain:
             "executed": False,
             "source": (
                 "technical-feasibility + homeostatic-drives + "
-                "FAFB internal-state attractors + neural competition preview"
+                "FAFB internal-state attractors + learned reward prediction + "
+                "neural competition preview"
             ),
+            "prediction_executed": False,
         }
 
     def action_pool_diagnostics(self) -> dict[str, dict]:
