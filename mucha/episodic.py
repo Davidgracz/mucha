@@ -712,7 +712,7 @@ class VoiceEpisodicMemory:
         user_id = int(user_id)
         if user_id <= 0 or not self.semantic_memory_enabled:
             return {}
-        return self._update_semantic_entry(
+        result = self._update_semantic_entry(
             concept_type="person_contact",
             concept_key=str(user_id),
             action=str(source or "unknown"),
@@ -720,6 +720,9 @@ class VoiceEpisodicMemory:
             now=float(time.time() if now is None else now),
             persist=True,
         )
+        if self.db is not None:
+            self.db.commit()
+        return result
 
     def observe_person_social_event(
         self,
@@ -733,7 +736,7 @@ class VoiceEpisodicMemory:
         user_id = int(user_id)
         if user_id <= 0 or not self.semantic_memory_enabled:
             return {}
-        return self._update_semantic_entry(
+        result = self._update_semantic_entry(
             concept_type="person_social",
             concept_key=str(user_id),
             action=str(event or "social"),
@@ -741,6 +744,9 @@ class VoiceEpisodicMemory:
             now=float(time.time() if now is None else now),
             persist=True,
         )
+        if self.db is not None:
+            self.db.commit()
+        return result
 
     @staticmethod
     def _aggregate_person_entries(
