@@ -2506,7 +2506,10 @@ class FlyBrain:
             )
 
         steps = max(0, min(8, int(propagation_steps)))
-        if cues and steps > 0:
+        # Always propagate the live state before the final competition. Even
+        # with a neutral reward prior, homeostatic/voice/context cues injected
+        # immediately before this method must get a chance to reach readouts.
+        if steps > 0:
             self.step(steps)
 
         competition = self.action_competition(actions)
