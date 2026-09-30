@@ -1396,3 +1396,67 @@ Rozdział odpowiedzialności pozostaje świadomy:
 
 Dla voice 24C wykorzystuje istniejącą trwałą pamięć epizodyczną i jej prediction error / temporal credit zamiast budować drugi niezależny model.
 
+---
+
+# Stage 24D — Autonomous Loop
+
+24D uruchamia właściwą pętlę autonomiczną. Mucha nie tylko generuje kandydatów i przewiduje reward, ale wykonuje finalnego zwycięzcę neuronalnej konkurencji.
+
+Pipeline:
+
+```text
+24A internal drives
+→ 24B feasible action candidates
+→ 24C learned predicted reward
+→ predicted reward jako signed sensory cue
+→ propagacja przez connectome
+→ action_competition()
+→ finalny winner
+→ wykonanie akcji
+```
+
+Predicted reward nie wybiera akcji przez osobny ranking. Dodatni lub ujemny expected reward jest podawany do sensorycznych ścieżek prowadzących do danego action readoutu. Dopiero po propagacji przez FAFB wykonywane jest zwykłe `action_competition()`.
+
+24D może wykonać:
+
+```text
+NOOP / STAY
+SPEAK
+VOICE_JOIN
+VOICE_MOVE
+EXPLORE
+```
+
+`NOOP` jest pełnoprawną decyzją i oznacza brak zewnętrznej akcji.
+
+`SPEAK` respektuje gotowość modelu, blocked text channels, user avoidance oraz istniejący spontaneous cooldown.
+
+`VOICE_MOVE` nie pojawia się podczas minimum dwell / motor refractory. JOIN/MOVE przed wykonaniem ponownie sprawdzają permissions, blocked/AFK/deadly channel i aktywnego Chasera. Konkretny kanał nadal wybiera neural channel targeting.
+
+`EXPLORE` jest na tym etapie wewnętrznym skanem środowiska: Mucha podaje aktualne możliwe kanały voice / ostatni kanał tekstowy do sensory context i pobudza curiosity. Nie generuje przez to dodatkowego spamu na Discordzie.
+
+Stary `voice_loop` nie podejmuje już zwykłych JOIN/MOVE, kiedy 24D jest włączone. Pozostaje aktywny tylko jako warstwa awaryjna dla:
+
+```text
+blocked voice guild
+Chaser panic / escape
+maximum dwell / emergency voice handling
+```
+
+Dzięki temu `NOOP` z 24D nie może zostać chwilę później nadpisany przez drugi zwykły voice decision.
+
+Losowe voice reward opportunity oraz social-drive reward są zachowane również dla JOIN wykonanego przez 24D. Decyzje voice są nadal zapisywane do episodic prediction queue, więc późniejszy reward może aktualizować prediction error i temporal credit.
+
+Konfiguracja:
+
+```toml
+autonomous_loop_enabled = true
+autonomous_predicted_reward_gain = 0.85
+autonomous_prediction_steps = 2
+autonomous_explore_cooldown_seconds = 30
+```
+
+Przy `autonomous_loop_enabled = false` pozostaje legacy spontaneous text path oraz zwykły legacy/connectome voice loop.
+
+Następny etap 24E dotyczy dashboardu i pełnej obserwowalności tego pipeline'u.
+
