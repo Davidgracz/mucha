@@ -7785,12 +7785,22 @@ class MuchaClient(discord.Client):
                     self.brain.autonomous_action_decision(
                         selected_plan["candidate_set"],
                         predicted_reward_gain=float(
-                            self.cfg.behavior
-                            .autonomous_predicted_reward_gain
+                            (
+                                self.cfg.behavior
+                                .one_brain_predicted_reward_gain
+                                if self.cfg.behavior.one_brain_enabled
+                                else self.cfg.behavior
+                                .autonomous_predicted_reward_gain
+                            )
                         ),
                         propagation_steps=int(
-                            self.cfg.behavior
-                            .autonomous_prediction_steps
+                            (
+                                self.cfg.behavior
+                                .one_brain_prediction_steps
+                                if self.cfg.behavior.one_brain_enabled
+                                else self.cfg.behavior
+                                .autonomous_prediction_steps
+                            )
                         ),
                     )
                 )
