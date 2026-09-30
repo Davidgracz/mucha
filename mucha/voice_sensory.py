@@ -128,6 +128,17 @@ class VoiceSensoryBus:
 
         with self._lock:
             state = self._guild(guild_id, now)
+            if state.get("scene_channel_id") != channel_id:
+                for existing in state["users"].values():
+                    if (
+                        existing.get("speaking")
+                        and int(existing.get("channel_id", 0)) != channel_id
+                    ):
+                        self._finish_turn_locked(state, existing, now)
+                state["scene_channel_id"] = channel_id
+                state["scene_started"] = now
+                state["last_any_speech"] = None
+
             user = state["users"].get(user_id)
             if user is None:
                 user = {
