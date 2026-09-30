@@ -82,6 +82,7 @@ class VoiceEpisodicMemory:
         self._person_profile_cache: dict[int, dict] = {}
         self._channel_profile_cache: dict[int, dict] = {}
         self._social_scene_profile_cache: dict[str, dict] = {}
+        self._voice_dynamics_profile_cache: dict[str, dict] = {}
         self._last_forgetting_at = time.time()
         self._last_forgetting_diag: dict = {
             "ran": False,
@@ -327,6 +328,7 @@ class VoiceEpisodicMemory:
         self._person_profile_cache.clear()
         self._channel_profile_cache.clear()
         self._social_scene_profile_cache.clear()
+        self._voice_dynamics_profile_cache.clear()
         if persist:
             self._persist_semantic_entry(
                 key[0],
@@ -497,6 +499,346 @@ class VoiceEpisodicMemory:
                 )
         if rows:
             self.db.commit()
+
+    @staticmethod
+    def make_voice_dynamics_key(snapshot: dict) -> str:
+        """Build a channel/person-independent signature of conversation dynamics."""
+        snapshot = dict(snapshot or {})
+        mode = str(
+            snapshot.get("conversation_mode") or "UNKNOWN"
+        ).upper()
+
+        def bucket01(value, maximum: int = 3) -> int:
+            return min(
+                maximum,
+                max(
+                    0,
+                    int(
+                        round(
+                            max(0.0, min(1.0, float(value or 0.0)))
+                            * maximum
+                        )
+                    ),
+                ),
+            )
+
+        switches = max(
+            0,
+            int(snapshot.get("speaker_switches_60s", 0) or 0),
+        )
+        if switches <= 0:
+            switch_bucket = 0
+        elif switches <= 2:
+            switch_bucket = 1
+        elif switches <= 6:
+            switch_bucket = 2
+        else:
+            switch_bucket = 3
+
+        overlaps = max(
+            0,
+            int(snapshot.get("overlap_events_60s", 0) or 0),
+        )
+        overlap_bucket = (
+            0
+            if overlaps <= 0
+            else 1
+            if overlaps == 1
+            else 2
+            if overlaps <= 3
+            else 3
+        )
+
+        handoff = snapshot.get("mean_handoff_seconds")
+        if handoff is None:
+            handoff_bucket = "none"
+        else:
+            handoff_value = max(0.0, float(handoff))
+            handoff_bucket = (
+                "rapid"
+                if handoff_value < 0.35
+                else "normal"
+                if handoff_value < 1.0
+                else "slow"
+                if handoff_value < 2.5
+                else "gap"
+            )
+
+        turn = max(
+            0.0,
+            float(snapshot.get("mean_turn_seconds", 0.0) or 0.0),
+        )
+        turn_bucket = (
+            "none"
+            if turn <= 0.0
+            else "short"
+            if turn < 1.5
+            else "medium"
+            if turn < 4.0
+            else "long"
+            if turn < 9.0
+            else "verylong"
+        )
+
+        silence = max(
+            0.0,
+            float(snapshot.get("silence_seconds", 0.0) or 0.0),
+        )
+        silence_bucket = (
+            "active"
+            if silence < 1.0
+            else "pause"
+            if silence < 3.0
+            else "quiet"
+            if silence < 10.0
+            else "long"
+        )
+
+        transcript = dict(snapshot.get("last_transcript") or {})
+        rate = max(
+            0.0,
+            float(transcript.get("words_per_second", 0.0) or 0.0),
+        )
+        rate_bucket = (
+            "none"
+            if rate <= 0.0
+            else "slow"
+            if rate < 1.4
+            else "normal"
+            if rate < 2.6
+            else "fast"
+            if rate < 4.0
+            else "veryfast"
+        )
+
+        return (
+            f"mode={mode}"
+            f"|int={bucket01(snapshot.get('conversation_intensity', 0.0))}"
+            f"|speech={bucket01(snapshot.get('speech_ratio_60s', 0.0))}"
+            f"|switch={switch_bucket}"
+            f"|overlap={overlap_bucket}"
+            f"|handoff={handoff_bucket}"
+            f"|turn={turn_bucket}"
+            f"|dom={bucket01(snapshot.get('speaker_dominance', 0.0))}"
+            f"|silence={silence_bucket}"
+            f"|rate={rate_bucket}"
+        )
+
+    @staticmethod
+    def parse_voice_dynamics_key(dynamics_key: str) -> dict:
+        parts: dict[str, str] = {}
+        for part in str(dynamics_key or "").split("|"):
+            if "=" not in part:
+                continue
+            key, value = part.split("=", 1)
+            parts[key] = value
+
+        def as_int(name: str) -> int:
+            try:
+                return int(parts.get(name, "0"))
+            except (TypeError, ValueError):
+                return 0
+
+        return {
+            "dynamics_key": str(dynamics_key or ""),
+            "conversation_mode": str(
+                parts.get("mode", "UNKNOWN")
+            ),
+            "intensity_bucket": max(0, min(3, as_int("int"))),
+            "speech_bucket": max(0, min(3, as_int("speech"))),
+            "switch_bucket": max(0, min(3, as_int("switch"))),
+            "overlap_bucket": max(0, min(3, as_int("overlap"))),
+            "handoff_bucket": str(parts.get("handoff", "none")),
+            "turn_bucket": str(parts.get("turn", "none")),
+            "dominance_bucket": max(0, min(3, as_int("dom"))),
+            "silence_bucket": str(parts.get("silence", "active")),
+            "speech_rate_bucket": str(parts.get("rate", "none")),
+        }
+
+    def observe_voice_dynamics_contact(
+        self,
+        dynamics_key: str,
+        *,
+        now: float | None = None,
+    ) -> dict:
+        dynamics_key = str(dynamics_key or "")
+        if not dynamics_key or not self.semantic_memory_enabled:
+            return {}
+        result = self._update_semantic_entry(
+            concept_type="voice_dynamics_seen",
+            concept_key=dynamics_key,
+            action="seen",
+            actual_reward=0.0,
+            now=float(time.time() if now is None else now),
+            persist=True,
+        )
+        if self.db is not None:
+            self.db.commit()
+        return result
+
+    def observe_voice_dynamics_outcome(
+        self,
+        dynamics_key: str,
+        action: str,
+        actual_reward: float,
+        *,
+        now: float | None = None,
+    ) -> dict:
+        dynamics_key = str(dynamics_key or "")
+        if not dynamics_key or not self.semantic_memory_enabled:
+            return {}
+        result = self._update_semantic_entry(
+            concept_type="voice_dynamics",
+            concept_key=dynamics_key,
+            action=str(action or "stay"),
+            actual_reward=max(-1.0, min(1.0, float(actual_reward))),
+            now=float(time.time() if now is None else now),
+            persist=True,
+        )
+        if self.db is not None:
+            self.db.commit()
+        return result
+
+    def voice_dynamics_profile(self, dynamics_key: str) -> dict:
+        dynamics_key = str(dynamics_key or "")
+        cached = self._voice_dynamics_profile_cache.get(dynamics_key)
+        if cached is not None:
+            return dict(cached)
+
+        seen_rows: list[tuple[str, dict]] = []
+        action_rows_raw: list[tuple[str, dict]] = []
+        for (
+            concept_type,
+            concept_key,
+            action,
+        ), entry in self._semantic.items():
+            if concept_key != dynamics_key:
+                continue
+            if concept_type == "voice_dynamics_seen":
+                seen_rows.append((str(action), entry))
+            elif concept_type == "voice_dynamics":
+                action_rows_raw.append((str(action), entry))
+
+        seen = self._aggregate_person_entries(seen_rows)
+        outcomes = self._aggregate_person_entries(action_rows_raw)
+        seen_observations = int(seen["observations"])
+        outcome_observations = int(outcomes["observations"])
+        observations = seen_observations + outcome_observations
+        familiarity = (
+            1.0 - math.exp(-observations / 8.0)
+            if observations > 0
+            else 0.0
+        )
+        confidence = max(
+            0.0,
+            min(
+                1.0,
+                0.62 * float(outcomes["confidence"])
+                + 0.38 * familiarity,
+            ),
+        )
+        valence = float(outcomes["expected_reward"])
+        if valence >= 0.08:
+            valence_label = "positive"
+        elif valence <= -0.08:
+            valence_label = "negative"
+        elif (
+            int(outcomes["positive_count"]) > 0
+            and int(outcomes["negative_count"]) > 0
+        ):
+            valence_label = "mixed"
+        else:
+            valence_label = "neutral"
+
+        actions: list[dict] = []
+        for action, entry in action_rows_raw:
+            row_conf = self._semantic_confidence(entry)
+            expected = float(entry.get("expected_reward", 0.0))
+            actions.append({
+                "action": str(action),
+                "expected_reward": expected,
+                "confidence": row_conf,
+                "signal": expected * row_conf,
+                "observations": int(entry.get("observations", 0)),
+                "positive_count": int(entry.get("positive_count", 0)),
+                "negative_count": int(entry.get("negative_count", 0)),
+                "updated_at": float(entry.get("updated_at", 0.0)),
+            })
+        actions.sort(
+            key=lambda row: (
+                abs(float(row["signal"])),
+                int(row["observations"]),
+            ),
+            reverse=True,
+        )
+        preferred = max(
+            actions,
+            key=lambda row: float(row["signal"]),
+            default=None,
+        )
+        avoided = min(
+            actions,
+            key=lambda row: float(row["signal"]),
+            default=None,
+        )
+        if preferred is not None and float(preferred["signal"]) <= 0.0:
+            preferred = None
+        if avoided is not None and float(avoided["signal"]) >= 0.0:
+            avoided = None
+
+        profile = {
+            **self.parse_voice_dynamics_key(dynamics_key),
+            "observations": observations,
+            "seen_observations": seen_observations,
+            "outcome_observations": outcome_observations,
+            "familiarity": max(0.0, min(1.0, familiarity)),
+            "confidence": confidence,
+            "valence": max(-1.0, min(1.0, valence)),
+            "valence_label": valence_label,
+            "positive_count": int(outcomes["positive_count"]),
+            "negative_count": int(outcomes["negative_count"]),
+            "preferred_action": (
+                dict(preferred)
+                if preferred is not None
+                else None
+            ),
+            "avoided_action": (
+                dict(avoided)
+                if avoided is not None
+                else None
+            ),
+            "actions": actions[:10],
+            "updated_at": max(
+                float(seen["updated_at"]),
+                float(outcomes["updated_at"]),
+            ),
+        }
+        self._voice_dynamics_profile_cache[dynamics_key] = dict(profile)
+        return dict(profile)
+
+    def voice_dynamics_profiles(
+        self,
+        limit: int = 30,
+    ) -> list[dict]:
+        limit = max(1, min(100, int(limit)))
+        keys = {
+            concept_key
+            for concept_type, concept_key, _ in self._semantic.keys()
+            if concept_type in {"voice_dynamics_seen", "voice_dynamics"}
+        }
+        rows = [
+            self.voice_dynamics_profile(dynamics_key)
+            for dynamics_key in keys
+        ]
+        rows.sort(
+            key=lambda row: (
+                int(row.get("observations", 0)),
+                float(row.get("confidence", 0.0)),
+                float(row.get("updated_at", 0.0)),
+            ),
+            reverse=True,
+        )
+        return rows[:limit]
 
     @staticmethod
     def make_social_scene_key(
@@ -2684,6 +3026,7 @@ class VoiceEpisodicMemory:
             self._person_profile_cache.clear()
             self._channel_profile_cache.clear()
             self._social_scene_profile_cache.clear()
+            self._voice_dynamics_profile_cache.clear()
         if self.db is not None and updates:
             self.db.commit()
         return updates
@@ -2742,6 +3085,7 @@ class VoiceEpisodicMemory:
         self._person_profile_cache.clear()
         self._channel_profile_cache.clear()
         self._social_scene_profile_cache.clear()
+        self._voice_dynamics_profile_cache.clear()
 
         if self.db is not None:
             self.db.execute(
