@@ -3345,6 +3345,201 @@ class FlyBrain:
             "direct_action_bias": False,
         }
 
+    def inject_channel_profile(
+        self,
+        profile: dict,
+        *,
+        magnitude: float = 0.32,
+        is_current: bool = False,
+    ) -> dict:
+        """Inject a learned place model as sensory context.
+
+        No action score is changed directly. The remembered character of a
+        channel enters sensory populations and must propagate through the
+        connectome before it can influence JOIN/MOVE/LEAVE/STAY.
+        """
+        channel_id = int(profile.get("channel_id", 0) or 0)
+        observations = max(
+            0,
+            int(profile.get("observations", 0) or 0),
+        )
+        if channel_id <= 0 or observations <= 0:
+            return {
+                "enabled": False,
+                "channel_id": channel_id,
+                "cue_count": 0,
+                "cues": [],
+            }
+
+        base = max(0.02, min(1.5, float(magnitude)))
+        familiarity = max(
+            0.0,
+            min(1.0, float(profile.get("familiarity", 0.0))),
+        )
+        confidence = max(
+            0.0,
+            min(1.0, float(profile.get("confidence", 0.0))),
+        )
+        valence = max(
+            -1.0,
+            min(1.0, float(profile.get("valence", 0.0))),
+        )
+        valence_label = str(
+            profile.get("valence_label") or "neutral"
+        )
+        dominant_mode = str(
+            profile.get("dominant_mode") or "UNKNOWN"
+        ).lower()
+        mean_intensity = max(
+            0.0,
+            min(1.0, float(profile.get("mean_intensity", 0.0))),
+        )
+        mean_speech = max(
+            0.0,
+            min(1.0, float(profile.get("mean_speech_ratio", 0.0))),
+        )
+        mean_humans = max(
+            0.0,
+            min(6.0, float(profile.get("mean_human_density", 0.0))),
+        )
+        cues: list[dict] = []
+
+        def cue(key: str, value: float, width: int = 96) -> None:
+            amount = max(0.0, min(2.0, float(value)))
+            if amount <= 1e-6:
+                return
+            self.inject(key, amount, width)
+            cues.append({
+                "key": key,
+                "magnitude": amount,
+                "width": int(width),
+            })
+
+        cue(
+            f"voice:place-profile:channel:{channel_id}",
+            base * (0.20 + 0.60 * familiarity),
+            112,
+        )
+        cue(
+            f"voice:place-profile:presence:{'current' if is_current else 'candidate'}",
+            base * (0.28 + (0.24 if is_current else 0.0)),
+            88,
+        )
+        fam_bucket = min(
+            5,
+            max(0, int(round(familiarity * 5.0))),
+        )
+        cue(
+            f"voice:place-profile:familiarity:{fam_bucket}",
+            base * (0.18 + 0.72 * familiarity),
+            96,
+        )
+        conf_bucket = min(
+            5,
+            max(0, int(round(confidence * 5.0))),
+        )
+        cue(
+            f"voice:place-profile:confidence:{conf_bucket}",
+            base * (0.16 + 0.62 * confidence),
+            88,
+        )
+        cue(
+            f"voice:place-profile:valence:{valence_label}",
+            base * (0.18 + 0.62 * abs(valence)),
+            104,
+        )
+        cue(
+            f"voice:place-profile:mode:{dominant_mode}",
+            base * (
+                0.18
+                + 0.52
+                * min(
+                    1.0,
+                    float(profile.get("dynamics_observations", 0))
+                    / 8.0,
+                )
+            ),
+            96,
+        )
+        intensity_bucket = min(
+            5,
+            max(0, int(round(mean_intensity * 5.0))),
+        )
+        speech_bucket = min(
+            5,
+            max(0, int(round(mean_speech * 5.0))),
+        )
+        human_bucket = min(
+            6,
+            max(0, int(round(mean_humans))),
+        )
+        cue(
+            f"voice:place-profile:intensity:{intensity_bucket}",
+            base * (0.16 + 0.58 * mean_intensity),
+            88,
+        )
+        cue(
+            f"voice:place-profile:speech-ratio:{speech_bucket}",
+            base * (0.16 + 0.55 * mean_speech),
+            88,
+        )
+        cue(
+            f"voice:place-profile:human-density:{human_bucket}",
+            base * min(0.95, 0.16 + 0.10 * mean_humans),
+            88,
+        )
+
+        for row in list(profile.get("actions") or [])[:4]:
+            signal = max(
+                -1.0,
+                min(1.0, float(row.get("signal", 0.0))),
+            )
+            if abs(signal) < 0.04:
+                continue
+            action = str(row.get("action") or "unknown")
+            sign = "positive" if signal > 0.0 else "negative"
+            cue(
+                f"voice:place-history:action:{action}:{sign}",
+                base * (0.14 + 0.65 * abs(signal)),
+                96,
+            )
+
+        for row in list(profile.get("people") or [])[:4]:
+            user_id = int(row.get("user_id", 0) or 0)
+            seen = max(0, int(row.get("observations", 0) or 0))
+            if user_id <= 0 or seen <= 0:
+                continue
+            people_bucket = min(
+                6,
+                max(1, int(math.log2(seen)) + 1),
+            )
+            cue(
+                f"voice:place-history:person:{user_id}:{people_bucket}",
+                base * min(
+                    0.90,
+                    0.12 + 0.11 * math.log1p(seen),
+                ),
+                80,
+            )
+
+        return {
+            "enabled": True,
+            "channel_id": channel_id,
+            "observations": observations,
+            "familiarity": familiarity,
+            "confidence": confidence,
+            "valence": valence,
+            "valence_label": valence_label,
+            "dominant_mode": dominant_mode,
+            "mean_intensity": mean_intensity,
+            "mean_speech_ratio": mean_speech,
+            "mean_human_density": mean_humans,
+            "is_current": bool(is_current),
+            "cue_count": len(cues),
+            "cues": cues[:24],
+            "direct_action_bias": False,
+        }
+
     def inject_text(self, text: str, author_id: int, mentioned: bool) -> None:
         stripped = text.strip()
         if not stripped:
