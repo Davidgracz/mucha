@@ -135,6 +135,7 @@ class SentTrace:
     text: str = ""
     guild_id: int | None = None
     channel_id: int | None = None
+    voice_dynamics_key: str = ""
 
 
 class MuchaClient(discord.Client):
@@ -376,6 +377,8 @@ class MuchaClient(discord.Client):
             ),
         )
         self._voice_sensory_debug: dict[int, dict] = {}
+        self._voice_dynamics_model_debug: dict[str, dict] = {}
+        self._voice_dynamics_seen_last: dict[str, float] = {}
         self._audio_playback_token = 0
         self._audio_debug: dict = {
             "status": "STARTUP",
@@ -508,6 +511,10 @@ class MuchaClient(discord.Client):
             "social_scene_model_enabled",
             "social_scene_min_observations",
             "social_scene_sensory_magnitude",
+            "voice_dynamics_learning_enabled",
+            "voice_dynamics_min_observations",
+            "voice_dynamics_sensory_magnitude",
+            "voice_dynamics_seen_cooldown_seconds",
             "social_window_seconds",
             "word_reuse_reward",
             "phrase_reuse_reward",
@@ -899,6 +906,18 @@ class MuchaClient(discord.Client):
             ),
             ("behavior", "social_scene_sensory_magnitude"): (
                 float, 0.0, 1.5
+            ),
+            ("behavior", "voice_dynamics_learning_enabled"): (
+                bool, None, None
+            ),
+            ("behavior", "voice_dynamics_min_observations"): (
+                int, 1, 1000
+            ),
+            ("behavior", "voice_dynamics_sensory_magnitude"): (
+                float, 0.0, 1.5
+            ),
+            ("behavior", "voice_dynamics_seen_cooldown_seconds"): (
+                int, 5, 3600
             ),
             ("behavior", "social_window_seconds"): (int, 30, 86400),
             ("behavior", "word_reuse_reward"): (float, 0.0, 1.0),
@@ -1793,6 +1812,8 @@ class MuchaClient(discord.Client):
         action: str | None,
         source: str,
         guild: discord.Guild | None = None,
+        *,
+        voice_dynamics_key: str = "",
     ) -> None:
         self._reward_history.append({
             "time": time.time(),
@@ -1805,6 +1826,18 @@ class MuchaClient(discord.Client):
         })
         if len(self._reward_history) > 120:
             del self._reward_history[:-120]
+
+        if (
+            guild is not None
+            and self.cfg.behavior.voice_dynamics_learning_enabled
+            and voice_dynamics_key
+            and action is not None
+        ):
+            self.voice_episodes.observe_voice_dynamics_outcome(
+                voice_dynamics_key,
+                str(action),
+                float(amount),
+            )
 
         if (
             guild is None
@@ -1907,6 +1940,23 @@ class MuchaClient(discord.Client):
                 )
                 episode["social_scene_key"] = social_scene_key
                 episode["social_scene_update"] = social_scene_update
+
+            voice_dynamics_key = str(
+                pending.get("voice_dynamics_key", "")
+            )
+            if (
+                self.cfg.behavior.voice_dynamics_learning_enabled
+                and voice_dynamics_key
+            ):
+                dynamics_update = (
+                    self.voice_episodes.observe_voice_dynamics_outcome(
+                        voice_dynamics_key,
+                        pending_action,
+                        float(amount),
+                    )
+                )
+                episode["voice_dynamics_key"] = voice_dynamics_key
+                episode["voice_dynamics_update"] = dynamics_update
             last_episode = episode
 
             error = float(episode["prediction_error"])
@@ -2806,6 +2856,9 @@ class MuchaClient(discord.Client):
                 source_trace.action,
                 event.lower(),
                 guild,
+                voice_dynamics_key=(
+                    source_trace.voice_dynamics_key
+                ),
             )
 
         suffix = (
@@ -6694,6 +6747,27 @@ class MuchaClient(discord.Client):
             "social_scene_key": str(
                 row.get("social_scene_key") or ""
             ),
+            "voice_dynamics_observations": int(
+                (row.get("voice_dynamics_profile") or {}).get(
+                    "observations",
+                    0,
+                )
+            ),
+            "voice_dynamics_familiarity": float(
+                (row.get("voice_dynamics_profile") or {}).get(
+                    "familiarity",
+                    0.0,
+                )
+            ),
+            "voice_dynamics_valence": float(
+                (row.get("voice_dynamics_profile") or {}).get(
+                    "valence",
+                    0.0,
+                )
+            ),
+            "voice_dynamics_key": str(
+                row.get("voice_dynamics_key") or ""
+            ),
         }
 
         return {
@@ -7079,6 +7153,22 @@ class MuchaClient(discord.Client):
                 self._channel_model_debug.get(cid, {})
             )
 
+        voice_dynamics_profiles = (
+            self.voice_episodes.voice_dynamics_profiles(30)
+            if self.cfg.behavior.voice_dynamics_learning_enabled
+            else []
+        )
+        for profile in voice_dynamics_profiles:
+            dynamics_key = str(
+                profile.get("dynamics_key") or ""
+            )
+            profile["last_injection"] = dict(
+                self._voice_dynamics_model_debug.get(
+                    dynamics_key,
+                    {},
+                )
+            )
+
         social_scene_profiles = (
             self.voice_episodes.social_scene_profiles(30)
             if self.cfg.behavior.social_scene_model_enabled
@@ -7194,6 +7284,7 @@ class MuchaClient(discord.Client):
             "person_profiles": person_profiles,
             "channel_profiles": channel_profiles,
             "social_scene_profiles": social_scene_profiles,
+            "voice_dynamics_profiles": voice_dynamics_profiles,
             "word_feedback": self.language.top_word_feedback(30),
             "social_settings": {
                 "user_avoid_threshold": self.cfg.behavior.user_avoid_threshold,
@@ -7212,6 +7303,10 @@ class MuchaClient(discord.Client):
                 "social_scene_model_enabled": self.cfg.behavior.social_scene_model_enabled,
                 "social_scene_min_observations": self.cfg.behavior.social_scene_min_observations,
                 "social_scene_sensory_magnitude": self.cfg.behavior.social_scene_sensory_magnitude,
+                "voice_dynamics_learning_enabled": self.cfg.behavior.voice_dynamics_learning_enabled,
+                "voice_dynamics_min_observations": self.cfg.behavior.voice_dynamics_min_observations,
+                "voice_dynamics_sensory_magnitude": self.cfg.behavior.voice_dynamics_sensory_magnitude,
+                "voice_dynamics_seen_cooldown_seconds": self.cfg.behavior.voice_dynamics_seen_cooldown_seconds,
             },
             "action_history": self._action_history[-40:],
             "reward_history": self._reward_history[-80:],
@@ -8122,6 +8217,11 @@ class MuchaClient(discord.Client):
                 last_tts.action if recent_tts and last_tts else None,
                 f"spoken rejection • {label}",
                 guild,
+                voice_dynamics_key=(
+                    last_tts.voice_dynamics_key
+                    if recent_tts and last_tts is not None
+                    else ""
+                ),
             )
             self._remember_social_event(
                 "VOICE_REJECTION",
@@ -8180,6 +8280,15 @@ class MuchaClient(discord.Client):
                     trace=last_tts.learning_trace,
                 )
                 self.brain.step(1)
+            self._record_reward(
+                min(0.20, amount * 0.35),
+                last_tts.action,
+                "voice phrase reuse",
+                guild,
+                voice_dynamics_key=(
+                    last_tts.voice_dynamics_key
+                ),
+            )
             await self._grant_positive_social(
                 member,
                 "VOICE_PHRASE_REUSE",
@@ -8219,6 +8328,15 @@ class MuchaClient(discord.Client):
                     trace=last_tts.learning_trace,
                 )
                 self.brain.step(1)
+            self._record_reward(
+                min(0.15, amount * 0.35),
+                last_tts.action,
+                "voice word reuse",
+                guild,
+                voice_dynamics_key=(
+                    last_tts.voice_dynamics_key
+                ),
+            )
             await self._grant_positive_social(
                 member,
                 "VOICE_WORD_REUSE",
@@ -8568,7 +8686,50 @@ class MuchaClient(discord.Client):
             return
 
         context = self.last_text_context.get(guild.id, "")
+        tts_voice_dynamics_key = ""
         async with self._brain_lock:
+            if self.cfg.behavior.voice_dynamics_learning_enabled:
+                tts_sensory = dict(
+                    self._voice_sensory_debug.get(guild.id, {})
+                )
+                tts_voice_dynamics_key = (
+                    self.voice_episodes.make_voice_dynamics_key(
+                        tts_sensory
+                    )
+                )
+                tts_dynamics_profile = (
+                    self.voice_episodes.voice_dynamics_profile(
+                        tts_voice_dynamics_key
+                    )
+                )
+                if int(
+                    tts_dynamics_profile.get("observations", 0)
+                ) >= int(
+                    self.cfg.behavior
+                    .voice_dynamics_min_observations
+                ):
+                    tts_dynamics_brain = (
+                        self.brain.inject_voice_dynamics_profile(
+                            tts_dynamics_profile,
+                            magnitude=float(
+                                self.cfg.behavior
+                                .voice_dynamics_sensory_magnitude
+                            ),
+                        )
+                    )
+                    self._voice_dynamics_model_debug[
+                        tts_voice_dynamics_key
+                    ] = {
+                        "dynamics_key": tts_voice_dynamics_key,
+                        "guild": guild.name,
+                        "channel": channel_name,
+                        "checked_at": time.time(),
+                        "profile": dict(
+                            tts_dynamics_profile
+                        ),
+                        "brain": dict(tts_dynamics_brain),
+                        "source": "tts-opportunity",
+                    }
             self.brain.inject(
                 f"voice:tts-opportunity:guild:{guild.id}",
                 0.18,
@@ -8671,6 +8832,7 @@ class MuchaClient(discord.Client):
                 text=text_out,
                 guild_id=guild.id,
                 channel_id=vc.channel.id,
+                voice_dynamics_key=tts_voice_dynamics_key,
             )
             if self.cfg.voice.voice_sensory_enabled:
                 self._voice_sensory.note_tts(
@@ -9704,6 +9866,9 @@ class MuchaClient(discord.Client):
         social_scene_key = ""
         social_scene_profile: dict = {}
         social_scene_brain: dict = {}
+        voice_dynamics_key = ""
+        voice_dynamics_profile: dict = {}
+        voice_dynamics_brain: dict = {}
 
         async with self._brain_lock:
             corrections = self._voice_prediction_corrections.pop(
@@ -10164,6 +10329,59 @@ class MuchaClient(discord.Client):
                 )
 
                 if (
+                    self.cfg.behavior.voice_dynamics_learning_enabled
+                    and current is not None
+                ):
+                    sensory_now = dict(
+                        self._voice_sensory_debug.get(
+                            guild.id,
+                            {},
+                        )
+                    )
+                    voice_dynamics_key = (
+                        self.voice_episodes.make_voice_dynamics_key(
+                            sensory_now
+                        )
+                    )
+                    voice_dynamics_profile = (
+                        self.voice_episodes.voice_dynamics_profile(
+                            voice_dynamics_key
+                        )
+                    )
+                    if int(
+                        voice_dynamics_profile.get(
+                            "observations",
+                            0,
+                        )
+                    ) >= int(
+                        self.cfg.behavior
+                        .voice_dynamics_min_observations
+                    ):
+                        voice_dynamics_brain = (
+                            self.brain.inject_voice_dynamics_profile(
+                                voice_dynamics_profile,
+                                magnitude=float(
+                                    self.cfg.behavior
+                                    .voice_dynamics_sensory_magnitude
+                                ),
+                            )
+                        )
+                        self._voice_dynamics_model_debug[
+                            voice_dynamics_key
+                        ] = {
+                            "dynamics_key": voice_dynamics_key,
+                            "guild": guild.name,
+                            "channel": current.name,
+                            "checked_at": time.time(),
+                            "profile": dict(
+                                voice_dynamics_profile
+                            ),
+                            "brain": dict(
+                                voice_dynamics_brain
+                            ),
+                        }
+
+                if (
                     self.cfg.behavior.social_scene_model_enabled
                     and current is not None
                 ):
@@ -10268,6 +10486,7 @@ class MuchaClient(discord.Client):
                     or float(homeostasis["habituation"]) > 0.0
                     or float(homeostasis["exploration"]) > 0.0
                     or bool(semantic_guided)
+                    or bool(voice_dynamics_brain)
                     or uncertainty_curiosity_diag is not None
                 )
                 propagation_steps = max(
@@ -10343,6 +10562,7 @@ class MuchaClient(discord.Client):
                         "context": prediction_context,
                         "scene_key": prediction_scene_key,
                         "social_scene_key": social_scene_key,
+                        "voice_dynamics_key": voice_dynamics_key,
                         "action": chosen_action,
                         "predicted_reward": predicted_reward,
                         "trace": decision_trace,
@@ -10372,6 +10592,74 @@ class MuchaClient(discord.Client):
                 ch.id: self.brain.channel_affinity(guild.id, ch.id)
                 for ch, _ in channels
             }
+
+        if voice_dynamics_key:
+            debug["voice_dynamics_key"] = voice_dynamics_key
+            debug["voice_dynamics_profile"] = {
+                "observations": int(
+                    voice_dynamics_profile.get(
+                        "observations",
+                        0,
+                    )
+                ),
+                "familiarity": float(
+                    voice_dynamics_profile.get(
+                        "familiarity",
+                        0.0,
+                    )
+                ),
+                "confidence": float(
+                    voice_dynamics_profile.get(
+                        "confidence",
+                        0.0,
+                    )
+                ),
+                "valence": float(
+                    voice_dynamics_profile.get(
+                        "valence",
+                        0.0,
+                    )
+                ),
+                "valence_label": str(
+                    voice_dynamics_profile.get(
+                        "valence_label",
+                        "neutral",
+                    )
+                ),
+                "preferred_action": (
+                    voice_dynamics_profile.get(
+                        "preferred_action"
+                    )
+                ),
+                "avoided_action": (
+                    voice_dynamics_profile.get(
+                        "avoided_action"
+                    )
+                ),
+            }
+            debug["voice_dynamics_brain"] = dict(
+                voice_dynamics_brain
+            )
+            last_seen_dynamics = (
+                self._voice_dynamics_seen_last.get(
+                    voice_dynamics_key,
+                    0.0,
+                )
+            )
+            dynamics_seen_cooldown = max(
+                5.0,
+                float(
+                    self.cfg.behavior
+                    .voice_dynamics_seen_cooldown_seconds
+                ),
+            )
+            if now - last_seen_dynamics >= dynamics_seen_cooldown:
+                self.voice_episodes.observe_voice_dynamics_contact(
+                    voice_dynamics_key,
+                )
+                self._voice_dynamics_seen_last[
+                    voice_dynamics_key
+                ] = now
 
         if social_scene_key:
             debug["social_scene_key"] = social_scene_key
