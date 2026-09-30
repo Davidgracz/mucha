@@ -16,6 +16,11 @@ from typing import Awaitable, Callable
 
 from aiohttp import web
 
+try:
+    import psutil
+except ImportError:
+    psutil = None
+
 log = logging.getLogger("mucha.web")
 
 SnapshotProvider = Callable[[], Awaitable[dict]]
@@ -3163,6 +3168,22 @@ class WebDashboard:
         self.site: web.TCPSite | None = None
         self._bind_host = self.host
         self._process_started_monotonic = time.monotonic()
+        self._gpu_monitor_task: asyncio.Task | None = None
+        self._gpu_status_cache: dict = {
+            "available": False,
+            "backend": "nvidia-smi",
+            "gpus": [],
+            "updated_at": 0.0,
+            "error": "not checked yet",
+        }
+        self._process_metrics = None
+        if psutil is not None:
+            try:
+                self._process_metrics = psutil.Process(os.getpid())
+                self._process_metrics.cpu_percent(interval=None)
+                psutil.cpu_percent(interval=None)
+            except Exception:
+                self._process_metrics = None
 
     def _session_token(self, expires: int) -> str:
         payload = str(int(expires))
@@ -3258,6 +3279,7 @@ class WebDashboard:
         app.router.add_get("/api/public/neuromap", self._public_neuromap_state)
         app.router.add_get("/api/public/associations", self._public_associations_state)
         app.router.add_get("/api/overview", self._overview)
+        app.router.add_get("/api/system", self._system_state)
         app.router.add_get("/api/config", self._config_get)
         app.router.add_post("/api/config", self._config_post)
         app.router.add_get("/health", self._health)
@@ -3267,19 +3289,34 @@ class WebDashboard:
         self.site = web.TCPSite(self.runner, self._bind_host, self.port)
         await self.site.start()
         log.info("Web UI: http://%s:%s", self._bind_host, self.port)
+        if self._gpu_monitor_task is None:
+            self._gpu_monitor_task = asyncio.create_task(
+                self._gpu_monitor_loop()
+            )
 
         if self.auto_open and self._bind_host in {"127.0.0.1", "localhost"}:
             url = f"http://127.0.0.1:{self.port}"
             asyncio.get_running_loop().call_later(1.0, webbrowser.open, url)
 
     async def stop(self) -> None:
+        if self._gpu_monitor_task is not None:
+            self._gpu_monitor_task.cancel()
+            try:
+                await self._gpu_monitor_task
+            except asyncio.CancelledError:
+                pass
+            self._gpu_monitor_task = None
         if self.runner is not None:
             await self.runner.cleanup()
             self.runner = None
             self.site = None
 
     async def _index(self, request: web.Request) -> web.Response:
-        return web.Response(text=OVERVIEW_HTML, content_type="text/html")
+        html = OVERVIEW_HTML.replace(
+            "const LIVE_REFRESH_MS=250;",
+            f"const LIVE_REFRESH_MS={self.refresh_ms};",
+        )
+        return web.Response(text=html, content_type="text/html")
 
     async def _details(self, request: web.Request) -> web.Response:
         html = HTML.replace(
@@ -3547,6 +3584,12 @@ class WebDashboard:
             dumps=lambda x: json.dumps(x, ensure_ascii=False),
         )
 
+    async def _system_state(self, request: web.Request) -> web.Response:
+        return web.json_response(
+            self._system_status(),
+            dumps=lambda x: json.dumps(x, ensure_ascii=False),
+        )
+
     async def _connectome_state(
         self,
         request: web.Request,
@@ -3740,84 +3783,213 @@ class WebDashboard:
             "error": stderr.decode("utf-8", "replace").strip(),
         }
 
-    def _system_status(self) -> dict:
-        if os.name == "nt":
-            total = 0
-            available = 0
-            try:
-                class MEMORYSTATUSEX(ctypes.Structure):
-                    _fields_ = [
-                        ("dwLength", ctypes.c_ulong),
-                        ("dwMemoryLoad", ctypes.c_ulong),
-                        ("ullTotalPhys", ctypes.c_ulonglong),
-                        ("ullAvailPhys", ctypes.c_ulonglong),
-                        ("ullTotalPageFile", ctypes.c_ulonglong),
-                        ("ullAvailPageFile", ctypes.c_ulonglong),
-                        ("ullTotalVirtual", ctypes.c_ulonglong),
-                        ("ullAvailVirtual", ctypes.c_ulonglong),
-                        ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
-                    ]
+    async def _query_gpu_status(self) -> dict:
+        executable = shutil.which("nvidia-smi")
+        now = time.time()
+        if not executable:
+            return {
+                "available": False,
+                "backend": "nvidia-smi",
+                "gpus": [],
+                "updated_at": now,
+                "error": "nvidia-smi not found",
+            }
+        try:
+            proc = await asyncio.create_subprocess_exec(
+                executable,
+                (
+                    "--query-gpu=index,name,utilization.gpu,"
+                    "memory.used,memory.total,temperature.gpu"
+                ),
+                "--format=csv,noheader,nounits",
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
+            )
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=1.5,
+            )
+            if proc.returncode != 0:
+                return {
+                    "available": False,
+                    "backend": "nvidia-smi",
+                    "gpus": [],
+                    "updated_at": now,
+                    "error": stderr.decode(
+                        "utf-8",
+                        "replace",
+                    ).strip() or f"exit {proc.returncode}",
+                }
 
-                status = MEMORYSTATUSEX()
-                status.dwLength = ctypes.sizeof(status)
-                if ctypes.windll.kernel32.GlobalMemoryStatusEx(
-                    ctypes.byref(status)
-                ):
-                    total = int(status.ullTotalPhys)
-                    available = int(status.ullAvailPhys)
-            except (AttributeError, OSError, ValueError):
+            rows = []
+            for line in stdout.decode(
+                "utf-8",
+                "replace",
+            ).splitlines():
+                parts = [part.strip() for part in line.split(",")]
+                if len(parts) < 6:
+                    continue
+
+                def number(value: str) -> float:
+                    try:
+                        return float(value)
+                    except (TypeError, ValueError):
+                        return 0.0
+
+                used_mb = number(parts[3])
+                total_mb = number(parts[4])
+                rows.append({
+                    "index": int(number(parts[0])),
+                    "name": parts[1],
+                    "utilization_percent": number(parts[2]),
+                    "memory_used_bytes": int(
+                        used_mb * 1024 * 1024
+                    ),
+                    "memory_total_bytes": int(
+                        total_mb * 1024 * 1024
+                    ),
+                    "memory_percent": (
+                        used_mb / total_mb * 100.0
+                        if total_mb > 0.0
+                        else 0.0
+                    ),
+                    "temperature_c": number(parts[5]),
+                })
+
+            return {
+                "available": bool(rows),
+                "backend": "nvidia-smi",
+                "gpus": rows,
+                "updated_at": now,
+                "error": "" if rows else "no NVIDIA GPU data",
+            }
+        except Exception as exc:
+            return {
+                "available": False,
+                "backend": "nvidia-smi",
+                "gpus": [],
+                "updated_at": now,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    async def _gpu_monitor_loop(self) -> None:
+        while True:
+            self._gpu_status_cache = await self._query_gpu_status()
+            delay = (
+                1.0
+                if self._gpu_status_cache.get("available")
+                else 5.0
+            )
+            await asyncio.sleep(delay)
+
+    def _system_status(self) -> dict:
+        now = time.time()
+        try:
+            disk = shutil.disk_usage(Path.cwd())
+        except OSError:
+            disk_root = Path.cwd().anchor or ("/" if os.name != "nt" else "C:\\")
+            disk = shutil.disk_usage(disk_root)
+
+        total = available = used = 0
+        mem_percent = 0.0
+        cpu_percent = 0.0
+        cpu_count = os.cpu_count() or 0
+        process_rss = 0
+        process_cpu_percent = 0.0
+        process_threads = 0
+
+        if psutil is not None:
+            try:
+                vm = psutil.virtual_memory()
+                total = int(vm.total)
+                available = int(vm.available)
+                used = int(vm.used)
+                mem_percent = float(vm.percent)
+                cpu_percent = float(
+                    psutil.cpu_percent(interval=None)
+                )
+                cpu_count = int(psutil.cpu_count() or cpu_count)
+            except Exception:
+                pass
+            try:
+                process = self._process_metrics
+                if process is not None:
+                    process_rss = int(process.memory_info().rss)
+                    process_cpu_percent = float(
+                        process.cpu_percent(interval=None)
+                    )
+                    process_threads = int(
+                        process.num_threads()
+                    )
+            except Exception:
                 pass
 
-            try:
+        if total <= 0:
+            if os.name == "nt":
+                try:
+                    class MEMORYSTATUSEX(ctypes.Structure):
+                        _fields_ = [
+                            ("dwLength", ctypes.c_ulong),
+                            ("dwMemoryLoad", ctypes.c_ulong),
+                            ("ullTotalPhys", ctypes.c_ulonglong),
+                            ("ullAvailPhys", ctypes.c_ulonglong),
+                            ("ullTotalPageFile", ctypes.c_ulonglong),
+                            ("ullAvailPageFile", ctypes.c_ulonglong),
+                            ("ullTotalVirtual", ctypes.c_ulonglong),
+                            ("ullAvailVirtual", ctypes.c_ulonglong),
+                            ("ullAvailExtendedVirtual", ctypes.c_ulonglong),
+                        ]
+                    status = MEMORYSTATUSEX()
+                    status.dwLength = ctypes.sizeof(status)
+                    if ctypes.windll.kernel32.GlobalMemoryStatusEx(
+                        ctypes.byref(status)
+                    ):
+                        total = int(status.ullTotalPhys)
+                        available = int(status.ullAvailPhys)
+                except Exception:
+                    pass
+            else:
+                mem: dict[str, int] = {}
+                try:
+                    for line in Path("/proc/meminfo").read_text(
+                        encoding="utf-8",
+                    ).splitlines():
+                        if ":" not in line:
+                            continue
+                        key, value = line.split(":", 1)
+                        mem[key] = int(
+                            value.strip().split()[0]
+                        ) * 1024
+                    total = int(mem.get("MemTotal", 0))
+                    available = int(
+                        mem.get("MemAvailable", 0)
+                    )
+                except Exception:
+                    pass
+            used = max(0, total - available)
+            mem_percent = (
+                used / total * 100.0
+                if total
+                else 0.0
+            )
+
+        try:
+            if psutil is not None:
+                uptime = max(
+                    0.0,
+                    now - float(psutil.boot_time()),
+                )
+            elif os.name == "nt":
                 get_tick_count_64 = ctypes.windll.kernel32.GetTickCount64
                 get_tick_count_64.restype = ctypes.c_ulonglong
                 uptime = float(get_tick_count_64()) / 1000.0
-            except (AttributeError, OSError, ValueError):
-                uptime = 0.0
-
-            try:
-                disk_root = Path.cwd().anchor or (
-                    os.environ.get("SystemDrive", "C:") + "\\"
+            else:
+                uptime = float(
+                    Path("/proc/uptime").read_text(
+                        encoding="utf-8",
+                    ).split()[0]
                 )
-                disk = shutil.disk_usage(disk_root)
-            except OSError:
-                disk = shutil.disk_usage(Path.cwd())
-
-            used = max(0, total - available)
-            percent = (used / total * 100.0) if total else 0.0
-            return {
-                "platform": "windows",
-                "uptime_seconds": uptime,
-                "load": [],
-                "mem_total": total,
-                "mem_available": available,
-                "mem_used": used,
-                "mem_percent": percent,
-                "disk_total": disk.total,
-                "disk_used": disk.used,
-                "disk_free": disk.free,
-            }
-
-        mem: dict[str, int] = {}
-        try:
-            for line in Path("/proc/meminfo").read_text(
-                encoding="utf-8",
-            ).splitlines():
-                if ":" not in line:
-                    continue
-                key, value = line.split(":", 1)
-                number = value.strip().split()[0]
-                mem[key] = int(number) * 1024
-        except (OSError, ValueError):
-            pass
-
-        try:
-            uptime = float(
-                Path("/proc/uptime").read_text(
-                    encoding="utf-8",
-                ).split()[0]
-            )
-        except (OSError, ValueError, IndexError):
+        except Exception:
             uptime = 0.0
 
         try:
@@ -3825,24 +3997,39 @@ class WebDashboard:
         except (OSError, AttributeError):
             load = []
 
-        disk_root = Path.cwd().anchor or "/"
-        disk = shutil.disk_usage(disk_root)
-        total = int(mem.get("MemTotal", 0))
-        available = int(mem.get("MemAvailable", 0))
-        used = max(0, total - available)
-        percent = (used / total * 100.0) if total else 0.0
-
+        disk_percent = (
+            disk.used / disk.total * 100.0
+            if disk.total
+            else 0.0
+        )
+        gpu = dict(self._gpu_status_cache)
         return {
-            "platform": "linux",
+            "platform": "windows" if os.name == "nt" else "linux",
+            "updated_at": now,
             "uptime_seconds": uptime,
             "load": load,
+            "cpu_percent": cpu_percent,
+            "cpu_count": cpu_count,
             "mem_total": total,
             "mem_available": available,
             "mem_used": used,
-            "mem_percent": percent,
-            "disk_total": disk.total,
-            "disk_used": disk.used,
-            "disk_free": disk.free,
+            "mem_percent": mem_percent,
+            "disk_total": int(disk.total),
+            "disk_used": int(disk.used),
+            "disk_free": int(disk.free),
+            "disk_percent": disk_percent,
+            "process": {
+                "pid": os.getpid(),
+                "cpu_percent": process_cpu_percent,
+                "memory_bytes": process_rss,
+                "threads": process_threads,
+                "uptime_seconds": max(
+                    0.0,
+                    time.monotonic()
+                    - self._process_started_monotonic,
+                ),
+            },
+            "gpu": gpu,
         }
 
     def _chaser_status(self) -> dict:
