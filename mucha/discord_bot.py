@@ -6591,6 +6591,34 @@ class MuchaClient(discord.Client):
                         "humans": int(len(humans)),
                     })
 
+            voice_debug = self._voice_debug.get(
+                guild.id,
+                {},
+            )
+            prediction_context = str(
+                voice_debug.get("prediction_context") or ""
+            )
+            prediction_scene_key = str(
+                voice_debug.get("prediction_scene_key") or ""
+            )
+            contextual_reward_predictions: dict[str, dict] = {}
+            if (
+                self.cfg.voice.episodic_prediction_enabled
+                and prediction_context
+            ):
+                prediction_actions = (
+                    ("stay", "voice_move")
+                    if connected
+                    else ("stay", "voice_join")
+                )
+                contextual_reward_predictions = (
+                    self.voice_episodes.predictions_detailed(
+                        prediction_context,
+                        prediction_actions,
+                        scene_key=prediction_scene_key,
+                    )
+                )
+
             contexts.append({
                 "guild_id": int(guild.id),
                 "guild": str(guild.name),
@@ -6619,6 +6647,15 @@ class MuchaClient(discord.Client):
                 "voice_target_count": int(len(targets)),
                 "voice_targets": targets[:12],
                 "can_explore": True,
+                "reward_prediction_context": (
+                    prediction_context or None
+                ),
+                "reward_prediction_scene_key": (
+                    prediction_scene_key or None
+                ),
+                "contextual_reward_predictions": (
+                    contextual_reward_predictions
+                ),
             })
 
         return contexts
@@ -6673,6 +6710,12 @@ class MuchaClient(discord.Client):
                         context["voice_target_count"]
                     ),
                     can_explore=bool(context["can_explore"]),
+                    contextual_reward_predictions=dict(
+                        context.get(
+                            "contextual_reward_predictions",
+                            {},
+                        )
+                    ),
                 )
                 autonomous_rows.append({
                     **context,
@@ -6684,7 +6727,8 @@ class MuchaClient(discord.Client):
                 "guilds": autonomous_rows,
                 "executed": False,
                 "note": (
-                    "candidate generation only; execution arrives in 24D"
+                    "24C predicts learned reward; no autonomous execution "
+                    "until 24D"
                 ),
             }
             scores = self.brain.action_scores()
