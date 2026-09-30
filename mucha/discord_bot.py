@@ -312,6 +312,8 @@ class MuchaClient(discord.Client):
         self._pending_direct_replies: dict[tuple[int, int], dict] = {}
         self._person_model_debug: dict[int, dict] = {}
         self._channel_model_debug: dict[int, dict] = {}
+        self._social_scene_model_debug: dict[str, dict] = {}
+        self._social_scene_seen_last: dict[str, float] = {}
         self._social_debug: dict = {
             "event": "BRAK",
             "detail": "",
@@ -503,6 +505,9 @@ class MuchaClient(discord.Client):
             "channel_model_enabled",
             "channel_model_min_observations",
             "channel_model_sensory_magnitude",
+            "social_scene_model_enabled",
+            "social_scene_min_observations",
+            "social_scene_sensory_magnitude",
             "social_window_seconds",
             "word_reuse_reward",
             "phrase_reuse_reward",
@@ -884,6 +889,15 @@ class MuchaClient(discord.Client):
                 int, 1, 1000
             ),
             ("behavior", "channel_model_sensory_magnitude"): (
+                float, 0.0, 1.5
+            ),
+            ("behavior", "social_scene_model_enabled"): (
+                bool, None, None
+            ),
+            ("behavior", "social_scene_min_observations"): (
+                int, 1, 1000
+            ),
+            ("behavior", "social_scene_sensory_magnitude"): (
                 float, 0.0, 1.5
             ),
             ("behavior", "social_window_seconds"): (int, 30, 86400),
@@ -1877,6 +1891,22 @@ class MuchaClient(discord.Client):
             )
             episode["credit_share"] = float(credit_share)
             episode["decision_age_seconds"] = float(age)
+            social_scene_key = str(
+                pending.get("social_scene_key", "")
+            )
+            if (
+                self.cfg.behavior.social_scene_model_enabled
+                and social_scene_key
+            ):
+                social_scene_update = (
+                    self.voice_episodes.observe_social_scene_outcome(
+                        social_scene_key,
+                        pending_action,
+                        float(amount),
+                    )
+                )
+                episode["social_scene_key"] = social_scene_key
+                episode["social_scene_update"] = social_scene_update
             last_episode = episode
 
             error = float(episode["prediction_error"])
@@ -7108,6 +7138,9 @@ class MuchaClient(discord.Client):
                 "channel_model_enabled": self.cfg.behavior.channel_model_enabled,
                 "channel_model_min_observations": self.cfg.behavior.channel_model_min_observations,
                 "channel_model_sensory_magnitude": self.cfg.behavior.channel_model_sensory_magnitude,
+                "social_scene_model_enabled": self.cfg.behavior.social_scene_model_enabled,
+                "social_scene_min_observations": self.cfg.behavior.social_scene_min_observations,
+                "social_scene_sensory_magnitude": self.cfg.behavior.social_scene_sensory_magnitude,
             },
             "action_history": self._action_history[-40:],
             "reward_history": self._reward_history[-80:],
@@ -9597,6 +9630,9 @@ class MuchaClient(discord.Client):
         reward_opportunity_diag = None
         voice_context_diag = None
         uncertainty_curiosity_diag = None
+        social_scene_key = ""
+        social_scene_profile: dict = {}
+        social_scene_brain: dict = {}
 
         async with self._brain_lock:
             corrections = self._voice_prediction_corrections.pop(
@@ -10055,6 +10091,100 @@ class MuchaClient(discord.Client):
                     ),
                     )
                 )
+
+                if (
+                    self.cfg.behavior.social_scene_model_enabled
+                    and current is not None
+                ):
+                    internal_now = (
+                        self.brain.internal_state_diagnostics()
+                    )
+                    sensory_now = dict(
+                        self._voice_sensory_debug.get(
+                            guild.id,
+                            {},
+                        )
+                    )
+                    social_scene_key = (
+                        self.voice_episodes.make_social_scene_key(
+                            channel_id=current.id,
+                            user_ids=[
+                                int(member.id)
+                                for member in current_humans
+                            ],
+                            context=prediction_context,
+                            conversation_mode=str(
+                                sensory_now.get(
+                                    "conversation_mode",
+                                    "UNKNOWN",
+                                )
+                            ),
+                            intensity=float(
+                                sensory_now.get(
+                                    "conversation_intensity",
+                                    0.0,
+                                )
+                            ),
+                            speech_ratio=float(
+                                sensory_now.get(
+                                    "speech_ratio_60s",
+                                    0.0,
+                                )
+                            ),
+                            human_count=len(current_humans),
+                            dominant_state=str(
+                                internal_now.get(
+                                    "dominant",
+                                    "",
+                                )
+                                or ""
+                            ),
+                            dominant_state_level=float(
+                                internal_now.get(
+                                    "dominant_level",
+                                    0.0,
+                                )
+                            ),
+                        )
+                    )
+                    social_scene_profile = (
+                        self.voice_episodes.social_scene_profile(
+                            social_scene_key
+                        )
+                    )
+                    if int(
+                        social_scene_profile.get(
+                            "observations",
+                            0,
+                        )
+                    ) >= int(
+                        self.cfg.behavior
+                        .social_scene_min_observations
+                    ):
+                        social_scene_brain = (
+                            self.brain.inject_social_scene_profile(
+                                social_scene_profile,
+                                magnitude=float(
+                                    self.cfg.behavior
+                                    .social_scene_sensory_magnitude
+                                ),
+                            )
+                        )
+                        self._social_scene_model_debug[
+                            social_scene_key
+                        ] = {
+                            "scene_key": social_scene_key,
+                            "guild": guild.name,
+                            "channel": current.name,
+                            "checked_at": time.time(),
+                            "profile": dict(
+                                social_scene_profile
+                            ),
+                            "brain": dict(
+                                social_scene_brain
+                            ),
+                        }
+
                 motivation_active = bool(
                     (
                         current is None
@@ -10141,6 +10271,7 @@ class MuchaClient(discord.Client):
                         "time": now,
                         "context": prediction_context,
                         "scene_key": prediction_scene_key,
+                        "social_scene_key": social_scene_key,
                         "action": chosen_action,
                         "predicted_reward": predicted_reward,
                         "trace": decision_trace,
@@ -10170,6 +10301,65 @@ class MuchaClient(discord.Client):
                 ch.id: self.brain.channel_affinity(guild.id, ch.id)
                 for ch, _ in channels
             }
+
+        if social_scene_key:
+            debug["social_scene_key"] = social_scene_key
+            debug["social_scene_profile"] = {
+                "observations": int(
+                    social_scene_profile.get(
+                        "observations",
+                        0,
+                    )
+                ),
+                "familiarity": float(
+                    social_scene_profile.get(
+                        "familiarity",
+                        0.0,
+                    )
+                ),
+                "confidence": float(
+                    social_scene_profile.get(
+                        "confidence",
+                        0.0,
+                    )
+                ),
+                "valence": float(
+                    social_scene_profile.get(
+                        "valence",
+                        0.0,
+                    )
+                ),
+                "valence_label": str(
+                    social_scene_profile.get(
+                        "valence_label",
+                        "neutral",
+                    )
+                ),
+                "preferred_action": (
+                    social_scene_profile.get(
+                        "preferred_action"
+                    )
+                ),
+                "avoided_action": (
+                    social_scene_profile.get(
+                        "avoided_action"
+                    )
+                ),
+            }
+            debug["social_scene_brain"] = dict(
+                social_scene_brain
+            )
+            last_seen_scene = self._social_scene_seen_last.get(
+                social_scene_key,
+                0.0,
+            )
+            if now - last_seen_scene >= 60.0:
+                self.voice_episodes.observe_social_scene_contact(
+                    social_scene_key,
+                )
+                self._social_scene_seen_last[
+                    social_scene_key
+                ] = now
 
         if reward_opportunity_diag:
             debug["reward_opportunity_guided_mode"] = str(
