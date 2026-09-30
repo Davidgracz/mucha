@@ -245,6 +245,34 @@ def main():
             consolidated_memory["strength"]
             > strength_before_replay
         )
+        semantic_before_sleep = restored.semantic_recall(
+            "in|need=0|fatigue=1",
+            ["voice_move"],
+            channel_id=555,
+            user_ids=[11, 22],
+            min_observations=2,
+        )["voice_move"]
+        observations_before_sleep = int(
+            semantic_before_sleep["observations"]
+        )
+        rehearsed_semantics = restored.rehearse_semantic_replay(
+            replay_candidates[0],
+        )
+        assert rehearsed_semantics
+        assert any(
+            abs(float(row["delta"])) > 0.0
+            for row in rehearsed_semantics
+        )
+        semantic_after_sleep = restored.semantic_recall(
+            "in|need=0|fatigue=1",
+            ["voice_move"],
+            channel_id=555,
+            user_ids=[11, 22],
+            min_observations=2,
+        )["voice_move"]
+        assert int(
+            semantic_after_sleep["observations"]
+        ) == observations_before_sleep
         top_memories = restored.consolidation_summary(4)
         assert top_memories
         assert top_memories[0]["scene_key"] == scene_key
@@ -725,6 +753,14 @@ def main():
         assert "memory_replay_reward_scale" in CONFIG_HTML
         assert "memory_replay_steps" in CONFIG_HTML
         assert "memory_replay_max_age_days" in CONFIG_HTML
+        assert "sleep_enabled" in CONFIG_HTML
+        assert "sleep_idle_seconds" in CONFIG_HTML
+        assert "sleep_cycle_interval_seconds" in CONFIG_HTML
+        assert "sleep_max_cycles" in CONFIG_HTML
+        assert "sleep_replay_batch_size" in CONFIG_HTML
+        assert "sleep_replay_magnitude_multiplier" in CONFIG_HTML
+        assert "sleep_reward_scale_multiplier" in CONFIG_HTML
+        assert "sleep_steps_multiplier" in CONFIG_HTML
         assert "episodic_consolidation_gain" in CONFIG_HTML
         assert "episodic_forgetting_half_life_days" in CONFIG_HTML
         assert "semantic_memory_enabled" in CONFIG_HTML
@@ -793,6 +829,9 @@ def main():
         assert "CONSOLIDATED" in NEUROMAP_HTML
         assert "FADING" in NEUROMAP_HTML
         assert "MEMORY REPLAY" in HTML
+        assert "Sleep / Offline Consolidation" in HTML
+        assert "renderSleep" in HTML
+        assert 'id="sleep-progress"' in HTML
         assert "Credit queue" in HTML
         assert "SIGNAL FLOW" in NEUROMAP_HTML
         assert "FOLLOW DECISION" in NEUROMAP_HTML
@@ -860,8 +899,18 @@ def main():
         assert "_queue_voice_prediction" in bot_source
         assert "prediction_credit_decay_seconds" in bot_source
         assert "_maybe_memory_replay" in bot_source
+        assert "_sleep_tick" in bot_source
+        assert "_note_external_activity" in bot_source
+        assert "sleep-offline-consolidation" in bot_source
+        assert '"sleep": dict(self._sleep_debug)' in bot_source
         assert "memory_replay_reward_scale" in bot_source
+        assert "sleep_reward_scale_multiplier" in bot_source
         assert "replay_candidates" in bot_source
+        episodic_source = (ROOT / "mucha" / "episodic.py").read_text(
+            encoding="utf-8"
+        )
+        assert "rehearse_semantic_replay" in episodic_source
+        assert "must not increase the observation count" in episodic_source
         assert "_attention_observe_text" in bot_source
         assert "_inject_attention_context" in bot_source
         assert "_attention_language_context" in bot_source
