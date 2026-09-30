@@ -946,11 +946,62 @@ state/voice_episodes.sqlite3
 
 ---
 
+# Long-term Channel / Place Memory
+
+Mucha buduje teraz trwały model kanałów voice jako **miejsc**, a nie tylko identyfikatorów Discorda.
+
+Profil miejsca łączy:
+
+- realne wizyty JOIN/MOVE,
+- wcześniejsze epizody i ich reward/punish,
+- osoby spotykane w danym miejscu,
+- tryby rozmowy z Voice Sensory Bus,
+- średnią intensywność rozmów,
+- typowy speech ratio,
+- typową liczbę ludzi,
+- historię akcji, które w tym miejscu kończyły się dobrze albo źle.
+
+Starsze dane z `voice_episodes.sqlite3` są automatycznie używane do backfillu podstawowej familiarity oraz skojarzeń kanał ↔ ludzie.
+
+Dynamika miejsca jest aktualizowana przy realnych transkrypcjach STT, dzięki czemu polling dashboardu nie sztucznie nie zwiększa liczby obserwacji.
+
+Profil kanału wraca do mózgu jako sensory:
+
+```text
+voice:place-profile:channel:<id>
+voice:place-profile:presence:<current|candidate>
+voice:place-profile:familiarity:<bucket>
+voice:place-profile:confidence:<bucket>
+voice:place-profile:valence:<positive|neutral|negative>
+voice:place-profile:mode:<dialogue|monologue|crosstalk|quiet|...>
+voice:place-profile:intensity:<bucket>
+voice:place-profile:speech-ratio:<bucket>
+voice:place-profile:human-density:<bucket>
+voice:place-history:person:<user>:<bucket>
+voice:place-history:action:<action>:<positive|negative>
+```
+
+To nadal **nie jest ręczny bonus do JOIN/MOVE/STAY**. Pamięć miejsca trafia do sensorycznych populacji, propaguje się przez FAFB, a dopiero stan connectomu wpływa na readouty oraz istniejący neural channel affinity.
+
+Prywatny `/details` ma panel **Long-term Channel / Place Memory**, pokazujący:
+
+- familiarity i confidence,
+- visit / dynamics observations,
+- valence,
+- dominujący tryb rozmowy,
+- typową intensywność, speech ratio i liczbę ludzi,
+- osoby najczęściej kojarzone z miejscem,
+- korzystne i niekorzystne akcje,
+- ostatni epizod,
+- ostatnią reiniekcję pamięci miejsca do connectomu.
+
+---
+
 # Najbliższy kierunek rozwoju
 
 Dalsze kierunki:
 
-- długoterminowa reprezentacja kanałów i powtarzalnych sytuacji,
+- długoterminowa reprezentacja powtarzalnych **sytuacji społecznych** obejmujących jednocześnie ludzi + miejsce + dynamikę rozmowy,
 - uczenie reakcji na dynamikę rozmowy z rewardu zamiast ręcznego mapowania scen na decyzje,
 - dalsza redukcja ręcznie zakodowanych wyjątków na rzecz sygnałów sensorycznych i konkurencji readoutów connectomu,
 - coraz większa integracja tekstu, voice, pamięci i zachowania społecznego w jeden współdzielony stan neuronalny.
