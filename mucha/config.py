@@ -247,6 +247,7 @@ class BehaviorConfig:
     attention_mention_boost: float = 0.35
     speak_threshold: float = 0.70
     reaction_threshold: float = 0.73
+    connectome_behavior_competition_enabled: bool = True
     reaction_cooldown_seconds: int = 20
     reaction_candidate_sample: int = 64
     save_every_seconds: int = 45
