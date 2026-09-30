@@ -48,8 +48,15 @@ class VoiceSensoryBus:
                 "connection_changed": now,
                 "last_any_speech": None,
                 "users": {},
-                "events": deque(maxlen=48),
+                "events": deque(maxlen=96),
+                "turn_history": deque(maxlen=256),
+                "speech_intervals": deque(maxlen=256),
+                "overlap_starts": deque(maxlen=128),
+                "handoffs": deque(maxlen=128),
+                "last_turn_user_id": None,
+                "last_turn_stop": None,
                 "last_reply": None,
+                "last_tts": None,
                 "last_transcript": None,
             }
             self._guilds[guild_id] = state
@@ -93,6 +100,14 @@ class VoiceSensoryBus:
         user["speaking"] = False
         user["last_turn_seconds"] = duration
         user["last_stop"] = now
+        if duration > 0.0:
+            state["speech_intervals"].append({
+                "start": started,
+                "end": last_packet,
+                "user_id": int(user["user_id"]),
+            })
+        state["last_turn_user_id"] = int(user["user_id"])
+        state["last_turn_stop"] = now
         self._append_event(
             state,
             "speech_stop",
@@ -172,9 +187,19 @@ class VoiceSensoryBus:
             user["channel_id"] = channel_id
             started_now = not bool(user.get("speaking"))
             if started_now:
+                active_others = sum(
+                    1
+                    for other_id, other in state["users"].items()
+                    if int(other_id) != user_id
+                    and other.get("speaking")
+                    and int(other.get("channel_id", 0)) == channel_id
+                )
+                previous_user = state.get("last_turn_user_id")
+                previous_stop = state.get("last_turn_stop")
                 user["speaking"] = True
                 user["speaking_since"] = now
                 user["turn_starts"].append(now)
+                state["turn_history"].append((now, user_id))
                 self._append_event(
                     state,
                     "speech_start",
@@ -183,6 +208,41 @@ class VoiceSensoryBus:
                     user_name=user["name"],
                     channel_id=channel_id,
                 )
+                if active_others > 0:
+                    state["overlap_starts"].append(now)
+                    self._append_event(
+                        state,
+                        "overlap_start",
+                        now,
+                        user_id=user_id,
+                        user_name=user["name"],
+                        channel_id=channel_id,
+                    )
+                elif (
+                    previous_user is not None
+                    and int(previous_user) != user_id
+                    and previous_stop is not None
+                ):
+                    latency = max(
+                        0.0,
+                        now - float(previous_stop),
+                    )
+                    if latency <= 5.0:
+                        state["handoffs"].append({
+                            "time": now,
+                            "from_user_id": int(previous_user),
+                            "to_user_id": user_id,
+                            "latency": latency,
+                        })
+                        self._append_event(
+                            state,
+                            "turn_handoff",
+                            now,
+                            user_id=user_id,
+                            user_name=user["name"],
+                            channel_id=channel_id,
+                            duration=latency,
+                        )
 
             user["last_packet"] = now
             user["packets"] = int(user.get("packets", 0)) + 1
@@ -223,17 +283,54 @@ class VoiceSensoryBus:
             )
             user["name"] = str(user_name or user_id)
             user["channel_id"] = int(channel_id)
-            user["last_transcript"] = str(text or "")[:180]
-            user["last_transcript_duration"] = max(0.0, float(duration))
+            transcript_text = str(text or "")[:180]
+            transcript_duration = max(0.0, float(duration))
+            word_count = len(
+                [part for part in transcript_text.split() if part]
+            )
+            words_per_second = (
+                word_count / transcript_duration
+                if transcript_duration > 0.05
+                else 0.0
+            )
+            user["last_transcript"] = transcript_text
+            user["last_transcript_duration"] = transcript_duration
             user["last_transcript_at"] = now
             state["last_transcript"] = {
                 "user_id": int(user_id),
                 "user_name": user["name"],
                 "channel_id": int(channel_id),
-                "text": str(text or "")[:180],
-                "duration": max(0.0, float(duration)),
+                "text": transcript_text,
+                "duration": transcript_duration,
+                "word_count": word_count,
+                "words_per_second": words_per_second,
                 "time": now,
             }
+
+    def note_tts(
+        self,
+        guild_id: int,
+        channel_id: int,
+        text: str,
+        *,
+        now: float | None = None,
+    ) -> None:
+        now = time.monotonic() if now is None else float(now)
+        with self._lock:
+            state = self._guild(int(guild_id), now)
+            state["last_tts"] = {
+                "channel_id": int(channel_id),
+                "text": str(text or "")[:180],
+                "time": now,
+                "replied": False,
+                "reply_user_id": None,
+            }
+            self._append_event(
+                state,
+                "mucha_tts",
+                now,
+                channel_id=int(channel_id),
+            )
 
     def note_reply_after_tts(
         self,
@@ -255,6 +352,13 @@ class VoiceSensoryBus:
                 "tts_age_seconds": max(0.0, float(tts_age_seconds)),
                 "time": now,
             }
+            last_tts = state.get("last_tts")
+            if (
+                last_tts is not None
+                and int(last_tts.get("channel_id", 0)) == int(channel_id)
+            ):
+                last_tts["replied"] = True
+                last_tts["reply_user_id"] = int(user_id)
             self._append_event(
                 state,
                 "reply_after_tts",
@@ -263,6 +367,177 @@ class VoiceSensoryBus:
                 user_name=str(user_name or user_id),
                 channel_id=int(channel_id),
             )
+
+    def _recent_dynamics_locked(
+        self,
+        state: dict,
+        now: float,
+        current: dict[int, dict],
+        channel_id: int | None,
+    ) -> dict:
+        window = float(self.recent_window_seconds)
+        cutoff = now - window
+
+        intervals = state["speech_intervals"]
+        while (
+            intervals
+            and float(intervals[0].get("end", 0.0)) < cutoff
+        ):
+            intervals.popleft()
+
+        turn_history = state["turn_history"]
+        while turn_history and float(turn_history[0][0]) < cutoff:
+            turn_history.popleft()
+
+        overlap_starts = state["overlap_starts"]
+        while overlap_starts and float(overlap_starts[0]) < cutoff:
+            overlap_starts.popleft()
+
+        handoffs = state["handoffs"]
+        while (
+            handoffs
+            and float(handoffs[0].get("time", 0.0)) < cutoff
+        ):
+            handoffs.popleft()
+
+        clipped: list[tuple[float, float, int]] = []
+        per_user: dict[int, float] = {}
+        finished_turn_lengths: list[float] = []
+        for row in intervals:
+            start = max(cutoff, float(row.get("start", now)))
+            end = min(now, float(row.get("end", now)))
+            if end <= start:
+                continue
+            user_id = int(row.get("user_id", 0))
+            clipped.append((start, end, user_id))
+            duration = end - start
+            per_user[user_id] = per_user.get(user_id, 0.0) + duration
+            finished_turn_lengths.append(duration)
+
+        normalized_channel = int(channel_id) if channel_id is not None else None
+        for user_id, user in state["users"].items():
+            if (
+                not user.get("speaking")
+                or normalized_channel is None
+                or int(user.get("channel_id", 0)) != normalized_channel
+            ):
+                continue
+            start = max(
+                cutoff,
+                float(user.get("speaking_since", now)),
+            )
+            if now <= start:
+                continue
+            uid = int(user_id)
+            clipped.append((start, now, uid))
+            per_user[uid] = per_user.get(uid, 0.0) + (now - start)
+
+        merged: list[list[float]] = []
+        for start, end, _ in sorted(clipped):
+            if not merged or start > merged[-1][1]:
+                merged.append([start, end])
+            else:
+                merged[-1][1] = max(merged[-1][1], end)
+        speech_seconds = sum(end - start for start, end in merged)
+        speech_ratio = max(0.0, min(1.0, speech_seconds / window))
+
+        turns_recent = list(turn_history)
+        unique_recent = len({int(row[1]) for row in turns_recent})
+        switches = sum(
+            1
+            for left, right in zip(
+                turns_recent,
+                turns_recent[1:],
+            )
+            if int(left[1]) != int(right[1])
+        )
+
+        aggregate_speaker_seconds = sum(per_user.values())
+        top_speaker_id = None
+        top_speaker_seconds = 0.0
+        if per_user:
+            top_speaker_id, top_speaker_seconds = max(
+                per_user.items(),
+                key=lambda item: item[1],
+            )
+        dominance = (
+            top_speaker_seconds / aggregate_speaker_seconds
+            if aggregate_speaker_seconds > 1e-9
+            else 0.0
+        )
+
+        handoff_rows = list(handoffs)
+        mean_handoff = (
+            sum(float(row.get("latency", 0.0)) for row in handoff_rows)
+            / len(handoff_rows)
+            if handoff_rows
+            else None
+        )
+        mean_turn = (
+            sum(finished_turn_lengths) / len(finished_turn_lengths)
+            if finished_turn_lengths
+            else 0.0
+        )
+        longest_turn = (
+            max(finished_turn_lengths)
+            if finished_turn_lengths
+            else 0.0
+        )
+        overlap_events = len(overlap_starts)
+        turns_count = len(turns_recent)
+
+        intensity = max(
+            0.0,
+            min(
+                1.0,
+                0.40 * min(1.0, turns_count / 18.0)
+                + 0.25 * min(1.0, switches / 10.0)
+                + 0.25 * speech_ratio
+                + 0.10 * min(1.0, unique_recent / 4.0),
+            ),
+        )
+
+        if overlap_events >= 2:
+            mode = "CROSSTALK"
+        elif (
+            aggregate_speaker_seconds >= 5.0
+            and dominance >= 0.72
+        ):
+            mode = "MONOLOGUE"
+        elif switches >= 2 and unique_recent >= 2:
+            mode = "DIALOGUE"
+        elif speech_ratio <= 0.03:
+            mode = "QUIET"
+        else:
+            mode = "CONVERSATION"
+
+        top_member = current.get(int(top_speaker_id)) if top_speaker_id else None
+        return {
+            "window_seconds": window,
+            "speech_seconds": speech_seconds,
+            "speech_ratio": speech_ratio,
+            "unique_speakers": unique_recent,
+            "speaker_switches": switches,
+            "overlap_events": overlap_events,
+            "handoff_count": len(handoff_rows),
+            "mean_handoff_seconds": mean_handoff,
+            "mean_turn_seconds": mean_turn,
+            "longest_turn_seconds": longest_turn,
+            "top_speaker_id": top_speaker_id,
+            "top_speaker_name": (
+                str(top_member.get("name", top_speaker_id))
+                if top_member is not None
+                else (
+                    str(top_speaker_id)
+                    if top_speaker_id is not None
+                    else ""
+                )
+            ),
+            "top_speaker_seconds": top_speaker_seconds,
+            "dominance": dominance,
+            "conversation_intensity": intensity,
+            "conversation_mode": mode,
+        }
 
     def clear_guild(self, guild_id: int) -> None:
         with self._lock:
@@ -373,6 +648,13 @@ class VoiceSensoryBus:
             else:
                 silence_seconds = 0.0
 
+            dynamics = self._recent_dynamics_locked(
+                state,
+                now,
+                current,
+                normalized_channel,
+            )
+
             current_affinities = [
                 float(row["affinity"]) for row in current.values()
             ]
@@ -391,6 +673,23 @@ class VoiceSensoryBus:
                 reply is not None
                 and reply_age is not None
                 and reply_age <= self.reply_window_seconds
+            )
+            last_tts = state.get("last_tts")
+            tts_age = (
+                max(0.0, now - float(last_tts["time"]))
+                if last_tts is not None
+                else None
+            )
+            tts_pending_reply = bool(
+                last_tts is not None
+                and not bool(last_tts.get("replied"))
+                and tts_age is not None
+                and tts_age <= self.reply_window_seconds
+                and (
+                    normalized_channel is None
+                    or int(last_tts.get("channel_id", 0))
+                    == normalized_channel
+                )
             )
 
             events = []
@@ -432,6 +731,48 @@ class VoiceSensoryBus:
                 "overlap_count": overlap_count,
                 "silence_seconds": silence_seconds,
                 "turns_per_minute": int(recent_turns),
+                "speech_seconds_60s": float(
+                    dynamics["speech_seconds"]
+                ),
+                "speech_ratio_60s": float(
+                    dynamics["speech_ratio"]
+                ),
+                "unique_speakers_60s": int(
+                    dynamics["unique_speakers"]
+                ),
+                "speaker_switches_60s": int(
+                    dynamics["speaker_switches"]
+                ),
+                "overlap_events_60s": int(
+                    dynamics["overlap_events"]
+                ),
+                "handoff_count_60s": int(
+                    dynamics["handoff_count"]
+                ),
+                "mean_handoff_seconds": (
+                    float(dynamics["mean_handoff_seconds"])
+                    if dynamics["mean_handoff_seconds"] is not None
+                    else None
+                ),
+                "mean_turn_seconds": float(
+                    dynamics["mean_turn_seconds"]
+                ),
+                "longest_turn_seconds": float(
+                    dynamics["longest_turn_seconds"]
+                ),
+                "top_speaker_id": dynamics["top_speaker_id"],
+                "top_speaker_name": str(
+                    dynamics["top_speaker_name"]
+                ),
+                "speaker_dominance": float(
+                    dynamics["dominance"]
+                ),
+                "conversation_intensity": float(
+                    dynamics["conversation_intensity"]
+                ),
+                "conversation_mode": str(
+                    dynamics["conversation_mode"]
+                ),
                 "speakers": speakers,
                 "familiar_here": sum(
                     1
@@ -482,6 +823,10 @@ class VoiceSensoryBus:
                     float(reply.get("tts_age_seconds", 0.0))
                     if reply_active and reply is not None
                     else None
+                ),
+                "tts_pending_reply": tts_pending_reply,
+                "tts_age_seconds": (
+                    tts_age if tts_pending_reply else None
                 ),
                 "scene_age_seconds": (
                     max(0.0, now - float(state.get("scene_started", now)))
