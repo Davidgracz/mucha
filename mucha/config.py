@@ -260,6 +260,9 @@ class BehaviorConfig:
     channel_model_enabled: bool = True
     channel_model_min_observations: int = 2
     channel_model_sensory_magnitude: float = 0.32
+    social_scene_model_enabled: bool = True
+    social_scene_min_observations: int = 2
+    social_scene_sensory_magnitude: float = 0.36
     social_window_seconds: int = 900
     word_reuse_reward: float = 0.20
     phrase_reuse_reward: float = 0.35
