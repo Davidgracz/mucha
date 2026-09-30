@@ -6673,6 +6673,27 @@ class MuchaClient(discord.Client):
                     "UNKNOWN",
                 )
             ),
+            "social_scene_observations": int(
+                (row.get("social_scene_profile") or {}).get(
+                    "observations",
+                    0,
+                )
+            ),
+            "social_scene_familiarity": float(
+                (row.get("social_scene_profile") or {}).get(
+                    "familiarity",
+                    0.0,
+                )
+            ),
+            "social_scene_valence": float(
+                (row.get("social_scene_profile") or {}).get(
+                    "valence",
+                    0.0,
+                )
+            ),
+            "social_scene_key": str(
+                row.get("social_scene_key") or ""
+            ),
         }
 
         return {
@@ -7058,6 +7079,55 @@ class MuchaClient(discord.Client):
                 self._channel_model_debug.get(cid, {})
             )
 
+        social_scene_profiles = (
+            self.voice_episodes.social_scene_profiles(30)
+            if self.cfg.behavior.social_scene_model_enabled
+            else []
+        )
+        for profile in social_scene_profiles:
+            cid = profile.get("channel_id")
+            live_channel = (
+                channel_lookup.get(int(cid))
+                if cid is not None
+                else None
+            )
+            profile["channel_name"] = (
+                live_channel["name"]
+                if live_channel is not None
+                else (
+                    str(cid)
+                    if cid is not None
+                    else "poza voice"
+                )
+            )
+            profile["guild"] = (
+                live_channel["guild"]
+                if live_channel is not None
+                else ""
+            )
+            people = []
+            for uid in list(profile.get("user_ids") or [])[:6]:
+                cached_user = self.get_user(int(uid))
+                people.append({
+                    "user_id": int(uid),
+                    "display_name": (
+                        getattr(
+                            cached_user,
+                            "display_name",
+                            getattr(cached_user, "name", str(uid)),
+                        )
+                        if cached_user is not None
+                        else str(uid)
+                    ),
+                })
+            profile["people"] = people
+            profile["last_injection"] = dict(
+                self._social_scene_model_debug.get(
+                    str(profile.get("scene_key") or ""),
+                    {},
+                )
+            )
+
         voice_parts = []
         for guild in self.guilds:
             vc = guild.voice_client
@@ -7123,6 +7193,7 @@ class MuchaClient(discord.Client):
             "user_affinities": user_affinities,
             "person_profiles": person_profiles,
             "channel_profiles": channel_profiles,
+            "social_scene_profiles": social_scene_profiles,
             "word_feedback": self.language.top_word_feedback(30),
             "social_settings": {
                 "user_avoid_threshold": self.cfg.behavior.user_avoid_threshold,
