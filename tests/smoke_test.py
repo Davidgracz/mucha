@@ -370,6 +370,87 @@ def main():
             for row in restored.social_scene_profiles(8)
         )
 
+        dynamics_snapshot = {
+            "conversation_mode": "DIALOGUE",
+            "conversation_intensity": 0.72,
+            "speech_ratio_60s": 0.64,
+            "speaker_switches_60s": 5,
+            "overlap_events_60s": 1,
+            "mean_handoff_seconds": 0.62,
+            "mean_turn_seconds": 3.2,
+            "speaker_dominance": 0.58,
+            "silence_seconds": 0.4,
+            "last_transcript": {
+                "words_per_second": 2.1,
+            },
+        }
+        dynamics_key = restored.make_voice_dynamics_key(
+            dynamics_snapshot
+        )
+        assert "mode=DIALOGUE" in dynamics_key
+        restored.observe_voice_dynamics_contact(
+            dynamics_key,
+            now=time.time(),
+        )
+        restored.observe_voice_dynamics_contact(
+            dynamics_key,
+            now=time.time(),
+        )
+        restored.observe_voice_dynamics_outcome(
+            dynamics_key,
+            "stay",
+            0.55,
+            now=time.time(),
+        )
+        restored.observe_voice_dynamics_outcome(
+            dynamics_key,
+            "voice_move",
+            -0.40,
+            now=time.time(),
+        )
+        restored.observe_voice_dynamics_outcome(
+            dynamics_key,
+            "speak",
+            0.30,
+            now=time.time(),
+        )
+        dynamics_profile = restored.voice_dynamics_profile(
+            dynamics_key
+        )
+        assert dynamics_profile["conversation_mode"] == "DIALOGUE"
+        assert dynamics_profile["seen_observations"] == 2
+        assert dynamics_profile["outcome_observations"] == 3
+        assert dynamics_profile["switch_bucket"] == 2
+        assert dynamics_profile["overlap_bucket"] == 1
+        assert dynamics_profile["handoff_bucket"] == "normal"
+        assert dynamics_profile["turn_bucket"] == "medium"
+        assert dynamics_profile["silence_bucket"] == "active"
+        assert dynamics_profile["speech_rate_bucket"] == "normal"
+        assert dynamics_profile["preferred_action"]["action"] == "stay"
+        assert dynamics_profile["avoided_action"]["action"] == "voice_move"
+        assert any(
+            row["action"] == "speak"
+            and row["signal"] > 0.0
+            for row in dynamics_profile["actions"]
+        )
+        assert any(
+            row["dynamics_key"] == dynamics_key
+            for row in restored.voice_dynamics_profiles(8)
+        )
+        dynamics_brain = b.inject_voice_dynamics_profile(
+            dynamics_profile,
+            magnitude=0.38,
+        )
+        assert dynamics_brain["enabled"] is True
+        assert dynamics_brain["cue_count"] > 0
+        assert dynamics_brain["direct_action_bias"] is False
+        assert any(
+            row["key"].startswith(
+                "voice:dynamics-history:action:"
+            )
+            for row in dynamics_brain["cues"]
+        )
+
         replay_candidates = restored.replay_candidates(
             limit=4,
             max_age_seconds=86400,
@@ -958,6 +1039,10 @@ def main():
         assert "social_scene_model_enabled" in CONFIG_HTML
         assert "social_scene_min_observations" in CONFIG_HTML
         assert "social_scene_sensory_magnitude" in CONFIG_HTML
+        assert "voice_dynamics_learning_enabled" in CONFIG_HTML
+        assert "voice_dynamics_min_observations" in CONFIG_HTML
+        assert "voice_dynamics_sensory_magnitude" in CONFIG_HTML
+        assert "voice_dynamics_seen_cooldown_seconds" in CONFIG_HTML
         assert "connectome_voice_control_enabled" in CONFIG_HTML
         assert "social_drive_enabled" in CONFIG_HTML
         assert "social_drive_max_magnitude" in CONFIG_HTML
@@ -1026,6 +1111,10 @@ def main():
         assert "renderSocialScenes" in HTML
         assert 'id="social-scene-grid"' in HTML
         assert "social-scene-memory" in HTML
+        assert "Reward-learned Conversation Dynamics" in HTML
+        assert "renderVoiceDynamicsProfiles" in HTML
+        assert 'id="voice-dynamics-grid"' in HTML
+        assert "voice-dynamics-memory" in HTML
         assert "Curiosity / Uncertainty" in HTML
         assert "Tryb rozmowy" in HTML
         assert "Speech ratio 60s" in HTML
@@ -1188,12 +1277,23 @@ def main():
         assert "observe_social_scene_contact" in episodic_source
         assert "observe_social_scene_outcome" in episodic_source
         assert "social_scene_profile" in episodic_source
+        assert "make_voice_dynamics_key" in episodic_source
+        assert "observe_voice_dynamics_contact" in episodic_source
+        assert "observe_voice_dynamics_outcome" in episodic_source
+        assert "voice_dynamics_profile" in episodic_source
+        assert '"voice_dynamics_seen"' in episodic_source
+        assert '"voice_dynamics"' in episodic_source
         assert '"channel_visit"' in episodic_source
         assert '"channel_people"' in episodic_source
         assert '"channel_mode"' in episodic_source
         assert "inject_person_profile" in bot_source
         assert "inject_channel_profile" in bot_source
         assert "inject_social_scene_profile" in bot_source
+        assert "inject_voice_dynamics_profile" in bot_source
+        assert "voice_dynamics_key" in bot_source
+        assert "_voice_dynamics_model_debug" in bot_source
+        assert "observe_voice_dynamics_contact" in bot_source
+        assert "observe_voice_dynamics_outcome" in bot_source
         assert "social_scene_key" in bot_source
         assert "observe_social_scene_contact" in bot_source
         assert "observe_social_scene_outcome" in bot_source
