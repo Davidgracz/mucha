@@ -80,6 +80,7 @@ class VoiceEpisodicMemory:
             dict,
         ] = {}
         self._person_profile_cache: dict[int, dict] = {}
+        self._channel_profile_cache: dict[int, dict] = {}
         self._last_forgetting_at = time.time()
         self._last_forgetting_diag: dict = {
             "ran": False,
@@ -323,6 +324,7 @@ class VoiceEpisodicMemory:
         entry["last_reward"] = actual
         entry["updated_at"] = float(now)
         self._person_profile_cache.clear()
+        self._channel_profile_cache.clear()
         if persist:
             self._persist_semantic_entry(
                 key[0],
@@ -432,6 +434,62 @@ class VoiceEpisodicMemory:
                     concept_key=f"{int(user_id)}@{context}",
                     action=episode.action,
                     actual_reward=episode.actual_reward,
+                    now=episode.time,
+                    persist=True,
+                )
+        if rows:
+            self.db.commit()
+
+    def _backfill_channel_semantics_from_db(self) -> None:
+        """Create durable channel/place concepts for older episode DBs once."""
+        if self.db is None or not self.semantic_memory_enabled:
+            return
+        if any(
+            concept_type == "channel_visit"
+            for concept_type, _, _ in self._semantic.keys()
+        ):
+            return
+
+        rows = self.db.execute(
+            """
+            SELECT created_at, guild_id, channel_id, channel_name,
+                   user_ids_json, user_names_json, context,
+                   scene_key, action, predicted_reward,
+                   actual_reward, prediction_error, source
+            FROM voice_episodes
+            WHERE channel_id IS NOT NULL
+            ORDER BY id DESC
+            LIMIT 5000
+            """
+        ).fetchall()
+        for row in reversed(rows):
+            episode = self._episode_from_row(row)
+            if episode.channel_id is None:
+                continue
+            channel_key = str(int(episode.channel_id))
+            self._update_semantic_entry(
+                concept_type="channel_visit",
+                concept_key=channel_key,
+                action="historical_episode",
+                actual_reward=0.0,
+                now=episode.time,
+                persist=True,
+            )
+            if episode.channel_name:
+                self._update_semantic_entry(
+                    concept_type="channel_meta",
+                    concept_key=channel_key,
+                    action=f"name:{episode.channel_name}",
+                    actual_reward=0.0,
+                    now=episode.time,
+                    persist=True,
+                )
+            for user_id in sorted(set(episode.user_ids)):
+                self._update_semantic_entry(
+                    concept_type="channel_people",
+                    concept_key=channel_key,
+                    action=str(int(user_id)),
+                    actual_reward=0.0,
                     now=episode.time,
                     persist=True,
                 )
@@ -696,6 +754,452 @@ class VoiceEpisodicMemory:
             ),
             "concepts": rows,
         }
+
+    def observe_channel_visit(
+        self,
+        channel_id: int,
+        channel_name: str,
+        user_ids: list[int] | tuple[int, ...] = (),
+        *,
+        source: str = "visit",
+        now: float | None = None,
+    ) -> dict:
+        """Persist one real encounter with a Discord voice place."""
+        channel_id = int(channel_id)
+        if channel_id <= 0 or not self.semantic_memory_enabled:
+            return {}
+        now_value = float(time.time() if now is None else now)
+        channel_key = str(channel_id)
+
+        visit = self._update_semantic_entry(
+            concept_type="channel_visit",
+            concept_key=channel_key,
+            action=str(source or "visit"),
+            actual_reward=0.0,
+            now=now_value,
+            persist=True,
+        )
+        clean_name = str(channel_name or channel_id).strip()
+        if clean_name:
+            self._update_semantic_entry(
+                concept_type="channel_meta",
+                concept_key=channel_key,
+                action=f"name:{clean_name[:120]}",
+                actual_reward=0.0,
+                now=now_value,
+                persist=True,
+            )
+        for user_id in sorted(set(int(x) for x in user_ids)):
+            if user_id <= 0:
+                continue
+            self._update_semantic_entry(
+                concept_type="channel_people",
+                concept_key=channel_key,
+                action=str(user_id),
+                actual_reward=0.0,
+                now=now_value,
+                persist=True,
+            )
+        if self.db is not None:
+            self.db.commit()
+        return visit
+
+    def observe_channel_dynamics(
+        self,
+        channel_id: int,
+        channel_name: str,
+        *,
+        conversation_mode: str,
+        intensity: float,
+        speech_ratio: float,
+        human_count: int,
+        speaker_user_id: int | None = None,
+        now: float | None = None,
+    ) -> list[dict]:
+        """Persist neutral statistics describing what a place is usually like."""
+        channel_id = int(channel_id)
+        if channel_id <= 0 or not self.semantic_memory_enabled:
+            return []
+        now_value = float(time.time() if now is None else now)
+        channel_key = str(channel_id)
+        mode = str(conversation_mode or "QUIET").upper()
+        intensity_bucket = min(
+            5,
+            max(0, int(round(max(0.0, min(1.0, float(intensity))) * 5.0))),
+        )
+        speech_bucket = min(
+            5,
+            max(0, int(round(max(0.0, min(1.0, float(speech_ratio))) * 5.0))),
+        )
+        humans_bucket = min(6, max(0, int(human_count)))
+
+        rows = [
+            self._update_semantic_entry(
+                concept_type="channel_mode",
+                concept_key=channel_key,
+                action=mode,
+                actual_reward=0.0,
+                now=now_value,
+                persist=True,
+            ),
+            self._update_semantic_entry(
+                concept_type="channel_intensity",
+                concept_key=channel_key,
+                action=str(intensity_bucket),
+                actual_reward=0.0,
+                now=now_value,
+                persist=True,
+            ),
+            self._update_semantic_entry(
+                concept_type="channel_speech",
+                concept_key=channel_key,
+                action=str(speech_bucket),
+                actual_reward=0.0,
+                now=now_value,
+                persist=True,
+            ),
+            self._update_semantic_entry(
+                concept_type="channel_humans",
+                concept_key=channel_key,
+                action=str(humans_bucket),
+                actual_reward=0.0,
+                now=now_value,
+                persist=True,
+            ),
+        ]
+        clean_name = str(channel_name or channel_id).strip()
+        if clean_name:
+            self._update_semantic_entry(
+                concept_type="channel_meta",
+                concept_key=channel_key,
+                action=f"name:{clean_name[:120]}",
+                actual_reward=0.0,
+                now=now_value,
+                persist=True,
+            )
+        if speaker_user_id is not None and int(speaker_user_id) > 0:
+            self._update_semantic_entry(
+                concept_type="channel_people",
+                concept_key=channel_key,
+                action=str(int(speaker_user_id)),
+                actual_reward=0.0,
+                now=now_value,
+                persist=True,
+            )
+        if self.db is not None:
+            self.db.commit()
+        return rows
+
+    @staticmethod
+    def _weighted_bucket_mean(
+        rows: list[tuple[str, dict]],
+        maximum_bucket: int,
+    ) -> float:
+        total = 0
+        weighted = 0.0
+        for bucket, entry in rows:
+            try:
+                value = max(
+                    0,
+                    min(maximum_bucket, int(bucket)),
+                )
+            except (TypeError, ValueError):
+                continue
+            observations = max(
+                0,
+                int(entry.get("observations", 0)),
+            )
+            total += observations
+            weighted += value * observations
+        if total <= 0 or maximum_bucket <= 0:
+            return 0.0
+        return max(
+            0.0,
+            min(1.0, weighted / (total * maximum_bucket)),
+        )
+
+    def channel_profile(self, channel_id: int) -> dict:
+        """Derive a durable model of one Discord voice place."""
+        channel_id = int(channel_id)
+        cached = self._channel_profile_cache.get(channel_id)
+        if cached is not None:
+            return dict(cached)
+
+        channel_key = str(channel_id)
+        direct_rows: list[tuple[str, dict]] = []
+        visit_rows: list[tuple[str, dict]] = []
+        meta_rows: list[tuple[str, dict]] = []
+        people_rows_raw: list[tuple[str, dict]] = []
+        mode_rows_raw: list[tuple[str, dict]] = []
+        intensity_rows: list[tuple[str, dict]] = []
+        speech_rows: list[tuple[str, dict]] = []
+        human_rows: list[tuple[str, dict]] = []
+
+        for (
+            concept_type,
+            concept_key,
+            action,
+        ), entry in self._semantic.items():
+            if concept_key != channel_key:
+                continue
+            row = (str(action), entry)
+            if concept_type == "channel":
+                direct_rows.append(row)
+            elif concept_type == "channel_visit":
+                visit_rows.append(row)
+            elif concept_type == "channel_meta":
+                meta_rows.append(row)
+            elif concept_type == "channel_people":
+                people_rows_raw.append(row)
+            elif concept_type == "channel_mode":
+                mode_rows_raw.append(row)
+            elif concept_type == "channel_intensity":
+                intensity_rows.append(row)
+            elif concept_type == "channel_speech":
+                speech_rows.append(row)
+            elif concept_type == "channel_humans":
+                human_rows.append(row)
+
+        direct = self._aggregate_person_entries(direct_rows)
+        visits = self._aggregate_person_entries(visit_rows)
+        reward_observations = int(direct["observations"])
+        visit_observations = int(visits["observations"])
+        dynamics_observations = sum(
+            max(0, int(entry.get("observations", 0)))
+            for _, entry in mode_rows_raw
+        )
+        observations = (
+            reward_observations
+            + visit_observations
+            + dynamics_observations
+        )
+        familiarity = (
+            1.0 - math.exp(-observations / 12.0)
+            if observations > 0
+            else 0.0
+        )
+        valence = float(direct["expected_reward"])
+        confidence = max(
+            0.0,
+            min(
+                1.0,
+                0.60 * float(direct["confidence"])
+                + 0.40 * familiarity,
+            ),
+        )
+        if valence >= 0.08:
+            valence_label = "positive"
+        elif valence <= -0.08:
+            valence_label = "negative"
+        else:
+            valence_label = "neutral"
+
+        action_rows: list[dict] = []
+        for action, entry in direct_rows:
+            row_conf = self._semantic_confidence(entry)
+            expected = float(
+                entry.get("expected_reward", 0.0)
+            )
+            action_rows.append({
+                "action": action,
+                "expected_reward": expected,
+                "confidence": row_conf,
+                "signal": expected * row_conf,
+                "observations": int(
+                    entry.get("observations", 0)
+                ),
+                "updated_at": float(
+                    entry.get("updated_at", 0.0)
+                ),
+            })
+        action_rows.sort(
+            key=lambda row: (
+                abs(float(row["signal"])),
+                int(row["observations"]),
+            ),
+            reverse=True,
+        )
+        preferred = max(
+            action_rows,
+            key=lambda row: float(row["signal"]),
+            default=None,
+        )
+        avoided = min(
+            action_rows,
+            key=lambda row: float(row["signal"]),
+            default=None,
+        )
+        if preferred is not None and float(preferred["signal"]) <= 0.0:
+            preferred = None
+        if avoided is not None and float(avoided["signal"]) >= 0.0:
+            avoided = None
+
+        channel_name = ""
+        if meta_rows:
+            latest_meta = max(
+                meta_rows,
+                key=lambda row: float(
+                    row[1].get("updated_at", 0.0)
+                ),
+            )
+            if latest_meta[0].startswith("name:"):
+                channel_name = latest_meta[0][5:]
+
+        people = []
+        for user_key, entry in people_rows_raw:
+            if not str(user_key).isdigit():
+                continue
+            people.append({
+                "user_id": int(user_key),
+                "observations": int(
+                    entry.get("observations", 0)
+                ),
+                "updated_at": float(
+                    entry.get("updated_at", 0.0)
+                ),
+            })
+        people.sort(
+            key=lambda row: (
+                int(row["observations"]),
+                float(row["updated_at"]),
+            ),
+            reverse=True,
+        )
+
+        modes = []
+        for mode, entry in mode_rows_raw:
+            modes.append({
+                "mode": str(mode),
+                "observations": int(
+                    entry.get("observations", 0)
+                ),
+                "updated_at": float(
+                    entry.get("updated_at", 0.0)
+                ),
+            })
+        modes.sort(
+            key=lambda row: (
+                int(row["observations"]),
+                float(row["updated_at"]),
+            ),
+            reverse=True,
+        )
+        dominant_mode = (
+            str(modes[0]["mode"])
+            if modes
+            else "UNKNOWN"
+        )
+
+        recent_episodes = []
+        last_seen = max(
+            [float(direct["updated_at"]), float(visits["updated_at"])]
+            + [
+                float(entry.get("updated_at", 0.0))
+                for _, entry in mode_rows_raw
+            ]
+            + [0.0]
+        )
+        for episode in reversed(self._episodes):
+            if episode.channel_id != channel_id:
+                continue
+            if not channel_name and episode.channel_name:
+                channel_name = str(episode.channel_name)
+            last_seen = max(last_seen, float(episode.time))
+            recent_episodes.append({
+                "time": float(episode.time),
+                "action": str(episode.action),
+                "actual_reward": float(episode.actual_reward),
+                "prediction_error": float(
+                    episode.prediction_error
+                ),
+                "human_count": len(episode.user_ids),
+                "user_ids": list(episode.user_ids),
+                "source": str(episode.source),
+            })
+            if len(recent_episodes) >= 6:
+                break
+
+        profile = {
+            "channel_id": channel_id,
+            "channel_name": channel_name or str(channel_id),
+            "observations": observations,
+            "reward_observations": reward_observations,
+            "visit_observations": visit_observations,
+            "dynamics_observations": dynamics_observations,
+            "familiarity": max(0.0, min(1.0, familiarity)),
+            "confidence": confidence,
+            "valence": max(-1.0, min(1.0, valence)),
+            "valence_label": valence_label,
+            "dominant_mode": dominant_mode,
+            "conversation_modes": modes[:8],
+            "mean_intensity": self._weighted_bucket_mean(
+                intensity_rows,
+                5,
+            ),
+            "mean_speech_ratio": self._weighted_bucket_mean(
+                speech_rows,
+                5,
+            ),
+            "mean_human_density": (
+                self._weighted_bucket_mean(human_rows, 6)
+                * 6.0
+            ),
+            "people": people[:12],
+            "actions": action_rows[:10],
+            "preferred_action": (
+                dict(preferred)
+                if preferred is not None
+                else None
+            ),
+            "avoided_action": (
+                dict(avoided)
+                if avoided is not None
+                else None
+            ),
+            "recent_episodes": recent_episodes,
+            "updated_at": max(
+                float(direct["updated_at"]),
+                float(visits["updated_at"]),
+                last_seen,
+            ),
+            "last_seen": last_seen,
+        }
+        self._channel_profile_cache[channel_id] = dict(profile)
+        return dict(profile)
+
+    def channel_profiles(
+        self,
+        limit: int = 30,
+    ) -> list[dict]:
+        limit = max(1, min(100, int(limit)))
+        channel_ids = sorted({
+            int(concept_key)
+            for concept_type, concept_key, _ in self._semantic.keys()
+            if (
+                concept_type
+                in {
+                    "channel",
+                    "channel_visit",
+                    "channel_people",
+                    "channel_mode",
+                    "channel_meta",
+                }
+                and str(concept_key).isdigit()
+            )
+        })
+        rows = [
+            self.channel_profile(channel_id)
+            for channel_id in channel_ids
+        ]
+        rows.sort(
+            key=lambda row: (
+                int(row.get("observations", 0)),
+                float(row.get("confidence", 0.0)),
+                float(row.get("updated_at", 0.0)),
+            ),
+            reverse=True,
+        )
+        return rows[:limit]
 
     def observe_person_contact(
         self,
@@ -1410,6 +1914,7 @@ class VoiceEpisodicMemory:
             self._bootstrap_semantics_from_db()
         if self.semantic_memory_enabled:
             self._backfill_person_semantics_from_db()
+            self._backfill_channel_semantics_from_db()
 
     @staticmethod
     def _episode_from_row(row) -> VoiceEpisode:
@@ -1812,6 +2317,7 @@ class VoiceEpisodicMemory:
 
         if updates:
             self._person_profile_cache.clear()
+            self._channel_profile_cache.clear()
         if self.db is not None and updates:
             self.db.commit()
         return updates
@@ -1868,6 +2374,7 @@ class VoiceEpisodicMemory:
             )
 
         self._person_profile_cache.clear()
+        self._channel_profile_cache.clear()
 
         if self.db is not None:
             self.db.execute(
