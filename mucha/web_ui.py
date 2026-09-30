@@ -251,6 +251,14 @@ const groups=[
   ["memory_replay_reward_scale","Replay: siła uczenia","number",0.01,0,0.5,"Mała część oryginalnego reward/prediction error używana do ponownej plastyczności."],
   ["memory_replay_steps","Replay: ticki connectomu","number",1,1,24,"Liczba kroków propagacji realnego connectome przed ponownym rewardem."],
   ["memory_replay_max_age_days","Replay: maks. wiek wspomnienia","number",1,1,365,"Jak stare epizody mogą wracać podczas konsolidacji."],
+  ["sleep_enabled","SLEEP / offline consolidation","bool",0,0,0,"Po dłuższej ciszy Mucha wchodzi w osobny stan snu i wykonuje serię mocniejszych replay bez normalnych decyzji voice/text."],
+  ["sleep_idle_seconds","Sleep: cisza przed snem","number",60,60,604800,"Ile sekund realnej ciszy Discord musi minąć zanim może rozpocząć się jedna sesja snu."],
+  ["sleep_cycle_interval_seconds","Sleep: odstęp cykli","number",5,5,3600,"Minimalny odstęp pomiędzy kolejnymi cyklami offline replay podczas snu."],
+  ["sleep_max_cycles","Sleep: cykle na sesję","number",1,1,64,"Po ilu cyklach sen kończy się. Następny sen wymaga nowej aktywności i kolejnego okresu ciszy."],
+  ["sleep_replay_batch_size","Sleep: epizody na cykl","number",1,1,16,"Ile istotnych wspomnień może zostać reaktywowanych w jednym cyklu snu."],
+  ["sleep_replay_magnitude_multiplier","Sleep: × siła reaktywacji","number",0.05,0.25,4,"Mnożnik siły sensorycznego replay względem zwykłego MEMORY REPLAY."],
+  ["sleep_reward_scale_multiplier","Sleep: × plastyczność replay","number",0.05,0.25,4,"Mnożnik niewielkiego reward/punish używanego do ponownej plastyczności podczas snu."],
+  ["sleep_steps_multiplier","Sleep: × ticki connectomu","number",0.25,0.5,4,"Mnożnik liczby kroków propagacji connectomu podczas każdego replay w stanie snu."],
   ["episodic_consolidation_gain","Tempo utrwalania wspomnień","number",0.01,0,1,"Jak szybko powtarzane doświadczenia i MEMORY REPLAY zwiększają siłę pamięci sceny."],
   ["episodic_forgetting_half_life_days","Półokres pamięci epizodycznej","number",0.25,0.25,3650,"Jak szybko bez ponownego wzmacniania zanikają expected reward i consolidation strength scen."],
   ["episodic_forgetting_interval_seconds","Interwał zapominania pamięci","number",30,30,86400,"Jak często stosować czasowy decay pamięci epizodycznej."],
@@ -2154,6 +2162,25 @@ main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template
 
     <div class="section-heading" id="learning-section"><div><span class="section-no">03 / UCZENIE</span><h2>Uczenie i pamięć</h2><p>Zmiany wynikające z rewardu, plastyczność, historia aktywności i to, co utrwaliło się od startu.</p></div></div>
 
+    <div class="card span3 focus-card">
+      <h2>💤 Sleep / Offline Consolidation <span class="help-dot" data-help-key="sleep" tabindex="0">?</span></h2>
+      <div class="learning-grid" style="grid-template-columns:repeat(5,minmax(0,1fr))">
+        <div class="kpi"><small>stan</small><strong id="sleep-state">—</strong></div>
+        <div class="kpi"><small>cisza</small><strong id="sleep-quiet">—</strong></div>
+        <div class="kpi"><small>cykl</small><strong id="sleep-cycle">—</strong></div>
+        <div class="kpi"><small>replay epizodów</small><strong id="sleep-episodes">—</strong></div>
+        <div class="kpi"><small>zmienione synapsy</small><strong id="sleep-synapses">—</strong></div>
+        <div class="kpi"><small>zmienione neurony</small><strong id="sleep-neurons">—</strong></div>
+        <div class="kpi"><small>semantic rehearsal</small><strong id="sleep-semantic">—</strong></div>
+        <div class="kpi"><small>Δ siły wspomnień</small><strong id="sleep-memory-delta">—</strong></div>
+        <div class="kpi"><small>utrwalone sceny</small><strong id="sleep-scenes">—</strong></div>
+        <div class="kpi"><small>utrwalone synapsy</small><strong id="sleep-consolidated-synapses">—</strong></div>
+      </div>
+      <div style="margin:10px 0 8px"><div class="track"><div class="fill" id="sleep-progress" style="width:0%"></div></div></div>
+      <div class="reason" id="sleep-summary">Czekam na warunki snu…</div>
+      <div id="sleep-last" class="voice-note"></div>
+    </div>
+
     <div class="card span2 advanced-card">
       <h2>Aktywność w czasie <span class="help-dot" data-help-key="activity-chart" tabindex="0">?</span></h2>
       <canvas id="chart" width="1000" height="220" aria-label="Wykres aktywności mózgu"></canvas>
@@ -2398,6 +2425,7 @@ const HELP={
   "activity-chart":{title:"Aktywność w czasie",body:"Historia średniej i maksymalnej aktywacji connectomu.",read:"Pozwala zobaczyć odpowiedź na bodźce i tempo wygaszania stanu."},
   "events":{title:"Ostatnie zdarzenia",body:"Ostatni bodziec oraz ostatnia wykonana akcja.",read:"Do pełnej kolejności użyj Action History."},
   "learning-debug":{title:"Learning Debug",body:"Ostatni reward() i jego wpływ na bias neuronów, synaptic delta oraz readouty przed/po.",read:"Dodatnie Δ wzmacnia, ujemne osłabia. Target action mówi czego dotyczył ślad."},
+  "sleep":{title:"Sleep / Offline Consolidation",body:"Po dłuższej ciszy runtime zawiesza zwykłe autonomiczne decyzje i wykonuje serię MEMORY REPLAY na ważnych epizodach. Replay przechodzi przez connectome, captured learning trace i istniejącą plastyczność.",read:"Sen nie tworzy nowych zdarzeń Discord. Semantic rehearsal stabilizuje tylko istniejące uogólnienia i nie zwiększa liczby realnych obserwacji."},
   "learning-startup":{title:"Learning Since Startup",body:"Liczniki uczenia od uruchomienia procesu: język, reward events i skumulowane zmiany.",read:"Te liczniki resetują się po restarcie, nawet jeśli trwały stan został zapisany."},
   "social-learning":{title:"Social Learning / Relacje",body:"Długoterminowe sygnały społeczne i affinity użytkowników.",read:"Nie myl z Attention: affinity opisuje relację, Attention opisuje to, co zajmuje Muchę teraz."},
   "reaction-debug":{title:"Reaction Debug",body:"Readout react, próg, cooldown, kandydaci emoji i wynik próby reakcji.",read:"Jeśli score jest wysoki, ale brak reakcji, sprawdź cooldown i Discord permissions."},
@@ -3048,6 +3076,41 @@ function renderLearningSinceStart(x){
     $("session-summary").textContent='Czekam na nowe próbki językowe albo pierwszy reward.';
   }
 }
+function renderSleep(s){
+  s=s||{};
+  const state=String(s.state||"AWAKE");
+  $("sleep-state").textContent=state;
+  $("sleep-state").className=s.active?"warn":state==="COMPLETE"?"ok":"";
+  $("sleep-quiet").textContent=sessionDuration(s.quiet_for||0);
+  $("sleep-cycle").textContent=Number(s.cycle||0)+" / "+Number(s.max_cycles||0);
+  $("sleep-episodes").textContent=nfmt(s.episodes_replayed||0);
+  $("sleep-synapses").textContent=nfmt(s.changed_synapses||0);
+  $("sleep-neurons").textContent=nfmt(s.changed_neurons||0);
+  $("sleep-semantic").textContent=nfmt(s.semantic_rehearsed||0);
+  const md=Number(s.memory_strength_delta||0);
+  $("sleep-memory-delta").textContent=(md>=0?"+":"")+md.toFixed(4);
+  $("sleep-scenes").textContent=nfmt(s.consolidated_scenes||0);
+  $("sleep-consolidated-synapses").textContent=nfmt(s.consolidated_synapses||0);
+  $("sleep-progress").style.width=Math.max(0,Math.min(100,Number(s.progress||0)*100))+"%";
+  const next=Number(s.next_cycle_in||0);
+  const idle=Number(s.idle_required||0);
+  $("sleep-summary").innerHTML=
+    '<b>'+esc(state)+'</b> • '+esc(s.reason||"—")+
+    ' • quiet '+sessionDuration(s.quiet_for||0)+
+    (state==="AWAKE"&&idle?(' / sleep po '+sessionDuration(idle)):"")+
+    (s.active&&next?(' • następny cykl za '+next.toFixed(0)+' s'):"")+
+    ' • fading synapses '+nfmt(s.fading_synapses||0);
+  const last=(s.last||[]);
+  $("sleep-last").innerHTML=last.length
+    ? '<b>Ostatni cykl:</b> '+last.slice(0,5).map(x=>
+        esc(x.action||"—")+
+        ' • reward '+(Number(x.replay_reward||0)>=0?"+":"")+Number(x.replay_reward||0).toFixed(3)+
+        ' • memory '+Number(x.memory_strength_before||0).toFixed(3)+'→'+Number(x.memory_strength||0).toFixed(3)+
+        ' • syn '+nfmt(x.changed_synapses||0)+
+        ' • semantic '+nfmt(x.semantic_rehearsed||0)
+      ).join(' | ')
+    : 'Brak replay w bieżącej/ostatniej sesji.';
+}
 function renderLearning(l){
   l=l||{};
   const amount=Number(l.amount||0);
@@ -3271,7 +3334,7 @@ async function update(){
     $("language-recent").textContent="×"+Number(ld.word_recent_boost||1).toFixed(2)+" / p="+Number(ld.word_model_probability||0).toFixed(2);
     $("language-bootstrap").textContent=nfmt(ld.legacy_bootstrap_chars||0)+" znaków / "+nfmt(ld.legacy_bootstrap_items||0)+" elementów";
     $("ready").textContent=s.language_ready?"TAK":"nie";$("voice").textContent=s.voice||"poza voice";
-    $("paused").textContent=s.paused?"PAUZA":"aktywny";$("event").textContent=s.last_event||"—";$("lastaction").textContent=s.last_action||"—";
+    $("paused").textContent=s.paused?"PAUZA":((s.sleep||{}).active?"SLEEP":"aktywny");$("event").textContent=s.last_event||"—";$("lastaction").textContent=s.last_action||"—";
     const scores=s.scores||{};
     const rankedActions=Object.entries(scores).sort((a,b)=>Number(b[1])-Number(a[1]));
     const dominantAction=rankedActions[0]||["—",0];
@@ -3298,6 +3361,7 @@ async function update(){
     renderActions(scores);
     renderReaction(s.reaction_debug||{});
     renderLearning(s.learning_debug||{});
+    renderSleep(s.sleep||{});
     renderLearningSinceStart(s.learning_since_start||{});
     renderSocial(s);
     renderActionHistory(s.action_history||[]);
