@@ -415,6 +415,7 @@ class VoiceSensoryBus:
             finished_turn_lengths.append(duration)
 
         normalized_channel = int(channel_id) if channel_id is not None else None
+        active_current = 0
         for user_id, user in state["users"].items():
             if (
                 not user.get("speaking")
@@ -429,6 +430,7 @@ class VoiceSensoryBus:
             if now <= start:
                 continue
             uid = int(user_id)
+            active_current += 1
             clipped.append((start, now, uid))
             per_user[uid] = per_user.get(uid, 0.0) + (now - start)
 
@@ -497,7 +499,7 @@ class VoiceSensoryBus:
             ),
         )
 
-        if overlap_events >= 2:
+        if overlap_events >= 2 or active_current >= 2:
             mode = "CROSSTALK"
         elif (
             aggregate_speaker_seconds >= 5.0
@@ -506,6 +508,8 @@ class VoiceSensoryBus:
             mode = "MONOLOGUE"
         elif switches >= 2 and unique_recent >= 2:
             mode = "DIALOGUE"
+        elif active_current >= 1:
+            mode = "CONVERSATION"
         elif speech_ratio <= 0.03:
             mode = "QUIET"
         else:
