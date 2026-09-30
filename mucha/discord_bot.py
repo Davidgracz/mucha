@@ -10547,6 +10547,21 @@ class MuchaClient(discord.Client):
                     "channel": channel_name,
                     "updated_at": time.time(),
                 })
+                if (
+                    self.cfg.behavior.one_brain_enabled
+                    and tts_one_brain is not None
+                ):
+                    self._remember_one_brain_cycle(
+                        kind="voice_tts",
+                        guild_id=int(guild.id),
+                        guild_name=str(guild.name),
+                        candidate_set=tts_candidate_set,
+                        decision=tts_one_brain,
+                        executed=True,
+                        external_effect=False,
+                        success=True,
+                        detail="NOOP / STAY",
+                    )
                 return
 
             internal = self.brain.internal_state_diagnostics()
@@ -10695,6 +10710,21 @@ class MuchaClient(discord.Client):
                 f"{channel_name}: {text_out[:120]}",
                 guild,
             )
+            if (
+                self.cfg.behavior.one_brain_enabled
+                and tts_one_brain is not None
+            ):
+                self._remember_one_brain_cycle(
+                    kind="voice_tts",
+                    guild_id=int(guild.id),
+                    guild_name=str(guild.name),
+                    candidate_set=tts_candidate_set,
+                    decision=tts_one_brain,
+                    executed=True,
+                    external_effect=True,
+                    success=True,
+                    detail=f"TTS → {channel_name}",
+                )
         except Exception as exc:
             self._audio_debug.update({
                 "status": "ERROR",
