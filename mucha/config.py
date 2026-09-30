@@ -257,6 +257,9 @@ class BehaviorConfig:
     person_model_enabled: bool = True
     person_model_min_observations: int = 2
     person_model_sensory_magnitude: float = 0.35
+    channel_model_enabled: bool = True
+    channel_model_min_observations: int = 2
+    channel_model_sensory_magnitude: float = 0.32
     social_window_seconds: int = 900
     word_reuse_reward: float = 0.20
     phrase_reuse_reward: float = 0.35
