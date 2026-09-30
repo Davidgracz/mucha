@@ -16,6 +16,7 @@ from mucha.connectome import Connectome
 from mucha.brain import FlyBrain
 from mucha.episodic import VoiceEpisodicMemory
 from mucha.language import OnlineLanguage
+from mucha.voice_sensory import VoiceSensoryBus
 from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, HTML, OVERVIEW_HTML, PUBLIC_OVERVIEW_HTML, WebDashboard
 
 
@@ -265,6 +266,119 @@ def main():
         # Voice behavior is now selected by competition between connectome
         # action readouts. The adapter may mask physically impossible actions,
         # but does not apply join/move/leave thresholds in neural mode.
+        # Live Voice Sensory Bus measures the Discord scene without
+        # producing hand-authored action scores.
+        sensory_bus = VoiceSensoryBus(
+            speaker_timeout_seconds=0.5,
+            recent_window_seconds=60.0,
+            reply_window_seconds=10.0,
+        )
+        sensory_bus.note_pcm(
+            7,
+            555,
+            11,
+            "Dawid",
+            now=100.00,
+        )
+        first_sensory = sensory_bus.snapshot(
+            7,
+            connected=True,
+            channel_id=555,
+            channel_name="ASG",
+            current_members=[
+                {"id": 11, "name": "Dawid", "affinity": 0.42},
+                {"id": 22, "name": "Stivi", "affinity": 0.18},
+            ],
+            other_members=[
+                {"id": 33, "name": "Mamba", "affinity": 0.30},
+            ],
+            familiar_threshold=0.10,
+            avoid_threshold=-0.35,
+            now=100.20,
+        )
+        assert first_sensory["speaker_count"] == 1
+        assert first_sensory["speakers"][0]["id"] == 11
+        assert first_sensory["other_voice_humans"] == 1
+        assert first_sensory["other_familiar_humans"] == 1
+
+        sensory_bus.note_pcm(
+            7,
+            555,
+            22,
+            "Stivi",
+            now=100.25,
+        )
+        sensory_bus.note_reply_after_tts(
+            7,
+            555,
+            11,
+            "Dawid",
+            tts_age_seconds=2.2,
+            now=100.30,
+        )
+        overlap_sensory = sensory_bus.snapshot(
+            7,
+            connected=True,
+            channel_id=555,
+            channel_name="ASG",
+            current_members=[
+                {"id": 11, "name": "Dawid", "affinity": 0.42},
+                {"id": 22, "name": "Stivi", "affinity": 0.18},
+            ],
+            other_members=[],
+            familiar_threshold=0.10,
+            avoid_threshold=-0.35,
+            now=100.35,
+        )
+        assert overlap_sensory["speaker_count"] == 2
+        assert overlap_sensory["overlap_count"] == 1
+        assert overlap_sensory["reply_after_tts"] is True
+        assert overlap_sensory["reply_user_id"] == 11
+
+        state_before_voice_sensory = b.compute.to_cpu(
+            b.state
+        ).copy()
+        voice_sensory_diag = b.inject_voice_sensory_bus(
+            7,
+            overlap_sensory,
+            base_magnitude=0.55,
+        )
+        assert voice_sensory_diag["mode"] == "raw-sensory-only"
+        assert voice_sensory_diag["action_guided"] is False
+        assert voice_sensory_diag["direct_action_bias"] is False
+        assert voice_sensory_diag["cue_count"] > 0
+        assert all(
+            row["key"].startswith("voice:sensory:")
+            for row in voice_sensory_diag["cues"]
+        )
+        state_after_voice_sensory = b.compute.to_cpu(
+            b.state
+        )
+        assert np.max(
+            np.abs(
+                state_after_voice_sensory
+                - state_before_voice_sensory
+            )
+        ) > 0.01
+
+        quiet_sensory = sensory_bus.snapshot(
+            7,
+            connected=True,
+            channel_id=555,
+            channel_name="ASG",
+            current_members=[
+                {"id": 11, "name": "Dawid", "affinity": 0.42},
+                {"id": 22, "name": "Stivi", "affinity": 0.18},
+            ],
+            other_members=[],
+            familiar_threshold=0.10,
+            avoid_threshold=-0.35,
+            now=101.10,
+        )
+        assert quiet_sensory["speaker_count"] == 0
+        assert quiet_sensory["overlap_count"] == 0
+        assert quiet_sensory["silence_seconds"] > 0.5
+
         state_before_social_drive = b.compute.to_cpu(
             b.state
         ).copy()
