@@ -35,7 +35,13 @@ class FlyBrain:
         "boredom",
     )
     INTERNAL_DRIVE_STATE_MAP = {
-        "social_need": (("social_need", 1.00),),
+        # Social isolation should be able to motivate either joining voice or
+        # communicating in text. The small arousal branch is a liveness path,
+        # not a forced SPEAK bonus: action_competition still decides.
+        "social_need": (
+            ("social_need", 0.80),
+            ("arousal", 0.20),
+        ),
         "curiosity": (("curiosity", 1.00),),
         "exploration": (
             ("curiosity", 0.55),
@@ -45,9 +51,10 @@ class FlyBrain:
             ("stress", 0.78),
             ("satiety", 0.22),
         ),
+        # Boredom is the main self-recovery path from prolonged silence.
         "boredom": (
-            ("curiosity", 0.55),
-            ("arousal", 0.25),
+            ("curiosity", 0.45),
+            ("arousal", 0.35),
             ("social_need", 0.20),
         ),
     }
