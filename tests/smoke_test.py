@@ -129,6 +129,62 @@ def main():
         curiosity_after = b.internal_state_diagnostics()
         assert curiosity_after["states"]["curiosity"]["mean_abs"] > 0.0
 
+        drives_before = b.internal_drive_diagnostics()
+        assert drives_before["enabled"] is True
+        assert set(drives_before["drives"]) == {
+            "social_need",
+            "curiosity",
+            "exploration",
+            "caution",
+            "boredom",
+        }
+        social_before = float(
+            drives_before["drives"]["social_need"]["value"]
+        )
+        boredom_before = float(
+            drives_before["drives"]["boredom"]["value"]
+        )
+        drives_idle = b.tick_internal_drives(
+            60.0,
+            external_stimulation=False,
+            social_contact=False,
+        )
+        assert (
+            drives_idle["drives"]["social_need"]["value"]
+            > social_before
+        )
+        assert (
+            drives_idle["drives"]["boredom"]["value"]
+            > boredom_before
+        )
+        contact_before = float(
+            drives_idle["drives"]["social_need"]["value"]
+        )
+        contact_event = b.register_internal_drive_event(
+            "social_contact",
+            1.0,
+            inject=False,
+        )
+        assert (
+            contact_event["values"]["social_need"]
+            < contact_before
+        )
+        caution_before = float(
+            contact_event["values"]["caution"]
+        )
+        threat_event = b.register_internal_drive_event(
+            "threat",
+            1.0,
+            inject=False,
+        )
+        assert threat_event["values"]["caution"] > caution_before
+        assert (
+            b.internal_state_diagnostics()["homeostatic_drives"][
+                "dominant"
+            ]
+            in b.INTERNAL_DRIVE_NAMES
+        )
+
         b.inject("signal-flow-smoke", 1.0, 64)
         b.step(2)
         signal_flow = b.signal_flow_snapshot()
@@ -1279,6 +1335,10 @@ def main():
             encoding="utf-8"
         )
         assert "def action_competition" in brain_source
+        assert "def tick_internal_drives" in brain_source
+        assert "def register_internal_drive_event" in brain_source
+        assert "def internal_drive_diagnostics" in brain_source
+        assert "internal_drive_values" in brain_source
         assert "def voice_channel_target_decision" in brain_source
         assert "def inject_voice_target_context" in brain_source
         assert "tie_evidence" in bot_source
