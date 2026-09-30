@@ -6135,20 +6135,42 @@ class MuchaClient(discord.Client):
     def _note_external_activity(self, reason: str) -> None:
         """Record real Discord activity and immediately wake sleep mode."""
         self._last_external_activity = time.monotonic()
+        was_sleeping = bool(self._sleep_active)
+        had_sleep_session = (
+            int(self._sleep_cycle) > 0
+            or str(self._sleep_debug.get("state", "")) == "COMPLETE"
+        )
         self._sleep_armed = True
-        if not self._sleep_active:
-            return
         self._sleep_active = False
+        self._sleep_started = 0.0
+        self._sleep_last_cycle = 0.0
+        self._sleep_cycle = 0
         self._sleep_debug.update({
             "active": False,
             "state": "AWAKE",
-            "reason": f"wake:{reason}",
+            "reason": (
+                f"wake:{reason}"
+                if was_sleeping or had_sleep_session
+                else f"activity:{reason}"
+            ),
             "quiet_for": 0.0,
+            "cycle": 0,
+            "progress": 0.0,
+            "episodes_replayed": 0,
+            "changed_neurons": 0,
+            "changed_synapses": 0,
+            "semantic_rehearsed": 0,
+            "memory_strength_delta": 0.0,
+            "last": [],
             "woke_at": time.time(),
-            "next_cycle_in": 0.0,
+            "next_cycle_in": max(
+                60.0,
+                float(self.cfg.voice.sleep_idle_seconds),
+            ),
         })
-        self._last_brain_event = f"WAKE • {reason}"
-        self._last_brain_action = "WAKE"
+        if was_sleeping or had_sleep_session:
+            self._last_brain_event = f"WAKE • {reason}"
+            self._last_brain_action = "WAKE"
 
     async def _sleep_tick(
         self,
@@ -6418,23 +6440,37 @@ class MuchaClient(discord.Client):
             )
 
         if not replayed or self._sleep_cycle >= max_cycles:
+            completed_cycle = int(self._sleep_cycle)
+            completed_full = completed_cycle >= max_cycles
             self._sleep_active = False
+            # A finished session starts a fresh quiet window instead of
+            # permanently disarming sleep. If Discord stays quiet, another
+            # session can begin from cycle 0 after sleep_idle_seconds.
+            self._sleep_armed = True
+            self._sleep_started = 0.0
+            self._sleep_last_cycle = 0.0
+            self._sleep_cycle = 0
+            self._last_external_activity = now
             self._sleep_debug.update({
                 "active": False,
                 "state": "COMPLETE",
                 "reason": (
                     "cycle-complete"
-                    if self._sleep_cycle >= max_cycles
+                    if completed_full
                     else "no-replay-candidates"
                 ),
+                "cycle": completed_cycle,
                 "completed_at": time.time(),
-                "next_cycle_in": 0.0,
+                "next_cycle_in": max(
+                    60.0,
+                    float(self.cfg.voice.sleep_idle_seconds),
+                ),
                 "progress": (
                     1.0
-                    if self._sleep_cycle >= max_cycles
+                    if completed_full
                     else min(
                         1.0,
-                        float(self._sleep_cycle) / max_cycles,
+                        float(completed_cycle) / max_cycles,
                     )
                 ),
             })
