@@ -7996,6 +7996,25 @@ class MuchaClient(discord.Client):
                     autonomous_decision,
                     execution,
                 )
+                self._remember_one_brain_cycle(
+                    kind="autonomy",
+                    guild_id=int(selected_plan["guild_id"]),
+                    guild_name=str(selected_plan["guild"]),
+                    candidate_set=selected_plan.get(
+                        "candidate_set"
+                    ),
+                    decision=autonomous_decision,
+                    executed=bool(
+                        execution.get("executed", False)
+                    ),
+                    external_effect=bool(
+                        execution.get("external_effect", False)
+                    ),
+                    success=bool(
+                        execution.get("success", False)
+                    ),
+                    detail=str(execution.get("detail", "")),
+                )
             return
 
         # Legacy spontaneous path remains available only when 24D is disabled.
