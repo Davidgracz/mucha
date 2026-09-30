@@ -3223,6 +3223,202 @@ class FlyBrain:
         for uid in users[:12]:
             self.activate_user_memory(uid, 0.08 * sensory_scale)
 
+    def inject_voice_sensory_bus(
+        self,
+        guild_id: int,
+        snapshot: dict,
+        *,
+        base_magnitude: float = 0.55,
+    ) -> dict:
+        """Inject measured voice-scene features as raw sensory cues.
+
+        These cues never edit action scores and never use action-guided pools.
+        They only enter through sensory neurons; any JOIN/MOVE/LEAVE/STAY
+        effect must emerge through connectome propagation and learned paths.
+        """
+        base = max(0.05, min(2.0, float(base_magnitude)))
+        connected = bool(snapshot.get("connected"))
+        channel_id = snapshot.get("channel_id")
+        humans = max(0, int(snapshot.get("human_count", 0)))
+        speakers = max(0, int(snapshot.get("speaker_count", 0)))
+        overlap = max(0, int(snapshot.get("overlap_count", 0)))
+        silence = max(0.0, float(snapshot.get("silence_seconds", 0.0)))
+        turns = max(0, int(snapshot.get("turns_per_minute", 0)))
+        other_humans = max(
+            0,
+            int(snapshot.get("other_voice_humans", 0)),
+        )
+        other_familiar = max(
+            0,
+            int(snapshot.get("other_familiar_humans", 0)),
+        )
+
+        cues: list[dict] = []
+
+        def raw(
+            key: str,
+            magnitude: float,
+            width: int,
+        ) -> None:
+            magnitude = max(0.0, min(3.0, float(magnitude)))
+            if magnitude <= 0.0:
+                return
+            self.inject(key, magnitude, width)
+            cues.append({
+                "key": key,
+                "magnitude": magnitude,
+                "width": int(width),
+            })
+
+        raw(
+            "voice:sensory:connected"
+            if connected
+            else "voice:sensory:outside",
+            base * 0.36,
+            80,
+        )
+        if channel_id is not None:
+            raw(
+                f"voice:sensory:channel:{guild_id}:{int(channel_id)}",
+                base * 0.30,
+                64,
+            )
+
+        human_bucket = min(8, humans)
+        raw(
+            f"voice:sensory:humans:{human_bucket}",
+            base * (0.24 + 0.08 * human_bucket),
+            96,
+        )
+        if humans:
+            raw(
+                "voice:sensory:human-presence",
+                base * min(1.20, 0.38 + 0.10 * humans),
+                112,
+            )
+
+        speaker_bucket = min(4, speakers)
+        raw(
+            f"voice:sensory:speakers:{speaker_bucket}",
+            base * (0.28 + 0.14 * speaker_bucket),
+            112,
+        )
+        if speakers:
+            raw(
+                "voice:sensory:speech-active",
+                base * min(1.30, 0.55 + 0.16 * speakers),
+                144,
+            )
+        if overlap:
+            raw(
+                f"voice:sensory:overlap:{min(3, overlap)}",
+                base * min(1.45, 0.72 + 0.20 * overlap),
+                144,
+            )
+
+        if connected and not speakers:
+            if silence < 2.0:
+                silence_bucket = "lt2"
+            elif silence < 5.0:
+                silence_bucket = "2-5"
+            elif silence < 15.0:
+                silence_bucket = "5-15"
+            elif silence < 60.0:
+                silence_bucket = "15-60"
+            else:
+                silence_bucket = "60plus"
+            raw(
+                f"voice:sensory:silence:{silence_bucket}",
+                base * min(
+                    1.20,
+                    0.26 + 0.17 * math.log1p(silence),
+                ),
+                112,
+            )
+
+        if turns:
+            pace_bucket = min(6, max(1, turns // 4 + 1))
+            raw(
+                f"voice:sensory:conversation-pace:{pace_bucket}",
+                base * min(1.10, 0.30 + 0.025 * turns),
+                96,
+            )
+
+        if other_humans:
+            raw(
+                f"voice:sensory:other-vc-humans:{min(8, other_humans)}",
+                base * min(1.05, 0.28 + 0.08 * other_humans),
+                96,
+            )
+        if other_familiar:
+            raw(
+                f"voice:sensory:other-vc-familiar:{min(6, other_familiar)}",
+                base * min(1.15, 0.34 + 0.11 * other_familiar),
+                112,
+            )
+
+        if snapshot.get("reply_after_tts"):
+            raw(
+                "voice:sensory:reply-after-tts",
+                base * 1.05,
+                144,
+            )
+
+        speaker_rows = list(snapshot.get("speakers") or [])[:6]
+        for row in speaker_rows:
+            try:
+                user_id = int(row.get("id"))
+            except (TypeError, ValueError, AttributeError):
+                continue
+            speaking_for = max(
+                0.0,
+                float(row.get("speaking_for", 0.0)),
+            )
+            affinity = max(
+                -1.0,
+                min(1.0, float(row.get("affinity", 0.0))),
+            )
+            identity_mag = base * min(
+                1.05,
+                0.34 + 0.12 * math.log1p(speaking_for),
+            )
+            raw(
+                f"voice:sensory:speaker:{user_id}",
+                identity_mag,
+                88,
+            )
+            self.activate_user_memory(
+                user_id,
+                min(1.0, 0.10 + 0.22 * base),
+            )
+            if affinity > 0.05:
+                aff_bucket = min(4, max(1, int(abs(affinity) * 4) + 1))
+                raw(
+                    f"voice:sensory:affinity-positive:{aff_bucket}",
+                    base * (0.26 + 0.40 * abs(affinity)),
+                    80,
+                )
+            elif affinity < -0.05:
+                aff_bucket = min(4, max(1, int(abs(affinity) * 4) + 1))
+                raw(
+                    f"voice:sensory:affinity-negative:{aff_bucket}",
+                    base * (0.26 + 0.40 * abs(affinity)),
+                    80,
+                )
+
+        return {
+            "mode": "raw-sensory-only",
+            "direct_action_bias": False,
+            "action_guided": False,
+            "cue_count": len(cues),
+            "cues": cues[:24],
+            "speaker_count": speakers,
+            "overlap_count": overlap,
+            "silence_seconds": silence,
+            "human_count": humans,
+            "other_voice_humans": other_humans,
+        }
+
     def inject_voice_reward_opportunity(
         self,
         guild_id: int,
