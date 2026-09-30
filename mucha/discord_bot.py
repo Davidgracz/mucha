@@ -311,6 +311,7 @@ class MuchaClient(discord.Client):
         self._voice_arrival_learning: dict[int, tuple[str, tuple, float, int]] = {}
         self._pending_direct_replies: dict[tuple[int, int], dict] = {}
         self._person_model_debug: dict[int, dict] = {}
+        self._channel_model_debug: dict[int, dict] = {}
         self._social_debug: dict = {
             "event": "BRAK",
             "detail": "",
@@ -499,6 +500,9 @@ class MuchaClient(discord.Client):
             "person_model_enabled",
             "person_model_min_observations",
             "person_model_sensory_magnitude",
+            "channel_model_enabled",
+            "channel_model_min_observations",
+            "channel_model_sensory_magnitude",
             "social_window_seconds",
             "word_reuse_reward",
             "phrase_reuse_reward",
@@ -871,6 +875,15 @@ class MuchaClient(discord.Client):
                 int, 1, 100
             ),
             ("behavior", "person_model_sensory_magnitude"): (
+                float, 0.0, 1.5
+            ),
+            ("behavior", "channel_model_enabled"): (
+                bool, None, None
+            ),
+            ("behavior", "channel_model_min_observations"): (
+                int, 1, 1000
+            ),
+            ("behavior", "channel_model_sensory_magnitude"): (
                 float, 0.0, 1.5
             ),
             ("behavior", "social_window_seconds"): (int, 30, 86400),
@@ -4035,7 +4048,29 @@ class MuchaClient(discord.Client):
         now: float | None = None,
     ) -> None:
         now = time.monotonic() if now is None else now
-        self._voice_last_visit[(int(guild_id), int(channel_id))] = now
+        guild_id = int(guild_id)
+        channel_id = int(channel_id)
+        self._voice_last_visit[(guild_id, channel_id)] = now
+        if self.cfg.behavior.channel_model_enabled:
+            guild = self.get_guild(guild_id)
+            channel = (
+                guild.get_channel(channel_id)
+                if guild is not None
+                else None
+            )
+            if channel is not None:
+                user_ids = [
+                    int(member.id)
+                    for member in getattr(channel, "members", [])
+                    if not getattr(member, "bot", False)
+                ]
+                self.voice_episodes.observe_channel_visit(
+                    channel_id,
+                    getattr(channel, "name", str(channel_id)),
+                    user_ids,
+                    source="voice_visit",
+                    now=time.time(),
+                )
 
     @staticmethod
     def _voice_prediction_context(
@@ -7654,6 +7689,33 @@ class MuchaClient(discord.Client):
             self.voice_episodes.observe_person_contact(
                 member.id,
                 "voice_speech",
+            )
+        if self.cfg.behavior.channel_model_enabled:
+            sensory = dict(
+                self._voice_sensory_debug.get(guild.id, {})
+            )
+            self.voice_episodes.observe_channel_dynamics(
+                getattr(channel, "id", 0),
+                channel_name,
+                conversation_mode=str(
+                    sensory.get("conversation_mode", "UNKNOWN")
+                ),
+                intensity=float(
+                    sensory.get("conversation_intensity", 0.0)
+                ),
+                speech_ratio=float(
+                    sensory.get("speech_ratio_60s", 0.0)
+                ),
+                human_count=sum(
+                    1
+                    for voice_member in getattr(
+                        channel,
+                        "members",
+                        [],
+                    )
+                    if not getattr(voice_member, "bot", False)
+                ),
+                speaker_user_id=member.id,
             )
         person_profile = (
             self.voice_episodes.person_profile(member.id)
