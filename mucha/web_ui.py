@@ -1679,7 +1679,8 @@ h1{margin:0;font-size:24px}.sub{margin-top:4px;color:var(--muted);font-size:12px
 .logs{background:#070d13;border:1px solid #1c2937;border-radius:11px;padding:10px;max-height:270px;overflow:auto;
 font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wrap;color:#aebccc}
 .logs .err{color:#ff9393}.span2{grid-column:span 2}.progress{height:8px;background:#071019;border-radius:999px;overflow:hidden;border:1px solid #1d2b39;margin-top:7px}
-.progress>div{height:100%;background:linear-gradient(90deg,var(--a),var(--blue))}
+.progress>div{height:100%;background:linear-gradient(90deg,var(--a),var(--blue));transition:width .18s linear}
+.gpu-list{display:flex;flex-direction:column;gap:6px;margin-top:9px}.gpu-chip{display:grid;grid-template-columns:minmax(120px,1fr) auto auto;gap:10px;align-items:center;padding:8px 9px;border:1px solid #1e2d3d;background:#09121a;border-radius:10px;font-size:10px}.gpu-chip b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.gpu-chip span{color:var(--muted);font-variant-numeric:tabular-nums}
 .footer{text-align:right;color:#5e6e7d;font-size:11px;margin-top:12px}
 @media(max-width:900px){.hero{grid-template-columns:1fr 1fr}.grid{grid-template-columns:1fr}.span2{grid-column:auto}}
 @media(max-width:560px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr}.kpis{grid-template-columns:1fr 1fr}}
@@ -1726,16 +1727,30 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
  </div>
 
  <div class="card">
-  <h2>🖥 System</h2>
+  <h2>🖥 System — live</h2>
   <div class="kpis">
-   <div class="k"><small>Uptime</small><strong id="vps-up">—</strong></div>
-   <div class="k"><small>Load</small><strong id="vps-load">—</strong></div>
+   <div class="k"><small>CPU system</small><strong id="sys-cpu">—</strong></div>
+   <div class="k"><small>RAM system</small><strong id="vps-ram">—</strong></div>
    <div class="k"><small>Dysk</small><strong id="vps-disk">—</strong></div>
   </div>
-  <div class="row"><span>RAM</span><strong id="vps-ram">—</strong></div>
+  <div class="progress"><div id="cpu-bar" style="width:0"></div></div>
   <div class="progress"><div id="ram-bar" style="width:0"></div></div>
+  <div class="progress"><div id="disk-bar" style="width:0"></div></div>
+  <div class="kpis" style="margin-top:10px">
+   <div class="k"><small>CPU Mucha</small><strong id="proc-cpu">—</strong></div>
+   <div class="k"><small>RAM Mucha</small><strong id="proc-ram">—</strong></div>
+   <div class="k"><small>Wątki Muchy</small><strong id="proc-threads">—</strong></div>
+  </div>
+  <div class="row"><span>Uptime systemu</span><strong id="vps-up">—</strong></div>
+  <div class="row"><span>Load 1 / 5 / 15</span><strong id="vps-load">—</strong></div>
   <div class="row"><span>Wolny RAM</span><strong id="vps-free">—</strong></div>
-  <div class="row"><span>Aktualizacja panelu</span><strong id="updated">—</strong></div>
+  <div class="row"><span>GPU</span><strong id="gpu-main">—</strong></div>
+  <div class="progress"><div id="gpu-bar" style="width:0"></div></div>
+  <div class="row"><span>VRAM</span><strong id="gpu-vram">—</strong></div>
+  <div class="progress"><div id="vram-bar" style="width:0"></div></div>
+  <div class="row"><span>Temperatura GPU</span><strong id="gpu-temp">—</strong></div>
+  <div class="gpu-list" id="gpu-list"></div>
+  <div class="row"><span>Aktualizacja telemetryki</span><strong id="updated">—</strong></div>
  </div>
 
  <div class="card">
@@ -1778,6 +1793,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
 </main>
 <script>
 const $=id=>document.getElementById(id);
+const LIVE_REFRESH_MS=250;
 const fmtBytes=n=>{n=Number(n||0);if(!n)return "0 B";const u=["B","KB","MB","GB","TB"];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return n.toFixed(i>1?2:1)+" "+u[i]};
 const dur=s=>{s=Math.max(0,Number(s||0));const d=Math.floor(s/86400);s%=86400;const h=Math.floor(s/3600);s%=3600;const m=Math.floor(s/60);const x=Math.floor(s%60);return (d?d+"d ":"")+(h?h+"h ":"")+(m?m+"m ":"")+x+"s"};
 const nfmt=n=>Number(n||0).toLocaleString("pl-PL");
@@ -1788,8 +1804,43 @@ function firstGuild(cs){const g=Object.values((cs&&cs.guilds)||{});return g.find
 function nextText(ts){if(!ts)return "—";const sec=Number(ts)-Date.now()/1000;if(sec<=0)return "teraz";return "za "+dur(sec)}
 function renderActions(scores){const order=["speak","react","voice_join","voice_move","voice_leave","explore","stay"];const dom=Object.entries(scores||{}).sort((a,b)=>b[1]-a[1])[0]?.[0];
  $("actions").innerHTML=order.map(k=>{const v=Number((scores||{})[k]||0);return '<div class="act"><b class="'+(k===dom?'accent':'')+'">'+(k===dom?'▶ ':'')+k+'</b><div class="track"><div class="fill" style="width:'+Math.max(0,Math.min(100,v*100))+'%"></div></div><span>'+v.toFixed(3)+'</span></div>'}).join("")}
+function renderSystem(sys){
+ sys=sys||{};const proc=sys.process||{},gpuState=sys.gpu||{},gpus=gpuState.gpus||[],gpu=gpus[0]||null;
+ const cpu=Math.max(0,Number(sys.cpu_percent||0)),ram=Math.max(0,Number(sys.mem_percent||0)),disk=Math.max(0,Number(sys.disk_percent||0));
+ $("sys-cpu").textContent=cpu.toFixed(1)+"% • "+Number(sys.cpu_count||0)+" CPU";
+ $("vps-ram").textContent=ram.toFixed(1)+"% • "+fmtBytes(sys.mem_used)+" / "+fmtBytes(sys.mem_total);
+ $("vps-disk").textContent=disk.toFixed(1)+"% • "+fmtBytes(sys.disk_used)+" / "+fmtBytes(sys.disk_total);
+ $("cpu-bar").style.width=Math.min(100,cpu)+"%";$("ram-bar").style.width=Math.min(100,ram)+"%";$("disk-bar").style.width=Math.min(100,disk)+"%";
+ $("proc-cpu").textContent=Number(proc.cpu_percent||0).toFixed(1)+"%";$("proc-ram").textContent=fmtBytes(proc.memory_bytes);$("proc-threads").textContent=String(Number(proc.threads||0));
+ $("vps-up").textContent=dur(sys.uptime_seconds);$("vps-load").textContent=(sys.load||[]).length?(sys.load||[]).map(x=>Number(x).toFixed(2)).join(" / "):"—";
+ $("vps-free").textContent=fmtBytes(sys.mem_available);
+ if(gpu){
+  $("gpu-main").textContent=(gpu.name||"GPU")+" • "+Number(gpu.utilization_percent||0).toFixed(0)+"%";
+  $("gpu-vram").textContent=fmtBytes(gpu.memory_used_bytes)+" / "+fmtBytes(gpu.memory_total_bytes)+" • "+Number(gpu.memory_percent||0).toFixed(0)+"%";
+  $("gpu-temp").textContent=Number(gpu.temperature_c||0).toFixed(0)+" °C";
+  $("gpu-bar").style.width=Math.min(100,Number(gpu.utilization_percent||0))+"%";
+  $("vram-bar").style.width=Math.min(100,Number(gpu.memory_percent||0))+"%";
+  $("gpu-list").innerHTML=gpus.map(g=>'<div class="gpu-chip"><b>#'+Number(g.index||0)+' '+esc(g.name||"GPU")+'</b><span>GPU '+Number(g.utilization_percent||0).toFixed(0)+'%</span><span>VRAM '+Number(g.memory_percent||0).toFixed(0)+'%</span></div>').join("");
+ }else{
+  $("gpu-main").textContent="GPU unavailable";$("gpu-vram").textContent="—";$("gpu-temp").textContent="—";$("gpu-bar").style.width="0%";$("vram-bar").style.width="0%";
+  $("gpu-list").innerHTML='<div class="gpu-chip"><b>Brak telemetryki GPU</b><span></span><span>'+esc(gpuState.error||"nvidia-smi unavailable")+'</span></div>';
+ }
+ $("updated").textContent=new Date().toLocaleTimeString("pl-PL",{hour12:false})+" • "+LIVE_REFRESH_MS+" ms";
+}
+function renderLive(s,sys){
+ s=s||{};const diag=s.diag||{},a=s.audio_debug||{},stt=s.stt_debug||{};
+ $("hero-voice").textContent=s.voice||"poza voice";
+ $("connectome").textContent=nfmt(diag.neurons)+" / "+nfmt(diag.connections);$("backend").textContent=(diag.backend||"cpu").toUpperCase()+" • "+(diag.device||"CPU");
+ $("last-event").textContent=s.last_event||"—";$("last-action").textContent=s.last_action||"—";
+ $("audio-status").textContent=a.status||"—";$("audio-stage").textContent=a.stage||"—";$("audio-target").textContent=(a.guild||"—")+" / "+(a.channel||"—");
+ $("audio-file").textContent=a.file||"—";$("audio-text").textContent=a.text||"—";$("stt-status").textContent=(stt.status||"—")+" • "+(stt.model||"—");$("stt-heard").textContent=stt.text?((stt.user||"ktoś")+": "+stt.text):"—";
+ $("neurons").textContent=nfmt(diag.neurons);$("connections").textContent=nfmt(diag.connections);$("learned-synapses").textContent=nfmt(diag.learned_synapses||0);$("active-neurons").textContent=nfmt(diag.active_abs_gt_0_1);
+ $("mean-a").textContent=Number(diag.mean_abs||0).toFixed(5);$("reward-trace").textContent=Number(diag.reward_trace||0).toFixed(4);$("ticks").textContent=nfmt(diag.ticks);
+ renderActions(s.scores||{});renderSystem(sys);
+}
 function render(d){
  last=d;const s=d.snapshot||{},diag=s.diag||{},m=d.services?.mucha||{},ch=d.services?.chaser||{},sys=d.system||{},cs=d.chaser_status||{},cg=firstGuild(cs),a=s.audio_debug||{},stt=s.stt_debug||{};
+ renderLive(s,sys);
  $("hero-mucha").innerHTML=serviceLabel(m);$("hero-chaser").innerHTML=serviceLabel(ch);
  $("hero-voice").textContent=s.voice||"poza voice";$("hero-next").textContent=nextText(cg.next_round_at);
  $("mucha-ram").textContent=fmtBytes(m.memory_bytes);$("mucha-up").textContent=dur(m.uptime_seconds);$("mucha-pid").textContent=m.pid||"—";$("mucha-state").innerHTML=serviceLabel(m);
@@ -1798,9 +1849,6 @@ function render(d){
  $("chaser-ram").textContent=fmtBytes(ch.memory_bytes);$("chaser-cycle").textContent=dur(cs.interval_seconds||0);$("chaser-duration").textContent=dur(cs.duration_seconds||0);
  $("chaser-state").innerHTML=serviceLabel(ch)+" • <span class='"+(cg.active_chase?"badc":"accent")+"'>"+esc(cg.state||"—")+"</span>";
  $("chaser-channel").textContent=cg.current_voice_channel||"poza voice";$("chaser-next").textContent=nextText(cg.next_round_at);$("chaser-event").textContent=cg.last_event||"—";
- $("vps-up").textContent=dur(sys.uptime_seconds);$("vps-load").textContent=(sys.load||[]).map(x=>Number(x).toFixed(2)).join(" / ");
- $("vps-disk").textContent=fmtBytes(sys.disk_used)+" / "+fmtBytes(sys.disk_total);$("vps-ram").textContent=fmtBytes(sys.mem_used)+" / "+fmtBytes(sys.mem_total);
- $("vps-free").textContent=fmtBytes(sys.mem_available);$("ram-bar").style.width=Math.max(0,Math.min(100,Number(sys.mem_percent||0)))+"%";$("updated").textContent=new Date().toLocaleTimeString("pl-PL");
  $("audio-status").textContent=a.status||"—";$("audio-stage").textContent=a.stage||"—";$("audio-target").textContent=(a.guild||"—")+" / "+(a.channel||"—");
  $("audio-file").textContent=a.file||"—";$("audio-text").textContent=a.text||"—";
  $("stt-status").textContent=(stt.status||"—")+" • "+(stt.model||"—");
@@ -1810,8 +1858,24 @@ function render(d){
  renderActions(s.scores||{});
  $("mucha-logs").textContent=(d.logs?.mucha||[]).join("\n")||"brak logów";$("chaser-logs").textContent=(d.logs?.chaser||[]).join("\n")||"brak logów";
 }
-async function update(){try{const r=await fetch("/api/overview",{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}catch(e){console.error(e);$("hero-mucha").innerHTML='<span class="badc">BRAK POŁĄCZENIA</span>'}}
-setInterval(update,2500);setInterval(()=>{if(last){const g=firstGuild(last.chaser_status||{});$("hero-next").textContent=nextText(g.next_round_at);$("chaser-next").textContent=nextText(g.next_round_at)}},1000);update();
+let liveBusy=false,slowBusy=false;
+async function updateLive(){
+ if(liveBusy)return;liveBusy=true;
+ try{
+  const [sr,yr]=await Promise.all([fetch("/api/state",{cache:"no-store"}),fetch("/api/system",{cache:"no-store"})]);
+  if(sr.status===401||yr.status===401){location="/login";return}
+  if(!sr.ok||!yr.ok)throw new Error("live HTTP "+sr.status+"/"+yr.status);
+  const [s,sys]=await Promise.all([sr.json(),yr.json()]);renderLive(s,sys)
+ }catch(e){console.error(e)}
+ finally{liveBusy=false}
+}
+async function updateSlow(){
+ if(slowBusy)return;slowBusy=true;
+ try{const r=await fetch("/api/overview",{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}
+ catch(e){console.error(e);$("hero-mucha").innerHTML='<span class="badc">BRAK POŁĄCZENIA</span>'}
+ finally{slowBusy=false}
+}
+setInterval(updateLive,LIVE_REFRESH_MS);setInterval(updateSlow,2500);setInterval(()=>{if(last){const g=firstGuild(last.chaser_status||{});$("hero-next").textContent=nextText(g.next_round_at);$("chaser-next").textContent=nextText(g.next_round_at)}},1000);updateSlow();updateLive();
 </script></body></html>"""
 
 HTML = r"""<!doctype html>
