@@ -42,6 +42,14 @@ def main():
         }
         assert "raw_candidates" in speak_vs_stay
         assert "policy_scores" in speak_vs_stay
+        react_vs_stay = b.action_competition(
+            ("react", "stay")
+        )
+        assert react_vs_stay["action"] in {"react", "stay"}
+        assert set(react_vs_stay["candidates"]) == {
+            "react",
+            "stay",
+        }
 
         target_ctx_a = b.inject_voice_target_context(
             1,
@@ -1088,6 +1096,9 @@ def main():
         assert "social_scene_model_enabled" in CONFIG_HTML
         assert "social_scene_min_observations" in CONFIG_HTML
         assert "social_scene_sensory_magnitude" in CONFIG_HTML
+        assert "connectome_behavior_competition_enabled" in CONFIG_HTML
+        assert "LEGACY: próg mówienia" in CONFIG_HTML
+        assert "LEGACY: próg reakcji emoji" in CONFIG_HTML
         assert "voice_dynamics_learning_enabled" in CONFIG_HTML
         assert "voice_dynamics_min_observations" in CONFIG_HTML
         assert "voice_dynamics_sensory_magnitude" in CONFIG_HTML
@@ -1351,6 +1362,9 @@ def main():
         assert "voice_dynamics_key" in bot_source
         assert "_voice_dynamics_model_debug" in bot_source
         assert "action_competition" in bot_source
+        assert "def _behavior_gate" in bot_source
+        assert "connectome_behavior_competition_enabled" in bot_source
+        assert '"connectome-competition"' in bot_source
         assert "voice_channel_target_decision" in bot_source
         assert "inject_voice_target_context" in bot_source
         assert "learning_updates_do_not_override_current_decision" in bot_source
@@ -1367,6 +1381,24 @@ def main():
             'scores["speak"] < self.cfg.behavior.speak_threshold'
             not in tts_loop_source
         )
+        on_message_source = bot_source.split(
+            "async def on_message",
+            1,
+        )[1].split(
+            "async def on_raw_reaction_add",
+            1,
+        )[0]
+        assert '_behavior_gate(' in on_message_source
+        assert 'action_policy_gate(' not in on_message_source
+        idle_source = bot_source.split(
+            "async def idle_loop",
+            1,
+        )[1].split(
+            "@idle_loop.before_loop",
+            1,
+        )[0]
+        assert '_behavior_gate(' in idle_source
+        assert 'spontaneous_gate = self.brain.action_policy_gate' not in idle_source
         choose_target_source = bot_source.split(
             "def _choose_voice_target",
             1,
