@@ -1509,3 +1509,200 @@ Snapshot runtime zawiera też `autonomous_history`, a smoke test pilnuje obecno�
 
 24E zamyka etap 24 i przygotowuje projekt do Stage 25 — integracji One Brain.
 
+---
+
+# Stage 25 — One Brain
+
+Stage 25 scala dobrowolne zachowania Muchy pod jeden wspólny neural arbitration core.
+
+Wspólny rdzeń:
+
+```text
+one_brain_candidate_set()
+→ learned predicted reward
+→ signed sensory cues
+→ FAFB propagation
+→ one_brain_action_decision()
+→ action_competition()
+→ dokładnie jeden motor winner
+→ wykonanie
+→ outcome / reward / plasticity
+```
+
+## Jedna decyzja zamiast kilku niezależnych bramek
+
+Dla wiadomości tekstowej poprzednia architektura mogła osobno policzyć:
+
+```text
+REACT vs STAY
+SPEAK vs STAY
+```
+
+Stage 25 buduje jeden zestaw:
+
+```text
+STAY / NOOP
+REACT
+SPEAK
+```
+
+i wykonuje jedną konkurencję One Brain.
+
+Jeżeli REACT wygra, dopiero potem osobny neural readout wybiera konkretne emoji.
+Jeżeli SPEAK wygra, dopiero potem language brain dobiera konkretne słowa.
+To rozdziela decyzję motorową od wyboru szczegółowego celu/treści.
+
+## Wspólny rdzeń dla modalności
+
+Przez `one_brain_action_decision()` przechodzą teraz:
+
+```text
+TEXT:
+  NOOP / REACT / SPEAK
+
+VOICE TTS:
+  NOOP / SPEAK
+
+AUTONOMY:
+  NOOP / SPEAK / VOICE_JOIN / VOICE_MOVE / EXPLORE
+```
+
+Stage 24D pozostaje kompatybilny przez `autonomous_action_decision()`, ale ta metoda jest już wrapperem wspólnego One Brain core.
+
+Ordinary JOIN/MOVE nadal wybierają konkretny kanał przez neural channel targeting po tym, jak One Brain wybierze typ akcji.
+
+## Predicted reward
+
+Każda modalność korzysta z tego samego mechanizmu:
+
+```text
+expected reward × confidence × gain
+→ signed sensory input
+→ realne ścieżki connectomu
+→ propagacja
+→ action competition
+```
+
+Predicted reward nie dopisuje punktów bezpośrednio do winner score.
+
+Konfiguracja:
+
+```toml
+one_brain_enabled = true
+one_brain_predicted_reward_gain = 0.85
+one_brain_prediction_steps = 2
+```
+
+Przy włączonym One Brain parametry te są używane również przez autonomię 24D. Starsze `autonomous_predicted_reward_gain` i `autonomous_prediction_steps` pozostają jako fallback kompatybilności.
+
+## Technical feasibility
+
+Akcja zablokowana technicznie nie bierze udziału w konkurencji.
+
+Przykłady:
+
+```text
+SPEAK:
+blocked text / language not ready / reply cooldown / social avoid
+
+REACT:
+reaction cooldown / brak dostępnego emoji / social avoid
+
+VOICE_JOIN:
+brak dozwolonego targetu
+
+VOICE_MOVE:
+poza VC / minimum dwell / brak alternatywy
+
+EXPLORE:
+explore cooldown
+```
+
+NOOP / STAY pozostaje zawsze dostępny.
+
+## Brak martwych mini-konkurencji
+
+W trybie One Brain stare `_behavior_gate()` dla TEXT działają jako `one-brain-deferred`: raportują score/policy do diagnostyki, ale nie wykonują własnego `action_competition()`.
+
+Dzięki temu jedno zdarzenie tekstowe ma dokładnie jedną właściwą neural competition.
+
+## Cross-modal timeline
+
+Runtime przechowuje:
+
+```text
+one_brain
+one_brain_history
+```
+
+Historia łączy w jednym miejscu decyzje:
+
+```text
+text
+voice_tts
+autonomy
+```
+
+Każdy wpis zawiera m.in.:
+
+```text
+winner
+runner-up
+margin
+candidate actions
+technical feasibility
+predicted reward
+prediction confidence
+execution success
+external effect
+decision context
+```
+
+Zakładka `/autonomy` pokazuje teraz **One Brain 25 / Autonomia 24E** oraz wspólny One Brain timeline.
+
+## Co celowo pozostaje poza One Brain
+
+Nie są to preferencje zachowania, tylko kontrola techniczna, bezpieczeństwo albo jawne polecenie administratora:
+
+```text
+Discord permissions
+blocked guild/channel/user
+AFK exclusions
+Chaser panic / emergency escape
+maximum-dwell emergency handling
+admin commands
+explicit audiotest
+rare random audio reflex
+reconnect / playback / STT plumbing
+```
+
+Chaser escape może więc przerwać zwykłą decyzję One Brain. Jest to safety/reflex path, a nie drugi system preferencji.
+
+## Stan końcowy
+
+Po Stage 25 architektura wysokiego poziomu wygląda tak:
+
+```text
+sensory events
++ attention / working memory
++ people / place / social memory
++ internal drives
++ voice sensory state
++ learned reward expectations
+        ↓
+     ONE BRAIN
+        ↓
+ shared neural arbitration
+        ↓
+ motor action
+        ↓
+ target/content selection
+        ↓
+ Discord outcome
+        ↓
+ reward + synaptic / policy / memory learning
+        ↺
+```
+
+Stage 25 zamyka główny roadmap autonomii i integracji mózgu. Dalsze prace mogą rozwijać biologiczną jakość connectome, uczenie, pamięć i zachowanie bez dokładania kolejnych niezależnych systemów decyzyjnych.
+
