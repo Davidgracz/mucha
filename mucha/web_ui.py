@@ -1777,7 +1777,8 @@ function renderTabs(auto){
  root.innerHTML=rows.map(g=>'<button class="guild-tab '+(Number(g.guild_id)===Number(selectedGuildId)?"active":"")+'" onclick="selectedGuildId='+Number(g.guild_id)+';render(lastPayload)">'+esc(g.guild||g.guild_id)+'</button>').join("");
 }
 function renderCandidates(row,decision){
- const root=$("candidates"),set=row?.candidate_set||{},rows=set.rows||{},names=Array.isArray(set.candidate_actions)?set.candidate_actions:[];
+ const root=$("candidates"),set=row?.candidate_set||{},rows=set.rows||{};
+ const names=["stay","speak","voice_join","voice_move","explore"].filter(name=>rows[name]);
  if(!names.length){root.innerHTML='<div class="muted">Brak kandydatów.</div>';return}
  const winner=String(decision?.action||"");
  root.innerHTML=names.map(name=>{
@@ -1819,6 +1820,8 @@ function renderHistory(items){
 function render(payload){
  lastPayload=payload||{};
  const auto=payload?.autonomous_candidates||{},decision=auto.decision||{},exec=auto.last_execution||{},row=guildRow(auto);
+ const rowSelected=!!row&&Number(row.guild_id)===Number(auto.selected_guild_id);
+ const rowDecision=rowSelected?(row?.candidate_set?.autonomous_decision||decision):{};
  renderTabs(auto);
  $("enabled").textContent=auto.enabled?"ON • 24D":"OFF • legacy";
  $("enabled").className=auto.enabled?"good":"warn";
@@ -1831,14 +1834,15 @@ function render(payload){
  const age=Math.max(0,Date.now()/1000-Number(auto.updated_at||0));
  $("age").textContent=auto.updated_at?age.toFixed(1)+" s":"—";
  const comp=decision.competition||{};
- $("decision-action").textContent=displayAction(decision.action);
- $("runner-up").textContent=displayAction(comp.runner_up);
- $("margin").textContent=fmt(comp.margin);
- $("tie-break").textContent=comp.tie_break||"—";
- $("prediction-source").textContent=decision.prediction_source||"—";
- $("external").textContent=exec.external_effect?"TAK":"NIE";
- renderCandidates(row,decision);
- renderCues(decision);
+ const rowComp=rowDecision.competition||{};
+ $("decision-action").textContent=rowSelected?displayAction(rowDecision.action):"NIE WYBRANO W TYM TICKU";
+ $("runner-up").textContent=rowSelected?displayAction(rowComp.runner_up):"—";
+ $("margin").textContent=rowSelected?fmt(rowComp.margin):"—";
+ $("tie-break").textContent=rowSelected?(rowComp.tie_break||"—"):"—";
+ $("prediction-source").textContent=rowSelected?(rowDecision.prediction_source||"—"):"—";
+ $("external").textContent=rowSelected?(exec.external_effect?"TAK":"NIE"):"—";
+ renderCandidates(row,rowDecision);
+ renderCues(rowDecision);
  renderHistory(payload?.autonomous_history||[]);
 }
 async function update(){
