@@ -6242,8 +6242,8 @@ class MuchaClient(discord.Client):
 
         if not self._sleep_active:
             if not self._sleep_armed:
-                # One sleep session per quiet period. A new external event
-                # arms the next one.
+                # Inactive + disarmed is only a transient guard state.
+                # External activity or session completion re-arms sleep.
                 self._sleep_debug.update({
                     "active": False,
                     "quiet_for": quiet_for,
@@ -6478,11 +6478,12 @@ class MuchaClient(discord.Client):
                 self.brain.save()
             self._last_save = now
             self._last_brain_event = (
-                f"SLEEP COMPLETE • {self._sleep_cycle} cycle(s)"
+                f"SLEEP COMPLETE • {completed_cycle} cycle(s)"
             )
             self._last_brain_action = "WAKE AFTER CONSOLIDATION"
-            # Consume this idle period. A real external event must re-arm
-            # another sleep session.
+            # The runtime counter is already back at zero. The completed
+            # session remains visible briefly in debug, then the next quiet
+            # window can start another sleep session automatically.
             return True
 
         return True
