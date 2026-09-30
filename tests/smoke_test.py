@@ -194,6 +194,14 @@ def main():
         assert boredom_map.get("arousal", 0.0) > 0.0
         assert "speak" in b.INTERNAL_STATE_TARGET_ACTIONS["arousal"]
 
+        unobserved_reward = b.action_reward_prediction("speak")
+        assert unobserved_reward["predicted_reward"] == 0.0
+        assert unobserved_reward["confidence"] == 0.0
+        assert (
+            unobserved_reward["source"]
+            == "unobserved-neutral-prior"
+        )
+
         autonomous_outside = b.autonomous_action_candidates(
             can_speak=True,
             connected_voice=False,
@@ -219,6 +227,45 @@ def main():
             autonomous_outside["rows"]["speak"]["drive_support"]
             >= 0.0
         )
+        assert "predicted_reward_order" in autonomous_outside
+        assert (
+            autonomous_outside["predicted_reward_winner"]
+            in autonomous_outside["candidate_actions"]
+        )
+        assert (
+            autonomous_outside["rows"]["speak"][
+                "prediction_source"
+            ]
+            == "unobserved-neutral-prior"
+        )
+
+        autonomous_rewarded = b.autonomous_action_candidates(
+            can_speak=True,
+            connected_voice=False,
+            voice_target_count=2,
+            can_explore=True,
+            contextual_reward_predictions={
+                "voice_join": {
+                    "expected_reward": 0.75,
+                    "observations": 8,
+                    "confidence": 0.85,
+                },
+            },
+        )
+        assert autonomous_rewarded["rows"]["voice_join"][
+            "predicted_reward"
+        ] > 0.0
+        assert autonomous_rewarded["rows"]["voice_join"][
+            "prediction_confidence"
+        ] > 0.0
+        assert autonomous_rewarded["rows"]["voice_join"][
+            "prediction_source"
+        ] == "episodic-context"
+        assert (
+            autonomous_rewarded["predicted_reward_winner"]
+            == "voice_join"
+        )
+        assert autonomous_rewarded["prediction_executed"] is False
 
         autonomous_inside = b.autonomous_action_candidates(
             can_speak=False,
@@ -296,6 +343,23 @@ def main():
         assert abs(
             episodes.predict("ctx", "voice_join") - 0.3
         ) < 1e-9
+        prediction_detail = episodes.prediction_details(
+            "ctx",
+            "voice_join",
+        )
+        assert abs(
+            prediction_detail["expected_reward"] - 0.3
+        ) < 1e-9
+        assert prediction_detail["observations"] == 1
+        assert prediction_detail["confidence"] > 0.0
+        detailed_predictions = episodes.predictions_detailed(
+            "ctx",
+            ["voice_join", "stay"],
+        )
+        assert detailed_predictions["voice_join"][
+            "observations"
+        ] == 1
+        assert detailed_predictions["stay"]["observations"] == 0
         uncertainty_after = episodes.semantic_uncertainty(
             "ctx",
             ["voice_join"],
@@ -1407,6 +1471,8 @@ def main():
         assert "def register_internal_drive_event" in brain_source
         assert "def internal_drive_diagnostics" in brain_source
         assert "def autonomous_action_candidates" in brain_source
+        assert "def action_reward_prediction" in brain_source
+        assert "predicted_reward_order" in brain_source
         assert "internal_drive_values" in brain_source
         assert "def voice_channel_target_decision" in brain_source
         assert "def inject_voice_target_context" in brain_source
@@ -1423,6 +1489,8 @@ def main():
         assert "_text_decision_debug" in bot_source
         assert "_autonomous_candidate_contexts" in bot_source
         assert "_autonomous_candidate_debug" in bot_source
+        assert "contextual_reward_predictions" in bot_source
+        assert "predictions_detailed" in bot_source
         assert '"autonomous_candidates": deepcopy(' in bot_source
         assert "inject_voice_decision_context" in bot_source
         assert "_last_social_drive_punish" in bot_source
