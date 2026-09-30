@@ -81,6 +81,7 @@ class VoiceEpisodicMemory:
         ] = {}
         self._person_profile_cache: dict[int, dict] = {}
         self._channel_profile_cache: dict[int, dict] = {}
+        self._social_scene_profile_cache: dict[str, dict] = {}
         self._last_forgetting_at = time.time()
         self._last_forgetting_diag: dict = {
             "ran": False,
@@ -325,6 +326,7 @@ class VoiceEpisodicMemory:
         entry["updated_at"] = float(now)
         self._person_profile_cache.clear()
         self._channel_profile_cache.clear()
+        self._social_scene_profile_cache.clear()
         if persist:
             self._persist_semantic_entry(
                 key[0],
@@ -493,6 +495,368 @@ class VoiceEpisodicMemory:
                     now=episode.time,
                     persist=True,
                 )
+        if rows:
+            self.db.commit()
+
+    @staticmethod
+    def make_social_scene_key(
+        *,
+        channel_id: int | None,
+        user_ids: list[int] | tuple[int, ...],
+        context: str,
+        conversation_mode: str = "UNKNOWN",
+        intensity: float = 0.0,
+        speech_ratio: float = 0.0,
+        human_count: int | None = None,
+        dominant_state: str = "",
+        dominant_state_level: float = 0.0,
+    ) -> str:
+        """Build a stable, bucketed identity for a recurring social situation."""
+        users = sorted(set(int(x) for x in user_ids if int(x) > 0))[:6]
+        people = ",".join(str(x) for x in users) or "-"
+        channel = (
+            str(int(channel_id))
+            if channel_id is not None
+            else "outside"
+        )
+        mode = str(conversation_mode or "UNKNOWN").upper()
+        intensity_bucket = min(
+            3,
+            max(0, int(round(max(0.0, min(1.0, float(intensity))) * 3.0))),
+        )
+        speech_bucket = min(
+            3,
+            max(0, int(round(max(0.0, min(1.0, float(speech_ratio))) * 3.0))),
+        )
+        humans = (
+            len(users)
+            if human_count is None
+            else max(0, min(6, int(human_count)))
+        )
+        state = str(dominant_state or "none").lower()
+        state_bucket = min(
+            3,
+            max(
+                0,
+                int(
+                    round(
+                        max(
+                            0.0,
+                            min(1.0, float(dominant_state_level)),
+                        )
+                        * 3.0
+                    )
+                ),
+            ),
+        )
+        context = str(context or "")
+        context_parts = {}
+        for part in context.split("|"):
+            if "=" not in part:
+                continue
+            key, value = part.split("=", 1)
+            if key in {"need", "fatigue", "hab", "explore"}:
+                context_parts[key] = value
+        state_context = ",".join(
+            f"{key}:{context_parts.get(key, '0')}"
+            for key in ("need", "fatigue", "hab", "explore")
+        )
+        return (
+            f"channel={channel}"
+            f"|users={people}"
+            f"|mode={mode}"
+            f"|int={intensity_bucket}"
+            f"|speech={speech_bucket}"
+            f"|humans={humans}"
+            f"|state={state}:{state_bucket}"
+            f"|ctx={state_context}"
+        )
+
+    @staticmethod
+    def parse_social_scene_key(scene_key: str) -> dict:
+        parts: dict[str, str] = {}
+        for part in str(scene_key or "").split("|"):
+            if "=" not in part:
+                continue
+            key, value = part.split("=", 1)
+            parts[key] = value
+
+        users = []
+        for raw in parts.get("users", "-").split(","):
+            if raw.isdigit():
+                users.append(int(raw))
+        state_raw = parts.get("state", "none:0")
+        state_name, _, state_bucket_raw = state_raw.partition(":")
+        try:
+            state_bucket = int(state_bucket_raw or 0)
+        except ValueError:
+            state_bucket = 0
+
+        def as_int(name: str, default: int = 0) -> int:
+            try:
+                return int(parts.get(name, default))
+            except (TypeError, ValueError):
+                return default
+
+        channel_raw = parts.get("channel", "outside")
+        return {
+            "scene_key": str(scene_key or ""),
+            "channel_id": (
+                int(channel_raw)
+                if channel_raw.isdigit()
+                else None
+            ),
+            "user_ids": users,
+            "conversation_mode": str(
+                parts.get("mode", "UNKNOWN")
+            ),
+            "intensity_bucket": max(0, min(3, as_int("int"))),
+            "speech_bucket": max(0, min(3, as_int("speech"))),
+            "human_count": max(0, min(6, as_int("humans"))),
+            "dominant_state": state_name or "none",
+            "dominant_state_bucket": max(
+                0,
+                min(3, state_bucket),
+            ),
+            "context_signature": str(parts.get("ctx", "")),
+        }
+
+    def observe_social_scene_contact(
+        self,
+        scene_key: str,
+        *,
+        now: float | None = None,
+    ) -> dict:
+        """Store one neutral perception of a recurring social situation."""
+        scene_key = str(scene_key or "")
+        if not scene_key or not self.semantic_memory_enabled:
+            return {}
+        result = self._update_semantic_entry(
+            concept_type="social_scene_seen",
+            concept_key=scene_key,
+            action="seen",
+            actual_reward=0.0,
+            now=float(time.time() if now is None else now),
+            persist=True,
+        )
+        if self.db is not None:
+            self.db.commit()
+        return result
+
+    def observe_social_scene_outcome(
+        self,
+        scene_key: str,
+        action: str,
+        actual_reward: float,
+        *,
+        now: float | None = None,
+    ) -> dict:
+        """Store the real outcome of an action taken in a social situation."""
+        scene_key = str(scene_key or "")
+        if not scene_key or not self.semantic_memory_enabled:
+            return {}
+        result = self._update_semantic_entry(
+            concept_type="social_scene",
+            concept_key=scene_key,
+            action=str(action or "stay"),
+            actual_reward=max(-1.0, min(1.0, float(actual_reward))),
+            now=float(time.time() if now is None else now),
+            persist=True,
+        )
+        if self.db is not None:
+            self.db.commit()
+        return result
+
+    def social_scene_profile(self, scene_key: str) -> dict:
+        scene_key = str(scene_key or "")
+        cached = self._social_scene_profile_cache.get(scene_key)
+        if cached is not None:
+            return dict(cached)
+
+        seen_rows: list[tuple[str, dict]] = []
+        action_rows_raw: list[tuple[str, dict]] = []
+        for (
+            concept_type,
+            concept_key,
+            action,
+        ), entry in self._semantic.items():
+            if concept_key != scene_key:
+                continue
+            if concept_type == "social_scene_seen":
+                seen_rows.append((str(action), entry))
+            elif concept_type == "social_scene":
+                action_rows_raw.append((str(action), entry))
+
+        seen = self._aggregate_person_entries(seen_rows)
+        outcomes = self._aggregate_person_entries(action_rows_raw)
+        seen_observations = int(seen["observations"])
+        outcome_observations = int(outcomes["observations"])
+        observations = seen_observations + outcome_observations
+        familiarity = (
+            1.0 - math.exp(-observations / 8.0)
+            if observations > 0
+            else 0.0
+        )
+        confidence = max(
+            0.0,
+            min(
+                1.0,
+                0.60 * float(outcomes["confidence"])
+                + 0.40 * familiarity,
+            ),
+        )
+        valence = float(outcomes["expected_reward"])
+        if valence >= 0.08:
+            valence_label = "positive"
+        elif valence <= -0.08:
+            valence_label = "negative"
+        elif (
+            int(outcomes["positive_count"]) > 0
+            and int(outcomes["negative_count"]) > 0
+        ):
+            valence_label = "mixed"
+        else:
+            valence_label = "neutral"
+
+        actions: list[dict] = []
+        for action, entry in action_rows_raw:
+            row_conf = self._semantic_confidence(entry)
+            expected = float(entry.get("expected_reward", 0.0))
+            actions.append({
+                "action": str(action),
+                "expected_reward": expected,
+                "confidence": row_conf,
+                "signal": expected * row_conf,
+                "observations": int(entry.get("observations", 0)),
+                "positive_count": int(entry.get("positive_count", 0)),
+                "negative_count": int(entry.get("negative_count", 0)),
+                "updated_at": float(entry.get("updated_at", 0.0)),
+            })
+        actions.sort(
+            key=lambda row: (
+                abs(float(row["signal"])),
+                int(row["observations"]),
+            ),
+            reverse=True,
+        )
+        preferred = max(
+            actions,
+            key=lambda row: float(row["signal"]),
+            default=None,
+        )
+        avoided = min(
+            actions,
+            key=lambda row: float(row["signal"]),
+            default=None,
+        )
+        if preferred is not None and float(preferred["signal"]) <= 0.0:
+            preferred = None
+        if avoided is not None and float(avoided["signal"]) >= 0.0:
+            avoided = None
+
+        parsed = self.parse_social_scene_key(scene_key)
+        profile = {
+            **parsed,
+            "observations": observations,
+            "seen_observations": seen_observations,
+            "outcome_observations": outcome_observations,
+            "familiarity": max(0.0, min(1.0, familiarity)),
+            "confidence": confidence,
+            "valence": max(-1.0, min(1.0, valence)),
+            "valence_label": valence_label,
+            "positive_count": int(outcomes["positive_count"]),
+            "negative_count": int(outcomes["negative_count"]),
+            "preferred_action": (
+                dict(preferred)
+                if preferred is not None
+                else None
+            ),
+            "avoided_action": (
+                dict(avoided)
+                if avoided is not None
+                else None
+            ),
+            "actions": actions[:10],
+            "updated_at": max(
+                float(seen["updated_at"]),
+                float(outcomes["updated_at"]),
+            ),
+        }
+        self._social_scene_profile_cache[scene_key] = dict(profile)
+        return dict(profile)
+
+    def social_scene_profiles(
+        self,
+        limit: int = 30,
+    ) -> list[dict]:
+        limit = max(1, min(100, int(limit)))
+        keys = {
+            concept_key
+            for concept_type, concept_key, _ in self._semantic.keys()
+            if concept_type in {"social_scene_seen", "social_scene"}
+        }
+        rows = [
+            self.social_scene_profile(scene_key)
+            for scene_key in keys
+        ]
+        rows.sort(
+            key=lambda row: (
+                int(row.get("observations", 0)),
+                float(row.get("confidence", 0.0)),
+                float(row.get("updated_at", 0.0)),
+            ),
+            reverse=True,
+        )
+        return rows[:limit]
+
+    def _backfill_social_scene_semantics_from_db(self) -> None:
+        """Create coarse social-scene memories for older episode databases."""
+        if self.db is None or not self.semantic_memory_enabled:
+            return
+        if any(
+            concept_type == "social_scene_seen"
+            for concept_type, _, _ in self._semantic.keys()
+        ):
+            return
+
+        rows = self.db.execute(
+            """
+            SELECT created_at, guild_id, channel_id, channel_name,
+                   user_ids_json, user_names_json, context,
+                   scene_key, action, predicted_reward,
+                   actual_reward, prediction_error, source
+            FROM voice_episodes
+            ORDER BY id DESC
+            LIMIT 5000
+            """
+        ).fetchall()
+        for row in reversed(rows):
+            episode = self._episode_from_row(row)
+            social_key = self.make_social_scene_key(
+                channel_id=episode.channel_id,
+                user_ids=episode.user_ids,
+                context=episode.context,
+                conversation_mode="UNKNOWN",
+                intensity=0.0,
+                speech_ratio=0.0,
+                human_count=len(episode.user_ids),
+            )
+            self._update_semantic_entry(
+                concept_type="social_scene_seen",
+                concept_key=social_key,
+                action="seen",
+                actual_reward=0.0,
+                now=episode.time,
+                persist=True,
+            )
+            self._update_semantic_entry(
+                concept_type="social_scene",
+                concept_key=social_key,
+                action=episode.action,
+                actual_reward=episode.actual_reward,
+                now=episode.time,
+                persist=True,
+            )
         if rows:
             self.db.commit()
 
@@ -1915,6 +2279,7 @@ class VoiceEpisodicMemory:
         if self.semantic_memory_enabled:
             self._backfill_person_semantics_from_db()
             self._backfill_channel_semantics_from_db()
+            self._backfill_social_scene_semantics_from_db()
 
     @staticmethod
     def _episode_from_row(row) -> VoiceEpisode:
@@ -2318,6 +2683,7 @@ class VoiceEpisodicMemory:
         if updates:
             self._person_profile_cache.clear()
             self._channel_profile_cache.clear()
+            self._social_scene_profile_cache.clear()
         if self.db is not None and updates:
             self.db.commit()
         return updates
@@ -2375,6 +2741,7 @@ class VoiceEpisodicMemory:
 
         self._person_profile_cache.clear()
         self._channel_profile_cache.clear()
+        self._social_scene_profile_cache.clear()
 
         if self.db is not None:
             self.db.execute(
