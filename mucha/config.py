@@ -255,6 +255,9 @@ class BehaviorConfig:
     speak_threshold: float = 0.70
     reaction_threshold: float = 0.73
     connectome_behavior_competition_enabled: bool = True
+    one_brain_enabled: bool = True
+    one_brain_predicted_reward_gain: float = 0.85
+    one_brain_prediction_steps: int = 2
     autonomous_loop_enabled: bool = True
     autonomous_predicted_reward_gain: float = 0.85
     autonomous_prediction_steps: int = 2
