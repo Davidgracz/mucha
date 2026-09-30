@@ -279,9 +279,10 @@ def main():
         assert "voice_join" in autonomous_decision["prediction_cues"]
         assert (
             autonomous_decision["source"]
-            == "predicted-reward sensory guidance -> FAFB propagation -> "
-            "connectome action competition"
+            == "one-brain predicted-reward sensory guidance -> "
+            "FAFB propagation -> connectome action competition"
         )
+        assert autonomous_decision["decision_context"] == "autonomous-idle"
 
         autonomous_inside = b.autonomous_action_candidates(
             can_speak=False,
@@ -1523,8 +1524,10 @@ def main():
         assert "def internal_drive_diagnostics" in brain_source
         assert "def autonomous_action_candidates" in brain_source
         assert "def action_reward_prediction" in brain_source
+        assert "def one_brain_candidate_set" in brain_source
+        assert "def one_brain_action_decision" in brain_source
         assert "def autonomous_action_decision" in brain_source
-        assert "autonomous-predicted-reward:" in brain_source
+        assert "one-brain-predicted-reward:" in brain_source
         assert "predicted_reward_order" in brain_source
         assert "internal_drive_values" in brain_source
         assert "def voice_channel_target_decision" in brain_source
