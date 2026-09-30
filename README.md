@@ -1129,21 +1129,35 @@ Decision Trace przechowuje również `voice_dynamics_key`, familiarity i valence
 
 Kolejna warstwa ręcznych preferencji została usunięta z autonomii voice.
 
-## SPEAK vs STAY
+## SPEAK / REACT vs STAY
 
-TTS nie używa już prostego:
+Ręczne progi zachowania nie są już domyślną ścieżką dla tekstu, reakcji ani TTS.
 
-```python
-if speak_score < speak_threshold:
-    return
+W trybie:
+
+```toml
+connectome_behavior_competition_enabled = true
 ```
 
-Zamiast tego `SPEAK` i `STAY` konkurują przez wspólny `action_competition()`, który używa:
+runtime używa wspólnej konkurencji:
+
+```text
+TEXT reply:        SPEAK vs STAY
+REACTION:          REACT vs STAY
+SPONTANEOUS TEXT:  SPEAK vs STAY
+VOICE TTS:         SPEAK vs STAY
+```
+
+Każda konkurencja przechodzi przez `action_competition()`, który używa:
 
 - surowych readoutów connectomu,
 - learned action policy,
 - neural tie evidence,
 - unbiased fallback tylko przy praktycznie płaskim stanie sieci.
+
+Dawne `speak_threshold` i `reaction_threshold` pozostają wyłącznie jako **legacy fallback**, gdy competition mode zostanie ręcznie wyłączony. Cooldowny pozostają ograniczeniami technicznymi, a nie preferencją decyzyjną.
+
+Decision Trace i panel Learned Action Policy pokazują teraz `winner / runner-up / margin / source`, zamiast opisywać neural competition jako „przejście progu”.
 
 ## Wybór konkretnego kanału
 
@@ -1216,8 +1230,8 @@ Prywatny `/details` pokazuje teraz **Target selection = neural-channel-readout**
 Dalsze kierunki:
 
 - większa integracja tekstu, voice, pamięci i zachowania społecznego w jeden współdzielony stan neuronalny,
-- ograniczenie pozostałych legacy threshold paths do trybu kompatybilności,
-- wspólna konkurencja zachowań tekstowych, voice i reakcji zamiast osobnych schedulerów.
+- wspólny scheduler / arbitration layer dla tekstu, voice i reakcji zamiast kilku niezależnych pętli,
+- dalsze ograniczanie ręcznych wyjątków wyłącznie do bezpieczeństwa, permissions i fizycznych ograniczeń Discorda.
 
 ---
 
