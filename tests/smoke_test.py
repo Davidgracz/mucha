@@ -32,6 +32,55 @@ def main():
         scores = b.action_scores()
         assert 0 <= scores["speak"] <= 1
 
+        speak_vs_stay = b.action_competition(
+            ("speak", "stay")
+        )
+        assert speak_vs_stay["action"] in {"speak", "stay"}
+        assert set(speak_vs_stay["candidates"]) == {
+            "speak",
+            "stay",
+        }
+        assert "raw_candidates" in speak_vs_stay
+        assert "policy_scores" in speak_vs_stay
+
+        target_ctx_a = b.inject_voice_target_context(
+            1,
+            111,
+            novelty=0.9,
+            recent=0.1,
+            uncertainty=0.7,
+            reward_opportunity_strength=0.8,
+            is_current=False,
+        )
+        target_ctx_b = b.inject_voice_target_context(
+            1,
+            222,
+            novelty=0.2,
+            recent=0.8,
+            uncertainty=0.1,
+            reward_opportunity_strength=0.0,
+            is_current=False,
+        )
+        assert target_ctx_a["direct_target_bonus"] is False
+        assert target_ctx_a["cue_count"] > 0
+        assert target_ctx_b["cue_count"] > 0
+        b.inject_voice_snapshot(1, 111, [11, 22])
+        b.inject_voice_snapshot(1, 222, [33])
+        b.step(2)
+        target_choice = b.voice_channel_target_decision(
+            1,
+            [111, 222],
+        )
+        assert target_choice["channel_id"] in {111, 222}
+        assert set(target_choice["candidates"]) == {
+            "111",
+            "222",
+        }
+        assert target_choice["source"] == (
+            "neural-channel-readout"
+        )
+        assert target_choice["direct_target_bonus"] is False
+
         internal = b.internal_state_diagnostics()
         assert internal["enabled"] is True
         assert set(internal["states"]) == {
@@ -1115,6 +1164,9 @@ def main():
         assert "renderVoiceDynamicsProfiles" in HTML
         assert 'id="voice-dynamics-grid"' in HTML
         assert "voice-dynamics-memory" in HTML
+        assert "Target selection" in HTML
+        assert "Learning timing" in HTML
+        assert "Target score" in HTML
         assert "Curiosity / Uncertainty" in HTML
         assert "Tryb rozmowy" in HTML
         assert "Speech ratio 60s" in HTML
@@ -1212,6 +1264,12 @@ def main():
         assert "_user_affinity_components" in bot_source
         assert "_write_neural_social_memory" in bot_source
         assert "voice_action_decision" in bot_source
+        brain_source = (ROOT / "mucha" / "brain.py").read_text(
+            encoding="utf-8"
+        )
+        assert "def action_competition" in brain_source
+        assert "def voice_channel_target_decision" in brain_source
+        assert "def inject_voice_target_context" in brain_source
         assert "tie_evidence" in bot_source
         assert "tie_break" in bot_source
         assert "action_policy_gate" in bot_source
@@ -1292,6 +1350,32 @@ def main():
         assert "inject_voice_dynamics_profile" in bot_source
         assert "voice_dynamics_key" in bot_source
         assert "_voice_dynamics_model_debug" in bot_source
+        assert "action_competition" in bot_source
+        assert "voice_channel_target_decision" in bot_source
+        assert "inject_voice_target_context" in bot_source
+        assert "learning_updates_do_not_override_current_decision" in bot_source
+        assert '"neural-channel-readout"' in bot_source
+        tts_loop_source = bot_source.split(
+            "async def tts_loop",
+            1,
+        )[1].split(
+            "@tts_loop.before_loop",
+            1,
+        )[0]
+        assert 'action_competition(' in tts_loop_source
+        assert (
+            'scores["speak"] < self.cfg.behavior.speak_threshold'
+            not in tts_loop_source
+        )
+        choose_target_source = bot_source.split(
+            "def _choose_voice_target",
+            1,
+        )[1].split(
+            "def _reaction_candidates",
+            1,
+        )[0]
+        assert "voice_channel_target_decision" in choose_target_source
+        assert "legacy-affinity-exploration" in choose_target_source
         assert "observe_voice_dynamics_contact" in bot_source
         assert "observe_voice_dynamics_outcome" in bot_source
         assert "social_scene_key" in bot_source
