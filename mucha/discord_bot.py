@@ -10198,7 +10198,51 @@ class MuchaClient(discord.Client):
             return
         for guild in self.guilds:
             try:
-                await self._voice_decision(guild)
+                run_legacy_decision = not bool(
+                    self.cfg.behavior.autonomous_loop_enabled
+                )
+                if not run_legacy_decision:
+                    now = time.monotonic()
+                    current = self._current_voice_channel(guild)
+                    arrived = self.voice_arrived.setdefault(
+                        guild.id,
+                        now,
+                    )
+                    maximum_dwell = max(
+                        float(self.cfg.voice.minimum_dwell_seconds),
+                        float(self.cfg.voice.maximum_dwell_seconds),
+                    )
+                    emergency = bool(
+                        self._is_voice_guild_blocked(guild)
+                        or self._chaser_panic_remaining(guild.id, now) > 0.0
+                        or (
+                            current is not None
+                            and now - arrived >= maximum_dwell
+                        )
+                    )
+                    run_legacy_decision = emergency
+
+                if run_legacy_decision:
+                    await self._voice_decision(guild)
+                else:
+                    current = self._current_voice_channel(guild)
+                    self._voice_debug[guild.id] = {
+                        **dict(self._voice_debug.get(guild.id, {})),
+                        "guild": guild.name,
+                        "guild_id": guild.id,
+                        "current": (
+                            current.name
+                            if current is not None
+                            else None
+                        ),
+                        "decision": "24D AUTONOMOUS LOOP",
+                        "reason": (
+                            "ordinary JOIN/MOVE/STAY belongs to the unified "
+                            "24D winner; legacy voice logic is emergency-only"
+                        ),
+                        "checked_at": time.time(),
+                    }
+
                 vc = guild.voice_client
                 if vc is not None and vc.is_connected():
                     self._ensure_voice_listener(vc)
