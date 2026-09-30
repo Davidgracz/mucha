@@ -697,6 +697,51 @@ class VoiceEpisodicMemory:
             "concepts": rows,
         }
 
+    def observe_person_contact(
+        self,
+        user_id: int,
+        source: str,
+        *,
+        now: float | None = None,
+    ) -> dict:
+        """Persist that a known person interacted with Mucha.
+
+        Contact is neutral evidence. It increases familiarity without
+        pretending that the interaction itself was rewarding or punishing.
+        """
+        user_id = int(user_id)
+        if user_id <= 0 or not self.semantic_memory_enabled:
+            return {}
+        return self._update_semantic_entry(
+            concept_type="person_contact",
+            concept_key=str(user_id),
+            action=str(source or "unknown"),
+            actual_reward=0.0,
+            now=float(time.time() if now is None else now),
+            persist=True,
+        )
+
+    def observe_person_social_event(
+        self,
+        user_id: int,
+        event: str,
+        amount: float,
+        *,
+        now: float | None = None,
+    ) -> dict:
+        """Persist signed social evidence for a person."""
+        user_id = int(user_id)
+        if user_id <= 0 or not self.semantic_memory_enabled:
+            return {}
+        return self._update_semantic_entry(
+            concept_type="person_social",
+            concept_key=str(user_id),
+            action=str(event or "social"),
+            actual_reward=max(-1.0, min(1.0, float(amount))),
+            now=float(time.time() if now is None else now),
+            persist=True,
+        )
+
     @staticmethod
     def _aggregate_person_entries(
         rows: list[tuple[str, dict]],
@@ -758,6 +803,8 @@ class VoiceEpisodicMemory:
         user_key = str(user_id)
         action_rows: list[dict] = []
         direct_rows: list[tuple[str, dict]] = []
+        contact_rows: list[tuple[str, dict]] = []
+        social_rows: list[tuple[str, dict]] = []
         channel_groups: dict[str, list[tuple[str, dict]]] = {}
         context_groups: dict[str, list[tuple[str, dict]]] = {}
 
@@ -791,6 +838,16 @@ class VoiceEpisodicMemory:
                     ),
                 })
             elif (
+                concept_type == "person_contact"
+                and concept_key == user_key
+            ):
+                contact_rows.append((str(action), entry))
+            elif (
+                concept_type == "person_social"
+                and concept_key == user_key
+            ):
+                social_rows.append((str(action), entry))
+            elif (
                 concept_type == "user_channel"
                 and concept_key.startswith(user_key + "@")
             ):
@@ -810,23 +867,61 @@ class VoiceEpisodicMemory:
                 ).append((str(action), entry))
 
         direct = self._aggregate_person_entries(direct_rows)
-        observations = int(direct["observations"])
+        contacts = self._aggregate_person_entries(contact_rows)
+        social = self._aggregate_person_entries(social_rows)
+
+        voice_observations = int(direct["observations"])
+        contact_observations = int(contacts["observations"])
+        social_observations = int(social["observations"])
+        observations = (
+            voice_observations
+            + contact_observations
+            + social_observations
+        )
         familiarity = (
-            1.0 - math.exp(-observations / 8.0)
+            1.0 - math.exp(-observations / 12.0)
             if observations > 0
+            else 0.0
+        )
+
+        evidence_weight = (
+            voice_observations + social_observations
+        )
+        if evidence_weight > 0:
+            valence = (
+                float(direct["expected_reward"])
+                * voice_observations
+                + float(social["expected_reward"])
+                * social_observations
+            ) / evidence_weight
+        else:
+            valence = 0.0
+        valence = max(-1.0, min(1.0, valence))
+
+        evidence_confidence = (
+            (
+                float(direct["confidence"]) * voice_observations
+                + float(social["confidence"]) * social_observations
+            ) / evidence_weight
+            if evidence_weight > 0
             else 0.0
         )
         profile_confidence = max(
             0.0,
             min(
                 1.0,
-                0.55 * float(direct["confidence"])
+                0.55 * evidence_confidence
                 + 0.45 * familiarity,
             ),
         )
-        valence = float(direct["expected_reward"])
-        positive = int(direct["positive_count"])
-        negative = int(direct["negative_count"])
+        positive = (
+            int(direct["positive_count"])
+            + int(social["positive_count"])
+        )
+        negative = (
+            int(direct["negative_count"])
+            + int(social["negative_count"])
+        )
         signed_total = positive + negative
         if (
             signed_total >= 4
@@ -931,10 +1026,86 @@ class VoiceEpisodicMemory:
             reverse=True,
         )
 
+        contact_sources = []
+        for source, entry in contact_rows:
+            contact_sources.append({
+                "source": str(source),
+                "observations": int(
+                    entry.get("observations", 0)
+                ),
+                "updated_at": float(
+                    entry.get("updated_at", 0.0)
+                ),
+            })
+        contact_sources.sort(
+            key=lambda row: (
+                int(row["observations"]),
+                float(row["updated_at"]),
+            ),
+            reverse=True,
+        )
+
+        social_events = []
+        for event, entry in social_rows:
+            confidence = self._semantic_confidence(entry)
+            expected = float(
+                entry.get("expected_reward", 0.0)
+            )
+            social_events.append({
+                "event": str(event),
+                "expected_reward": expected,
+                "confidence": confidence,
+                "signal": expected * confidence,
+                "observations": int(
+                    entry.get("observations", 0)
+                ),
+                "positive_count": int(
+                    entry.get("positive_count", 0)
+                ),
+                "negative_count": int(
+                    entry.get("negative_count", 0)
+                ),
+                "updated_at": float(
+                    entry.get("updated_at", 0.0)
+                ),
+            })
+        social_events.sort(
+            key=lambda row: (
+                abs(float(row["signal"])),
+                int(row["observations"]),
+            ),
+            reverse=True,
+        )
+
+        recent_episodes = []
+        for episode in reversed(self._episodes):
+            if user_id not in episode.user_ids:
+                continue
+            recent_episodes.append({
+                "time": float(episode.time),
+                "channel_id": episode.channel_id,
+                "channel_name": str(episode.channel_name),
+                "context": str(episode.context),
+                "action": str(episode.action),
+                "predicted_reward": float(
+                    episode.predicted_reward
+                ),
+                "actual_reward": float(episode.actual_reward),
+                "prediction_error": float(
+                    episode.prediction_error
+                ),
+                "source": str(episode.source),
+            })
+            if len(recent_episodes) >= 6:
+                break
+
         profile = {
             "user_id": user_id,
             "display_name": display_name,
             "observations": observations,
+            "voice_observations": voice_observations,
+            "contact_observations": contact_observations,
+            "social_observations": social_observations,
             "familiarity": max(0.0, min(1.0, familiarity)),
             "confidence": profile_confidence,
             "expected_reward": valence,
@@ -958,6 +1129,12 @@ class VoiceEpisodicMemory:
                 if avoided is not None
                 else None
             ),
+            "social_expected_reward": float(
+                social["expected_reward"]
+            ),
+            "contact_sources": contact_sources[:8],
+            "social_events": social_events[:10],
+            "recent_episodes": recent_episodes,
             "actions": action_rows[:10],
             "channels": channel_rows[:8],
             "contexts": context_rows[:8],
@@ -973,7 +1150,11 @@ class VoiceEpisodicMemory:
         user_ids = sorted({
             int(concept_key)
             for concept_type, concept_key, _ in self._semantic.keys()
-            if concept_type == "user" and str(concept_key).isdigit()
+            if (
+                concept_type
+                in {"user", "person_contact", "person_social"}
+                and str(concept_key).isdigit()
+            )
         })
         rows = [
             self.person_profile(user_id)
