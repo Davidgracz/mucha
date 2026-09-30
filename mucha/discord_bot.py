@@ -4738,8 +4738,36 @@ class MuchaClient(discord.Client):
         legacy_threshold: float,
         *,
         alternatives: tuple[str, ...] = ("stay",),
+        defer_to_one_brain: bool = False,
     ) -> dict:
-        """Use neural readout competition; keep thresholds only as legacy fallback."""
+        """Use neural competition, or return a non-deciding probe for One Brain."""
+        if defer_to_one_brain:
+            policy = self.brain.action_policy_diagnostics()
+            action_row = dict(
+                policy.get("actions", {}).get(action, {})
+            )
+            return {
+                "action": str(action),
+                "enabled": bool(self.brain.cfg.action_policy_enabled),
+                "raw_score": float(raw_score),
+                "bias": float(action_row.get("bias", 0.0)),
+                "effective_score": float(
+                    self.brain.action_policy_score(
+                        action,
+                        raw_score,
+                    )
+                ),
+                "base_threshold": float(legacy_threshold),
+                "learned_raw_threshold": float(legacy_threshold),
+                "passed": False,
+                "reward_ema": float(
+                    action_row.get("reward_ema", 0.0)
+                ),
+                "updates": int(action_row.get("updates", 0)),
+                "decision_mode": "one-brain-deferred",
+                "competition": {},
+            }
+
         if not self.cfg.behavior.connectome_behavior_competition_enabled:
             gate = self.brain.action_policy_gate(
                 action,
@@ -4947,11 +4975,17 @@ class MuchaClient(discord.Client):
                 "react",
                 scores["react"],
                 self.cfg.behavior.reaction_threshold,
+                defer_to_one_brain=bool(
+                    self.cfg.behavior.one_brain_enabled
+                ),
             )
             speak_gate = self._behavior_gate(
                 "speak",
                 scores["speak"],
                 self.cfg.behavior.speak_threshold,
+                defer_to_one_brain=bool(
+                    self.cfg.behavior.one_brain_enabled
+                ),
             )
             decision_internal_states = (
                 self.brain.internal_state_diagnostics()
