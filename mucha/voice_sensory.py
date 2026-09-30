@@ -120,7 +120,7 @@ class VoiceSensoryBus:
         user_name: str,
         *,
         now: float | None = None,
-    ) -> None:
+    ) -> bool:
         now = time.monotonic() if now is None else float(now)
         guild_id = int(guild_id)
         channel_id = int(channel_id)
@@ -170,7 +170,8 @@ class VoiceSensoryBus:
 
             user["name"] = str(user_name or user_id)
             user["channel_id"] = channel_id
-            if not user.get("speaking"):
+            started_now = not bool(user.get("speaking"))
+            if started_now:
                 user["speaking"] = True
                 user["speaking_since"] = now
                 user["turn_starts"].append(now)
@@ -186,6 +187,7 @@ class VoiceSensoryBus:
             user["last_packet"] = now
             user["packets"] = int(user.get("packets", 0)) + 1
             state["last_any_speech"] = now
+            return started_now
 
     def note_transcript(
         self,
