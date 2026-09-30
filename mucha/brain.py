@@ -2200,6 +2200,7 @@ class FlyBrain:
         connected_voice: bool,
         voice_target_count: int,
         can_explore: bool = True,
+        can_voice_move: bool = True,
         contextual_reward_predictions: dict[str, dict] | None = None,
     ) -> dict:
         """Build an autonomous action set without executing any action.
@@ -2224,6 +2225,7 @@ class FlyBrain:
             ),
             "voice_move": bool(
                 connected_voice
+                and bool(can_voice_move)
                 and int(voice_target_count) > 0
             ),
         }
@@ -2254,7 +2256,11 @@ class FlyBrain:
                 else (
                     "not-connected"
                     if not connected_voice
-                    else "no-alternative-voice-target"
+                    else (
+                        "motor-refractory"
+                        if not can_voice_move
+                        else "no-alternative-voice-target"
+                    )
                 )
             ),
         }
@@ -2431,6 +2437,7 @@ class FlyBrain:
             ),
             "can_speak": bool(can_speak),
             "can_explore": bool(can_explore),
+            "can_voice_move": bool(can_voice_move),
             "executed": False,
             "source": (
                 "technical-feasibility + homeostatic-drives + "
@@ -2438,6 +2445,98 @@ class FlyBrain:
                 "neural competition preview"
             ),
             "prediction_executed": False,
+        }
+
+
+    def autonomous_action_decision(
+        self,
+        candidate_set: dict,
+        *,
+        predicted_reward_gain: float = 0.85,
+        propagation_steps: int = 2,
+    ) -> dict:
+        """Turn learned reward expectations into neural evidence, then compete.
+
+        Predicted reward never edits an action score directly. Signed reward
+        expectation is injected through sensory neurons structurally connected
+        to each candidate action. The normal connectome propagation and
+        action_competition() then choose the final winner.
+        """
+        actions = [
+            str(action)
+            for action in candidate_set.get("candidate_actions", ())
+            if str(action) in self.ACTIONS
+        ]
+        if "stay" not in actions:
+            actions.insert(0, "stay")
+        if not actions:
+            actions = ["stay"]
+
+        rows = dict(candidate_set.get("rows", {}))
+        gain = max(
+            0.0,
+            min(4.0, float(predicted_reward_gain)),
+        )
+        cues: dict[str, dict] = {}
+        for action in actions:
+            row = dict(rows.get(action, {}))
+            predicted = max(
+                -1.0,
+                min(
+                    1.0,
+                    float(row.get("predicted_reward", 0.0)),
+                ),
+            )
+            confidence = max(
+                0.0,
+                min(
+                    1.0,
+                    float(row.get("prediction_confidence", 0.0)),
+                ),
+            )
+            signal = predicted * confidence * gain
+            if abs(signal) <= 1e-6:
+                continue
+            cues[action] = self.inject_action_guided_signed_sensory(
+                action,
+                f"autonomous-predicted-reward:{action}",
+                signal,
+                width=192,
+                hops=3,
+            )
+
+        steps = max(0, min(8, int(propagation_steps)))
+        if cues and steps > 0:
+            self.step(steps)
+
+        competition = self.action_competition(actions)
+        winner = str(competition.get("action", "stay"))
+        winner_row = dict(rows.get(winner, {}))
+        return {
+            "action": winner,
+            "display_action": "noop" if winner == "stay" else winner,
+            "competition": competition,
+            "candidate_actions": actions,
+            "prediction_cues": cues,
+            "prediction_gain": float(gain),
+            "propagation_steps": int(steps if cues else 0),
+            "predicted_reward": float(
+                winner_row.get("predicted_reward", 0.0)
+            ),
+            "prediction_confidence": float(
+                winner_row.get("prediction_confidence", 0.0)
+            ),
+            "prediction_source": str(
+                winner_row.get(
+                    "prediction_source",
+                    "unobserved-neutral-prior",
+                )
+            ),
+            "source": (
+                "predicted-reward sensory guidance -> FAFB propagation -> "
+                "connectome action competition"
+            ),
+            "executed": False,
         }
 
     def action_pool_diagnostics(self) -> dict[str, dict]:
