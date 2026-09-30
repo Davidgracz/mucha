@@ -9417,6 +9417,85 @@ class MuchaClient(discord.Client):
             if uid in set(prediction_user_ids)
         ]
 
+        channel_profiles_by_id: dict[int, dict] = {}
+        if self.cfg.behavior.channel_model_enabled:
+            min_channel_observations = max(
+                1,
+                int(
+                    self.cfg.behavior
+                    .channel_model_min_observations
+                ),
+            )
+            for channel, _humans in channels:
+                profile = self.voice_episodes.channel_profile(
+                    int(channel.id)
+                )
+                if int(profile.get("observations", 0)) < (
+                    min_channel_observations
+                ):
+                    continue
+                if not profile.get("channel_name"):
+                    profile["channel_name"] = str(channel.name)
+                channel_profiles_by_id[
+                    int(channel.id)
+                ] = profile
+
+        debug["channel_profiles"] = [
+            {
+                "channel_id": int(channel_id),
+                "channel_name": str(
+                    profile.get("channel_name") or channel_id
+                ),
+                "observations": int(
+                    profile.get("observations", 0)
+                ),
+                "familiarity": float(
+                    profile.get("familiarity", 0.0)
+                ),
+                "confidence": float(
+                    profile.get("confidence", 0.0)
+                ),
+                "valence": float(
+                    profile.get("valence", 0.0)
+                ),
+                "valence_label": str(
+                    profile.get("valence_label", "neutral")
+                ),
+                "dominant_mode": str(
+                    profile.get("dominant_mode", "UNKNOWN")
+                ),
+                "mean_intensity": float(
+                    profile.get("mean_intensity", 0.0)
+                ),
+                "mean_speech_ratio": float(
+                    profile.get("mean_speech_ratio", 0.0)
+                ),
+                "mean_human_density": float(
+                    profile.get("mean_human_density", 0.0)
+                ),
+                "current": bool(
+                    current is not None
+                    and int(current.id) == int(channel_id)
+                ),
+            }
+            for channel_id, profile in channel_profiles_by_id.items()
+        ]
+        for row in debug["channels"]:
+            profile = channel_profiles_by_id.get(
+                int(row["id"])
+            )
+            if profile is None:
+                continue
+            row["place_familiarity"] = float(
+                profile.get("familiarity", 0.0)
+            )
+            row["place_valence"] = float(
+                profile.get("valence", 0.0)
+            )
+            row["place_mode"] = str(
+                profile.get("dominant_mode", "UNKNOWN")
+            )
+
         disliked_strength = max(
             (
                 min(1.0, max(0.0, -float(affinity)))
@@ -9504,6 +9583,74 @@ class MuchaClient(discord.Client):
                     [m.id for m in humans],
                     sensory_scale=sensory_scale,
                 )
+                if self.cfg.behavior.channel_model_enabled:
+                    channel_profile = (
+                        channel_profiles_by_id.get(int(ch.id))
+                    )
+                    if channel_profile is not None:
+                        place_diag = (
+                            self.brain.inject_channel_profile(
+                                channel_profile,
+                                magnitude=float(
+                                    self.cfg.behavior
+                                    .channel_model_sensory_magnitude
+                                ) * (
+                                    0.85
+                                    if current is not None
+                                    and ch.id == current.id
+                                    else 0.50
+                                ),
+                                is_current=bool(
+                                    current is not None
+                                    and ch.id == current.id
+                                ),
+                            )
+                        )
+                        self._channel_model_debug[int(ch.id)] = {
+                            "channel_id": int(ch.id),
+                            "channel_name": str(ch.name),
+                            "guild": guild.name,
+                            "checked_at": time.time(),
+                            "profile": {
+                                "observations": int(
+                                    channel_profile.get(
+                                        "observations",
+                                        0,
+                                    )
+                                ),
+                                "familiarity": float(
+                                    channel_profile.get(
+                                        "familiarity",
+                                        0.0,
+                                    )
+                                ),
+                                "confidence": float(
+                                    channel_profile.get(
+                                        "confidence",
+                                        0.0,
+                                    )
+                                ),
+                                "valence": float(
+                                    channel_profile.get(
+                                        "valence",
+                                        0.0,
+                                    )
+                                ),
+                                "valence_label": str(
+                                    channel_profile.get(
+                                        "valence_label",
+                                        "neutral",
+                                    )
+                                ),
+                                "dominant_mode": str(
+                                    channel_profile.get(
+                                        "dominant_mode",
+                                        "UNKNOWN",
+                                    )
+                                ),
+                            },
+                            "brain": dict(place_diag),
+                        }
                 if self.cfg.behavior.person_model_enabled:
                     for member in humans[:8]:
                         profile = person_profiles_by_id.get(
