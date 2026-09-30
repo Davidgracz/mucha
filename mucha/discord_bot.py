@@ -310,6 +310,7 @@ class MuchaClient(discord.Client):
         self._voice_arrival_channel: dict[int, int] = {}
         self._voice_arrival_learning: dict[int, tuple[str, tuple, float, int]] = {}
         self._pending_direct_replies: dict[tuple[int, int], dict] = {}
+        self._person_model_debug: dict[int, dict] = {}
         self._social_debug: dict = {
             "event": "BRAK",
             "detail": "",
@@ -495,6 +496,9 @@ class MuchaClient(discord.Client):
             "neural_social_memory_enabled",
             "neural_affinity_weight",
             "neural_social_learning_scale",
+            "person_model_enabled",
+            "person_model_min_observations",
+            "person_model_sensory_magnitude",
             "social_window_seconds",
             "word_reuse_reward",
             "phrase_reuse_reward",
@@ -859,6 +863,15 @@ class MuchaClient(discord.Client):
             ),
             ("behavior", "neural_social_learning_scale"): (
                 float, 0.0, 3.0
+            ),
+            ("behavior", "person_model_enabled"): (
+                bool, None, None
+            ),
+            ("behavior", "person_model_min_observations"): (
+                int, 1, 100
+            ),
+            ("behavior", "person_model_sensory_magnitude"): (
+                float, 0.0, 1.5
             ),
             ("behavior", "social_window_seconds"): (int, 30, 86400),
             ("behavior", "word_reuse_reward"): (float, 0.0, 1.0),
@@ -4509,6 +4522,13 @@ class MuchaClient(discord.Client):
         await self._apply_social_message_feedback(message)
         self.language.learn(message.content)
         user_affinity = self._user_affinity(message.author.id)
+        person_profile = (
+            self.voice_episodes.person_profile(
+                message.author.id
+            )
+            if self.cfg.behavior.person_model_enabled
+            else {}
+        )
         disliked_user = bool(
             self.cfg.behavior.ignore_disliked_users_text
             and user_affinity <= float(self.cfg.behavior.user_avoid_threshold)
@@ -4529,6 +4549,68 @@ class MuchaClient(discord.Client):
 
         async with self._brain_lock:
             self.brain.inject_text(message.content, message.author.id, mentioned)
+            person_profile_neural = {}
+            if (
+                self.cfg.behavior.person_model_enabled
+                and int(person_profile.get("observations", 0))
+                >= int(
+                    self.cfg.behavior
+                    .person_model_min_observations
+                )
+            ):
+                person_profile_neural = (
+                    self.brain.inject_person_profile(
+                        person_profile,
+                        magnitude=float(
+                            self.cfg.behavior
+                            .person_model_sensory_magnitude
+                        ),
+                        current_channel_id=message.channel.id,
+                    )
+                )
+                self._person_model_debug[
+                    int(message.author.id)
+                ] = {
+                    "user_id": int(message.author.id),
+                    "display_name": message.author.display_name,
+                    "source": "text",
+                    "guild": message.guild.name,
+                    "channel": channel_name,
+                    "checked_at": time.time(),
+                    "profile": {
+                        "observations": int(
+                            person_profile.get(
+                                "observations",
+                                0,
+                            )
+                        ),
+                        "familiarity": float(
+                            person_profile.get(
+                                "familiarity",
+                                0.0,
+                            )
+                        ),
+                        "confidence": float(
+                            person_profile.get(
+                                "confidence",
+                                0.0,
+                            )
+                        ),
+                        "valence": float(
+                            person_profile.get(
+                                "valence",
+                                0.0,
+                            )
+                        ),
+                        "valence_label": str(
+                            person_profile.get(
+                                "valence_label",
+                                "neutral",
+                            )
+                        ),
+                    },
+                    "brain": dict(person_profile_neural),
+                }
             self._inject_attention_context(message.guild.id)
             familiar_threshold = float(
                 self.cfg.behavior.familiar_affinity_threshold
@@ -4796,6 +4878,9 @@ class MuchaClient(discord.Client):
                 "reply_cooldown_remaining": float(
                     reply_cooldown_remaining
                 ),
+                "person_model_cues": int(
+                    person_profile_neural.get("cue_count", 0)
+                ),
                 "reaction_gate": {
                     "raw_score": float(scores["react"]),
                     "effective_score": float(
@@ -4817,6 +4902,18 @@ class MuchaClient(discord.Client):
             "memory": {
                 "affinity": float(user_affinity),
                 "attention_items": len(decision_attention),
+                "person_observations": int(
+                    person_profile.get("observations", 0)
+                ),
+                "person_familiarity": float(
+                    person_profile.get("familiarity", 0.0)
+                ),
+                "person_confidence": float(
+                    person_profile.get("confidence", 0.0)
+                ),
+                "person_valence": float(
+                    person_profile.get("valence", 0.0)
+                ),
             },
         }
 
