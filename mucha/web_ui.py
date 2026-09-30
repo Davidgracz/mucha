@@ -3220,7 +3220,7 @@ class WebDashboard:
         host: str,
         port: int,
         auto_open: bool = True,
-        refresh_ms: int = 500,
+        refresh_ms: int = 250,
         history_points: int = 180,
         auth_enabled: bool = True,
         auth_username: str = "admin",
