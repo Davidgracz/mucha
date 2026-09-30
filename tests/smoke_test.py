@@ -1548,6 +1548,13 @@ def main():
         assert "_execute_autonomous_action" in bot_source
         assert "_autonomous_voice_target" in bot_source
         assert "autonomous_loop_enabled" in bot_source
+        assert '("behavior", "autonomous_loop_enabled")' in bot_source
+        assert '("behavior", "autonomous_predicted_reward_gain")' in bot_source
+        assert '("behavior", "autonomous_prediction_steps")' in bot_source
+        assert (
+            '("behavior", "autonomous_explore_cooldown_seconds")'
+            in bot_source
+        )
         assert "24D AUTONOMOUS LOOP" in bot_source
         assert "contextual_reward_predictions" in bot_source
         assert "predictions_detailed" in bot_source
