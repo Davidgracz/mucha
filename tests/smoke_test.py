@@ -1490,6 +1490,13 @@ def main():
         ):
             assert hard_blocked_id in bot_source
         assert "HARD_BLOCKED_TEXT_CHANNEL_IDS" in bot_source
+        assert "297724966571474944" in bot_source
+        assert "HARD_BLOCKED_VOICE_USER_IDS" in bot_source
+        assert "_voice_channel_has_hard_blocked_user" in bot_source
+        assert (
+            bot_source.count("_voice_channel_has_hard_blocked_user")
+            >= 6
+        )
         assert "_user_affinity_components" in bot_source
         assert "_write_neural_social_memory" in bot_source
         assert "voice_action_decision" in bot_source
