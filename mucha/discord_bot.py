@@ -6588,6 +6588,21 @@ class MuchaClient(discord.Client):
             if person_rows
             else 0.0
         )
+        channel_rows = list(row.get("channel_profiles") or [])
+        current_name = str(row.get("current") or "")
+        current_place = next(
+            (
+                item
+                for item in channel_rows
+                if bool(item.get("current"))
+                or (
+                    current_name
+                    and str(item.get("channel_name") or "")
+                    == current_name
+                )
+            ),
+            None,
+        )
 
         memory = {
             "predicted_reward": float(
@@ -6615,6 +6630,19 @@ class MuchaClient(discord.Client):
             "person_profiles": len(person_rows),
             "person_familiarity": person_familiarity_mean,
             "person_valence": person_valence_mean,
+            "channel_profiles": len(channel_rows),
+            "current_place_familiarity": float(
+                (current_place or {}).get("familiarity", 0.0)
+            ),
+            "current_place_valence": float(
+                (current_place or {}).get("valence", 0.0)
+            ),
+            "current_place_mode": str(
+                (current_place or {}).get(
+                    "dominant_mode",
+                    "UNKNOWN",
+                )
+            ),
         }
 
         return {
