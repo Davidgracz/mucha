@@ -263,6 +263,10 @@ class BehaviorConfig:
     social_scene_model_enabled: bool = True
     social_scene_min_observations: int = 2
     social_scene_sensory_magnitude: float = 0.36
+    voice_dynamics_learning_enabled: bool = True
+    voice_dynamics_min_observations: int = 2
+    voice_dynamics_sensory_magnitude: float = 0.38
+    voice_dynamics_seen_cooldown_seconds: int = 45
     social_window_seconds: int = 900
     word_reuse_reward: float = 0.20
     phrase_reuse_reward: float = 0.35
