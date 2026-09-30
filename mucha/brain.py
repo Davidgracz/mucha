@@ -2448,19 +2448,94 @@ class FlyBrain:
         }
 
 
-    def autonomous_action_decision(
+    def one_brain_candidate_set(
+        self,
+        feasible: dict[str, bool],
+        *,
+        technical_reasons: dict[str, str] | None = None,
+        contextual_reward_predictions: dict[str, dict] | None = None,
+    ) -> dict:
+        """Build a generic action set for the shared One Brain arbiter."""
+        technical_reasons = technical_reasons or {}
+        contextual_reward_predictions = contextual_reward_predictions or {}
+        raw_scores = self.action_scores()
+        effective_scores = self.action_policy_scores(raw_scores)
+
+        normalized: dict[str, bool] = {
+            action: bool(feasible.get(action, False))
+            for action in self.ACTIONS
+            if action in feasible
+        }
+        normalized["stay"] = True
+
+        rows: dict[str, dict] = {}
+        for action in self.ACTIONS:
+            if action not in normalized:
+                continue
+            prediction = self.action_reward_prediction(
+                action,
+                contextual_reward_predictions.get(action),
+            )
+            rows[action] = {
+                "action": action,
+                "display_action": (
+                    "noop" if action == "stay" else action
+                ),
+                "feasible": bool(normalized[action]),
+                "technical_reason": str(
+                    technical_reasons.get(
+                        action,
+                        (
+                            "available"
+                            if normalized[action]
+                            else "technical-constraint"
+                        ),
+                    )
+                ),
+                "raw_score": float(raw_scores[action]),
+                "effective_score": float(effective_scores[action]),
+                "predicted_reward": float(
+                    prediction["predicted_reward"]
+                ),
+                "prediction_confidence": float(
+                    prediction["confidence"]
+                ),
+                "prediction_source": str(prediction["source"]),
+                "reward_prediction": prediction,
+            }
+
+        candidates = [
+            action
+            for action in self.ACTIONS
+            if action in normalized and normalized[action]
+        ]
+        if "stay" not in candidates:
+            candidates.append("stay")
+
+        return {
+            "candidate_actions": candidates,
+            "display_candidates": [
+                "noop" if action == "stay" else action
+                for action in candidates
+            ],
+            "rows": rows,
+            "competition_preview": self.action_competition(candidates),
+            "executed": False,
+            "source": "one-brain generic feasibility + learned reward",
+        }
+
+    def one_brain_action_decision(
         self,
         candidate_set: dict,
         *,
+        decision_context: str,
         predicted_reward_gain: float = 0.85,
         propagation_steps: int = 2,
     ) -> dict:
-        """Turn learned reward expectations into neural evidence, then compete.
+        """Shared neural arbitration for text, voice, TTS and autonomy.
 
-        Predicted reward never edits an action score directly. Signed reward
-        expectation is injected through sensory neurons structurally connected
-        to each candidate action. The normal connectome propagation and
-        action_competition() then choose the final winner.
+        Learned expected reward is converted into signed sensory evidence for
+        each feasible action. It never edits the winner score directly.
         """
         actions = [
             str(action)
@@ -2468,7 +2543,7 @@ class FlyBrain:
             if str(action) in self.ACTIONS
         ]
         if "stay" not in actions:
-            actions.insert(0, "stay")
+            actions.append("stay")
         if not actions:
             actions = ["stay"]
 
@@ -2477,6 +2552,12 @@ class FlyBrain:
             0.0,
             min(4.0, float(predicted_reward_gain)),
         )
+        context_key = re.sub(
+            r"[^a-z0-9:_-]+",
+            "-",
+            str(decision_context).strip().lower(),
+        )[:80] or "generic"
+
         cues: dict[str, dict] = {}
         for action in actions:
             row = dict(rows.get(action, {}))
@@ -2499,16 +2580,13 @@ class FlyBrain:
                 continue
             cues[action] = self.inject_action_guided_signed_sensory(
                 action,
-                f"autonomous-predicted-reward:{action}",
+                f"one-brain-predicted-reward:{context_key}:{action}",
                 signal,
                 width=192,
                 hops=3,
             )
 
         steps = max(0, min(8, int(propagation_steps)))
-        # Always propagate the live state before the final competition. Even
-        # with a neutral reward prior, homeostatic/voice/context cues injected
-        # immediately before this method must get a chance to reach readouts.
         if steps > 0:
             self.step(steps)
 
@@ -2518,11 +2596,12 @@ class FlyBrain:
         return {
             "action": winner,
             "display_action": "noop" if winner == "stay" else winner,
+            "decision_context": str(decision_context),
             "competition": competition,
             "candidate_actions": actions,
             "prediction_cues": cues,
             "prediction_gain": float(gain),
-            "propagation_steps": int(steps if cues else 0),
+            "propagation_steps": int(steps),
             "predicted_reward": float(
                 winner_row.get("predicted_reward", 0.0)
             ),
@@ -2536,11 +2615,26 @@ class FlyBrain:
                 )
             ),
             "source": (
-                "predicted-reward sensory guidance -> FAFB propagation -> "
-                "connectome action competition"
+                "one-brain predicted-reward sensory guidance -> "
+                "FAFB propagation -> connectome action competition"
             ),
             "executed": False,
         }
+
+    def autonomous_action_decision(
+        self,
+        candidate_set: dict,
+        *,
+        predicted_reward_gain: float = 0.85,
+        propagation_steps: int = 2,
+    ) -> dict:
+        """Compatibility wrapper for the Stage 24D autonomous loop."""
+        return self.one_brain_action_decision(
+            candidate_set,
+            decision_context="autonomous-idle",
+            predicted_reward_gain=predicted_reward_gain,
+            propagation_steps=propagation_steps,
+        )
 
     def action_pool_diagnostics(self) -> dict[str, dict]:
         result: dict[str, dict] = {}
