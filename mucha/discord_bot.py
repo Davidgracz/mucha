@@ -5172,7 +5172,20 @@ class MuchaClient(discord.Client):
         elif react_cooldown > 0.0:
             self._reaction_debug["decision"] = "COOLDOWN"
         else:
-            if (
+            if self.cfg.behavior.one_brain_enabled:
+                comp = dict(
+                    (one_brain_decision or {}).get(
+                        "competition",
+                        {},
+                    )
+                )
+                self._reaction_debug["decision"] = (
+                    "ONE BRAIN • "
+                    f"{(one_brain_decision or {}).get('action', 'stay')} "
+                    "wygrało • "
+                    f"margin {float(comp.get('margin', 0.0)):.3f}"
+                )
+            elif (
                 react_gate.get("decision_mode")
                 == "connectome-competition"
             ):
@@ -5256,6 +5269,23 @@ class MuchaClient(discord.Client):
             if len(ranked_scores) > 1
             else (None, None)
         )
+        text_competition = dict(
+            (
+                one_brain_decision.get("competition", {})
+                if one_brain_decision is not None
+                else speak_gate.get("competition", {})
+            )
+        )
+        one_brain_winner = str(
+            (one_brain_decision or {}).get("action", "stay")
+        )
+        one_brain_rows = dict(
+            (one_brain_candidate_set or {}).get("rows", {})
+        )
+        one_brain_speak_row = dict(
+            one_brain_rows.get("speak", {})
+        )
+
         self._text_decision_debug = {
             "kind": "text",
             "source_label": "TEXT / Discord",
@@ -5263,13 +5293,29 @@ class MuchaClient(discord.Client):
             "guild": message.guild.name,
             "guild_id": message.guild.id,
             "stimulus": self._last_brain_event,
-            "decision": "SPEAK" if will_speak else "NO SPEAK",
+            "decision": (
+                (
+                    "NOOP"
+                    if one_brain_winner == "stay"
+                    else one_brain_winner.upper()
+                )
+                if self.cfg.behavior.one_brain_enabled
+                else ("SPEAK" if will_speak else "NO SPEAK")
+            ),
             "reason": (
                 (
-                    "connectome competition wybrało speak i brak blokad wykonania"
-                    if speak_gate.get("decision_mode")
-                    == "connectome-competition"
-                    else "legacy speak gate przeszedł i brak blokad wykonania"
+                    "One Brain wybrał speak i brak blokad wykonania"
+                    if self.cfg.behavior.one_brain_enabled
+                    else (
+                        "connectome competition wybrało speak "
+                        "i brak blokad wykonania"
+                        if speak_gate.get("decision_mode")
+                        == "connectome-competition"
+                        else (
+                            "legacy speak gate przeszedł "
+                            "i brak blokad wykonania"
+                        )
+                    )
                 )
                 if will_speak
                 else "; ".join(text_constraints)
@@ -5288,51 +5334,82 @@ class MuchaClient(discord.Client):
             "neuromodulators": decision_neuromodulators,
             "readout": {
                 "action": "speak",
-                "raw_score": float(scores["speak"]),
+                "raw_score": float(
+                    one_brain_speak_row.get(
+                        "raw_score",
+                        scores["speak"],
+                    )
+                ),
                 "effective_score": float(
-                    speak_gate["effective_score"]
+                    one_brain_speak_row.get(
+                        "effective_score",
+                        speak_gate["effective_score"],
+                    )
                 ),
                 "threshold": float(
-                    speak_gate["base_threshold"]
+                    0.0
+                    if self.cfg.behavior.one_brain_enabled
+                    else speak_gate["base_threshold"]
                 ),
                 "learned_raw_threshold": float(
-                    speak_gate["learned_raw_threshold"]
+                    0.0
+                    if self.cfg.behavior.one_brain_enabled
+                    else speak_gate["learned_raw_threshold"]
                 ),
                 "policy_bias": float(speak_gate["bias"]),
-                "passed": bool(speak_gate["passed"]),
-                "decision_mode": str(
-                    speak_gate.get(
-                        "decision_mode",
-                        "legacy-threshold",
+                "passed": bool(
+                    one_brain_winner == "speak"
+                    if self.cfg.behavior.one_brain_enabled
+                    else speak_gate["passed"]
+                ),
+                "decision_mode": (
+                    "one-brain"
+                    if self.cfg.behavior.one_brain_enabled
+                    else str(
+                        speak_gate.get(
+                            "decision_mode",
+                            "legacy-threshold",
+                        )
                     )
                 ),
                 "runner_up": (
-                    (speak_gate.get("competition") or {}).get(
-                        "runner_up"
-                    )
-                    if speak_gate.get("decision_mode")
-                    == "connectome-competition"
+                    text_competition.get("runner_up")
+                    if text_competition
                     else runner_up[0]
                 ),
                 "runner_up_score": (
-                    (speak_gate.get("competition") or {}).get(
-                        "runner_up_score"
-                    )
-                    if speak_gate.get("decision_mode")
-                    == "connectome-competition"
+                    text_competition.get("runner_up_score")
+                    if text_competition
                     else runner_up[1]
                 ),
                 "margin": float(
-                    (speak_gate.get("competition") or {}).get(
-                        "margin",
-                        0.0,
-                    )
+                    text_competition.get("margin", 0.0)
                 ),
                 "source": str(
-                    (speak_gate.get("competition") or {}).get(
+                    (
+                        one_brain_decision or {}
+                    ).get(
                         "source",
-                        "legacy-threshold",
+                        text_competition.get(
+                            "source",
+                            "legacy-threshold",
+                        ),
                     )
+                ),
+            },
+            "one_brain": {
+                "enabled": bool(
+                    self.cfg.behavior.one_brain_enabled
+                ),
+                "candidate_set": (
+                    dict(one_brain_candidate_set)
+                    if one_brain_candidate_set is not None
+                    else None
+                ),
+                "decision": (
+                    dict(one_brain_decision)
+                    if one_brain_decision is not None
+                    else None
                 ),
             },
             "scores": {
