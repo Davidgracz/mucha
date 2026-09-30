@@ -1810,6 +1810,8 @@ class VoiceEpisodicMemory:
                 "confidence": self._semantic_confidence(entry),
             })
 
+        if updates:
+            self._person_profile_cache.clear()
         if self.db is not None and updates:
             self.db.commit()
         return updates
@@ -1864,6 +1866,8 @@ class VoiceEpisodicMemory:
             entry["reward_abs_sum"] = (
                 float(entry["reward_abs_sum"]) * factor
             )
+
+        self._person_profile_cache.clear()
 
         if self.db is not None:
             self.db.execute(
