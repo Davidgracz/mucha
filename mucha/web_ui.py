@@ -153,9 +153,10 @@ const groups=[
   ["attention_mention_boost","Boost uwagi po @Mucha","number",0.05,0,1,"Dodatkowa siła focusu osoby, która bezpośrednio zwraca się do Muchy."]
  ]},
  {id:"behavior",title:"Zachowanie",desc:"Progi mówienia, reakcji i podstawowe parametry uczenia społecznego.",section:"behavior",open:true,fields:[
-  ["speak_threshold","Próg mówienia","number",0.01,0,1,"Niżej = Mucha łatwiej decyduje się mówić."],
-  ["reaction_threshold","Próg reakcji emoji","number",0.01,0,1,"Niżej = częściej reaguje emoji."],
-  ["reaction_cooldown_seconds","Cooldown reakcji","number",1,0,3600,"Minimalny odstęp między reakcjami."],
+  ["speak_threshold","LEGACY: próg mówienia","number",0.01,0,1,"Używany tylko gdy Connectome behavior competition jest wyłączone. W trybie neural competition SPEAK konkuruje bezpośrednio ze STAY."],
+  ["reaction_threshold","LEGACY: próg reakcji emoji","number",0.01,0,1,"Używany tylko w trybie legacy. Przy neural competition REACT konkuruje bezpośrednio ze STAY."],
+  ["connectome_behavior_competition_enabled","Connectome behavior competition","bool",0,0,0,"Domyślny tryb: tekstowe SPEAK, REACT i spontaneous SPEAK wybiera konkurencja readoutów zamiast ręcznych progów."],
+  ["reaction_cooldown_seconds","Cooldown reakcji","number",1,0,3600,"Techniczny limit częstotliwości reakcji; nie jest preferencją neuronalną."],
   ["social_learning_enabled","Uczenie społeczne","bool",0,0,0,"Włącza reward/affinity z zachowań użytkowników."],
   ["neural_social_memory_enabled","Neuralna pamięć użytkowników","bool",0,0,0,"Każdy użytkownik dostaje stabilną reprezentację neuronalną i trwałe zmiany synaps w connectomie."],
   ["neural_affinity_weight","Udział neural affinity","number",0.05,0,1,"Maksymalny udział pamięci connectomu w relacji. Reszta pochodzi z legacy affinity podczas migracji."],
@@ -2501,7 +2502,7 @@ const HELP={
   "last-event":{title:"Ostatni bodziec",body:"Ostatnie zdarzenie zapisane jako wejście dla runtime'u, np. tekst, STT, reward, voice albo threat.",read:"To punkt startowy, gdy chcesz sprawdzić co poprzedziło zmianę zachowania."},
   "attention":{title:"Attention / Working Memory",body:"Krótkotrwały kontekst osób, kanałów i tematów. Ślad zanika, a aktywny focus jest ponownie podawany do connectomu.",read:"Attention jest chwilowe. Affinity jest relacją długoterminową. Working memory pokazuje ostatnie sceny nadal dostępne jako kontekst."},
   "attention-score":{title:"Attention score",body:"Połączenie świeżości krótkotrwałego śladu z neuronalnym attention_score odczytanym z connectomu.",read:"Wyższy score = większa aktualna dominacja tego elementu w kontekście. To nie jest reward."},
-  "action-policy":{title:"Learned Action Policy",body:"Warstwa ucząca się na reward/punish, jak łatwo dany raw readout connectomu ma przechodzić w realną akcję. Bias jest trwały i zapisuje się w brain_state.npz.",read:"raw = sam connectome. bias = doświadczenie. effective = raw po policy. Dodatni bias ułatwia akcję, ujemny ją hamuje. Dla speak/react pokazujemy też learned raw threshold."},
+  "action-policy":{title:"Learned Action Policy",body:"Warstwa ucząca się na reward/punish, która przesuwa efektywne readouty. Przy Connectome behavior competition SPEAK/REACT nie przechodzą już przez ręczny próg — konkurują ze STAY.",read:"raw = sam connectome, bias = doświadczenie, effective = raw po policy. W trybie competition patrz na winner/runner-up i margin. Progi są tylko legacy fallback."},
   "brain-state":{title:"Stan connectomu",body:"Bieżąca aktywność całej sieci po bodźcach, propagacji, plastyczności i internal states. Stan nie resetuje się po każdym evencie.",read:"Globalna aktywność mówi jak mocno sieć pracuje, ale do konkretnej decyzji patrz na readouty."},
   "readout":{title:"Readout",body:"Wartość 0–1 z populacji neuronów wyjściowych przypisanej do akcji speak/react/join/move/leave/explore/stay.",read:"Najsilniejszy readout jest kandydatem. Wykonanie może być zablokowane przez cooldown, permissions albo warunki bezpieczeństwa."},
   "last-action":{title:"Faktyczna akcja",body:"Ostatnie zachowanie naprawdę wykonane przez bota, a nie sam zamiar connectomu.",read:"Porównaj ją z najsilniejszym readoutem i z polem 'powód decyzji'."},
@@ -2673,13 +2674,24 @@ function renderActionPolicy(p){
     return;
   }
   const gates=p.gates||{};
-  const gateRows=Object.entries(gates).map(([name,g])=>
-    '<span class="policy-gate '+(g.passed?'pass':'fail')+'">'+esc(name)+
-    ' • raw '+Number(g.raw_score||0).toFixed(3)+
-    ' • effective '+Number(g.effective_score||0).toFixed(3)+
-    ' • learned próg raw '+Number(g.learned_raw_threshold||0).toFixed(3)+
-    ' • '+(g.passed?'PASS':'BLOCK')+'</span>'
-  ).join("");
+  const gateRows=Object.entries(gates).map(([name,g])=>{
+    const competition=g.competition||{};
+    if(g.decision_mode==="connectome-competition"){
+      return '<span class="policy-gate '+(g.passed?'pass':'fail')+'">'+esc(name)+
+        ' • COMPETE vs STAY'+
+        ' • raw '+Number(g.raw_score||0).toFixed(3)+
+        ' • effective '+Number(g.effective_score||0).toFixed(3)+
+        ' • winner '+esc(competition.action||"—")+
+        ' • margin '+Number(competition.margin||0).toFixed(3)+
+        ' • '+(g.passed?'WIN':'LOSE')+'</span>';
+    }
+    return '<span class="policy-gate '+(g.passed?'pass':'fail')+'">'+esc(name)+
+      ' • LEGACY threshold'+
+      ' • raw '+Number(g.raw_score||0).toFixed(3)+
+      ' • effective '+Number(g.effective_score||0).toFixed(3)+
+      ' • próg '+Number(g.base_threshold||0).toFixed(3)+
+      ' • '+(g.passed?'PASS':'BLOCK')+'</span>';
+  }).join("");
   const rows=actionOrder.map(name=>{
     const a=(p.actions||{})[name]||{};
     const bias=Number(a.bias||0), raw=Number(a.raw_score||0), eff=Number(a.effective_score||0);
