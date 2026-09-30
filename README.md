@@ -997,11 +997,63 @@ Prywatny `/details` ma panel **Long-term Channel / Place Memory**, pokazujący:
 
 ---
 
+# Long-term Social Situations
+
+Mucha posiada teraz trwałą pamięć **powtarzalnych sytuacji społecznych**, która łączy kilka warstw naraz:
+
+```text
+KTO
++ GDZIE
++ conversation mode
++ intensity
++ speech ratio
++ liczba ludzi
++ dominujący internal state
++ social need / fatigue / habituation / exploration
+```
+
+Scena dostaje stabilny, bucketowany klucz. Neutralne ponowne zobaczenie tej samej sceny zwiększa tylko familiarity. Dopiero realny reward/punish zapisany przez temporal credit aktualizuje wynik konkretnej akcji w tej sytuacji.
+
+Przykład:
+
+```text
+ASG
++ Dawid + Stivi
++ DIALOGUE
++ intensity 2/3
++ speech 2/3
++ social_need 2/3
+→ STAY +0.31
+→ VOICE_LEAVE -0.18
+```
+
+Znana scena wraca do connectomu jako sensory:
+
+```text
+social:scene-profile:<hash>
+social:scene-profile:familiarity:<bucket>
+social:scene-profile:confidence:<bucket>
+social:scene-profile:valence:<positive|neutral|mixed|negative>
+social:scene-profile:mode:<mode>
+social:scene-profile:state:<internal-state>
+social:scene-profile:humans:<n>
+social:scene-profile:intensity:<bucket>
+social:scene-profile:speech:<bucket>
+social:scene-history:action:<action>:<positive|negative>
+```
+
+Nie ma bezpośredniego `+score` do JOIN/MOVE/STAY. Reiniekcja sytuacji wchodzi do sensorycznych populacji FAFB, a wpływ na zachowanie musi przejść przez normalną propagację i uczenie.
+
+Starsze epizody w `state/voice_episodes.sqlite3` są automatycznie backfillowane jako uproszczone sceny z trybem `UNKNOWN`. Nowe sceny zawierają bogatszą dynamikę oraz stan wewnętrzny.
+
+Prywatny `/details` pokazuje panel **Long-term Social Situations** z familiarity, confidence, ludźmi, miejscem, dynamiką, stanem Muchy oraz historią dobrych i złych akcji.
+
+---
+
 # Najbliższy kierunek rozwoju
 
 Dalsze kierunki:
 
-- długoterminowa reprezentacja powtarzalnych **sytuacji społecznych** obejmujących jednocześnie ludzi + miejsce + dynamikę rozmowy,
 - uczenie reakcji na dynamikę rozmowy z rewardu zamiast ręcznego mapowania scen na decyzje,
 - dalsza redukcja ręcznie zakodowanych wyjątków na rzecz sygnałów sensorycznych i konkurencji readoutów connectomu,
 - coraz większa integracja tekstu, voice, pamięci i zachowania społecznego w jeden współdzielony stan neuronalny.
