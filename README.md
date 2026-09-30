@@ -1225,13 +1225,15 @@ Prywatny `/details` pokazuje teraz **Target selection = neural-channel-readout**
 
 ---
 
-# Najbliższy kierunek rozwoju
+# Kierunek po integracji One Brain
 
-Dalsze kierunki:
+Stage 25 realizuje wspólny neural arbitration layer dla tekstu, reakcji, TTS i autonomii. Dalsze kierunki nie wymagają dokładania kolejnych niezależnych systemów decyzyjnych:
 
-- większa integracja tekstu, voice, pamięci i zachowania społecznego w jeden współdzielony stan neuronalny,
-- wspólny scheduler / arbitration layer dla tekstu, voice i reakcji zamiast kilku niezależnych pętli,
-- dalsze ograniczanie ręcznych wyjątków wyłącznie do bezpieczeństwa, permissions i fizycznych ograniczeń Discorda.
+- pogłębianie biologicznego wpływu connectomu na istniejący One Brain,
+- lepsze uczenie expected reward i temporal credit z długiego doświadczenia,
+- bogatsza pamięć osób, miejsc i sytuacji społecznych,
+- dalsza redukcja ręcznych wyjątków do bezpieczeństwa, permissions i fizycznych ograniczeń Discorda,
+- lepsza obserwowalność przepływu sensory → connectome → motor output.
 
 ---
 
