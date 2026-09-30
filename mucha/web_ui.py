@@ -1678,6 +1678,185 @@ function renderActions(scores){const order=["speak","react","voice_join","voice_
 async function update(){try{const r=await fetch("/api/public/state",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);const s=await r.json(),d=s.diag||{},l=s.language_diag||{};$("neurons").textContent=nfmt(d.neurons);$("connections").textContent=nfmt(d.connections);$("active").textContent=nfmt(d.active_abs_gt_0_1);$("tick").textContent=nfmt(d.ticks);$("vocab").textContent=nfmt(l.word_vocab||0);$("generator").textContent=l.last_generator||"—";$("reward").textContent=Number(d.reward_trace||0).toFixed(3);$("ready").textContent=s.language_ready?"GOTOWA":"UCZY SIĘ";renderActions(s.scores||{})}catch(e){console.error(e)}}setInterval(update,1200);update();
 </script></main></body></html>"""
 
+AUTONOMY_HTML = r"""<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Mucha — Autonomia 24E</title>
+<style>
+:root{--bg:#070b10;--panel:#0f161f;--panel2:#0a1118;--line:#213043;--txt:#edf5fd;--muted:#8190a1;--a:#58dac4;--blue:#6ea8fe;--good:#57db91;--warn:#f0c45b;--bad:#ff7272;--purple:#b995ff}
+*{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 12% 0%,rgba(88,218,196,.10),transparent 30%),radial-gradient(circle at 88% 0%,rgba(110,168,254,.10),transparent 32%),linear-gradient(180deg,#070b10,#0a1017 60%,#080c11);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}.brand{display:flex;gap:13px;align-items:center}.logo{font-size:37px}h1{margin:0;font-size:24px}.sub{margin-top:4px;color:var(--muted);font-size:12px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#b9c8d7;text-decoration:none;background:#0e1720;border:1px solid var(--line);padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{color:#07110e;background:var(--a);border-color:var(--a);font-weight:800}
+.hero{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}.card,.hero-card{background:rgba(15,22,31,.94);border:1px solid var(--line);border-radius:16px}.hero-card{padding:14px}.hero-card small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}.hero-card strong{font-size:17px;word-break:break-word}
+.pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}.stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px}.stage:not(:last-child):after{content:"→";position:absolute;right:-9px;top:50%;transform:translateY(-50%);z-index:3;color:var(--a);font-size:20px;font-weight:900}.stage b{display:block;font-size:12px;margin-bottom:5px}.stage span{color:var(--muted);font-size:11px;line-height:1.45}
+.grid{display:grid;grid-template-columns:1.35fr .65fr;gap:12px}.card{padding:15px;min-width:0}.card h2{margin:0 0 12px;font-size:12px;color:#aebdcb;text-transform:uppercase;letter-spacing:.1em}.span2{grid-column:1/-1}
+.guild-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.guild-tab{border:1px solid var(--line);background:#0a121a;color:#aebdcb;border-radius:999px;padding:7px 10px;cursor:pointer;font-size:11px}.guild-tab.active{background:rgba(88,218,196,.15);border-color:var(--a);color:#dffff8}
+.candidates{display:flex;flex-direction:column;gap:8px}.candidate{display:grid;grid-template-columns:128px 70px minmax(100px,1fr) 110px 110px 126px 110px;gap:8px;align-items:center;padding:10px;background:var(--panel2);border:1px solid #1e2c3b;border-radius:12px;font-size:11px}.candidate.winner{border-color:var(--a);box-shadow:0 0 0 1px rgba(88,218,196,.15),0 0 24px rgba(88,218,196,.08)}.candidate.disabled{opacity:.52}.action-name{font-weight:850;font-size:12px}.pill{display:inline-flex;align-items:center;justify-content:center;border:1px solid #2b4054;border-radius:999px;padding:4px 7px;font-size:9px;white-space:nowrap}.pill.ok{color:var(--good);border-color:rgba(87,219,145,.45)}.pill.no{color:var(--bad);border-color:rgba(255,114,114,.45)}.pill.win{color:#06110e;background:var(--a);border-color:var(--a);font-weight:900}
+.metric small{display:block;color:var(--muted);font-size:9px;margin-bottom:3px}.metric b{font-variant-numeric:tabular-nums}.bar{height:5px;background:#071019;border-radius:999px;overflow:hidden;margin-top:4px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--a));border-radius:999px}.bar.reward i.pos{background:linear-gradient(90deg,#398e65,var(--good))}.bar.reward i.neg{background:linear-gradient(90deg,#8b3f4b,var(--bad))}
+.reason{color:#93a5b7;font-size:10px;line-height:1.4}.summary-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.summary{background:var(--panel2);border:1px solid #1e2c3b;border-radius:11px;padding:10px}.summary small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}.summary strong{font-size:14px;word-break:break-word}.cue-list{display:flex;flex-direction:column;gap:7px;margin-top:10px}.cue{display:grid;grid-template-columns:115px 1fr 65px;gap:8px;align-items:center;padding:8px 9px;background:#09121a;border:1px solid #1d2b39;border-radius:10px;font-size:10px}.cue span{color:var(--muted)}
+.history{display:flex;flex-direction:column;gap:7px;max-height:420px;overflow:auto}.hist{display:grid;grid-template-columns:68px 95px 1fr 82px 72px;gap:8px;align-items:center;background:#09121a;border:1px solid #1c2937;border-radius:10px;padding:9px;font-size:10px}.hist .time{color:var(--muted);font-variant-numeric:tabular-nums}.hist .act{font-weight:800}.hist .detail{color:#b6c4d2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hist .rep{color:var(--muted);text-align:right}.hist.external{border-color:rgba(88,218,196,.35)}
+.help{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;border:1px solid #385069;border-radius:50%;color:#8fa6ba;font-size:9px;cursor:help;position:relative;vertical-align:middle}.help:hover{color:var(--a);border-color:var(--a)}.help:hover:after{content:attr(data-tip);position:absolute;z-index:20;left:50%;top:22px;transform:translateX(-50%);width:270px;background:#05090e;border:1px solid #31465c;border-radius:9px;padding:9px;color:#d5e3f0;font:10px/1.45 Inter,system-ui;box-shadow:0 12px 35px rgba(0,0,0,.45);pointer-events:none}
+.live{display:inline-flex;align-items:center;gap:6px}.live:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 10px rgba(87,219,145,.65)}.bad{color:var(--bad)}.good{color:var(--good)}.warn{color:var(--warn)}.muted{color:var(--muted)}.foot{margin-top:12px;text-align:right;color:#5e6e7d;font-size:10px}
+@media(max-width:1150px){.hero{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}.candidate{grid-template-columns:120px 65px 1fr 90px 90px}.candidate .optional{display:none}}
+@media(max-width:700px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.pipeline{grid-template-columns:1fr 1fr}.stage:after{display:none}.candidate{grid-template-columns:1fr 64px}.candidate .metric,.candidate .reason{grid-column:1/-1}.history .hist{grid-template-columns:55px 80px 1fr}.hist .pred,.hist .rep{display:none}}
+</style>
+</head>
+<body><main>
+<div class="top">
+ <div class="brand"><div class="logo">🪰</div><div><h1>Autonomia 24E</h1><div class="sub">Live: potrzeby → kandydaci → predicted reward → connectome → wykonanie</div></div></div>
+ <div class="nav"><a href="/">🏠 Przegląd</a><a class="active" href="/autonomy">🧭 Autonomia</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🗣 Mowa</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
+</div>
+
+<section class="hero">
+ <div class="hero-card"><small>24D loop <span class="help" data-tip="Czy zunifikowana pętla autonomii jest aktywna. Przy OFF działa ścieżka legacy.">?</span></small><strong id="enabled">—</strong></div>
+ <div class="hero-card"><small>Final winner <span class="help" data-tip="Akcja wybrana przez końcowe action_competition po propagacji bodźców predicted reward przez connectome.">?</span></small><strong id="winner">—</strong></div>
+ <div class="hero-card"><small>Wykonanie <span class="help" data-tip="Czy zwycięska akcja została technicznie wykonana. NOOP jest poprawnym wykonaniem bez efektu na Discordzie.">?</span></small><strong id="execution">—</strong></div>
+ <div class="hero-card"><small>Predicted reward <span class="help" data-tip="Oczekiwana nagroda finalnego winnera. Nie wybiera akcji bezpośrednio — staje się signed sensory cue.">?</span></small><strong id="predicted">—</strong></div>
+ <div class="hero-card"><small>Odświeżono</small><strong id="age" class="live">—</strong></div>
+</section>
+
+<section class="pipeline">
+ <div class="stage"><b>24A • Drives</b><span>social_need, curiosity, exploration, caution i boredom pobudzają neuronalne internal-state attractors.</span></div>
+ <div class="stage"><b>24B • Candidates</b><span>Do konkurencji trafiają tylko akcje technicznie możliwe. NOOP/STAY pozostaje zawsze.</span></div>
+ <div class="stage"><b>24C • Reward model</b><span>Reward EMA + episodic context przewidują wynik i confidence bez ręcznego bonusu akcji.</span></div>
+ <div class="stage"><b>24D • Neural winner</b><span>Signed prediction → sensory neurons → FAFB propagation → action_competition → executor.</span></div>
+</section>
+
+<div class="guild-tabs" id="guild-tabs"></div>
+
+<section class="grid">
+ <div class="card">
+  <h2>Kandydaci tej decyzji <span class="help" data-tip="Porównanie wszystkich akcji dopuszczonych do bieżącej konkurencji. Feasibility jest twardym ograniczeniem technicznym; reszta pochodzi ze stanu mózgu i nauki.">?</span></h2>
+  <div class="candidates" id="candidates"><div class="muted">Czekam na pierwszy tick 24D…</div></div>
+ </div>
+ <div class="card">
+  <h2>Finalna decyzja</h2>
+  <div class="summary-grid">
+   <div class="summary"><small>Winner</small><strong id="decision-action">—</strong></div>
+   <div class="summary"><small>Runner-up</small><strong id="runner-up">—</strong></div>
+   <div class="summary"><small>Margin <span class="help" data-tip="Różnica wyniku finalnej konkurencji. Przy tie-break może być 0 mimo wybranego winnera.">?</span></small><strong id="margin">—</strong></div>
+   <div class="summary"><small>Tie-break</small><strong id="tie-break">—</strong></div>
+   <div class="summary"><small>Prediction source</small><strong id="prediction-source">—</strong></div>
+   <div class="summary"><small>External effect</small><strong id="external">—</strong></div>
+  </div>
+  <div class="cue-list" id="cues"></div>
+ </div>
+
+ <div class="card span2">
+  <h2>Historia autonomii <span class="help" data-tip="Kompaktowy zapis ostatnich decyzji 24D. Powtarzające się NOOP-y są scalane i pokazują licznik ×N.">?</span></h2>
+  <div class="history" id="history"><div class="muted">Brak historii.</div></div>
+ </div>
+</section>
+<div class="foot">24E • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
+
+<script>
+const LIVE_REFRESH_MS=250;
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"}[m]));
+let selectedGuildId=null,lastPayload=null;
+
+function pct(v){return Math.max(0,Math.min(100,Number(v||0)*100))}
+function signedWidth(v){return Math.max(0,Math.min(100,Math.abs(Number(v||0))*100))}
+function displayAction(a){return String(a||"stay")==="stay"?"NOOP":String(a||"—").toUpperCase()}
+function fmt(v,d=3){return Number(v||0).toFixed(d)}
+function guildRow(auto){
+ const rows=Array.isArray(auto?.guilds)?auto.guilds:[];
+ if(!rows.length)return null;
+ let row=rows.find(x=>Number(x.guild_id)===Number(selectedGuildId));
+ if(!row){
+   const selected=Number(auto?.selected_guild_id);
+   row=rows.find(x=>Number(x.guild_id)===selected)||rows[0];
+   selectedGuildId=Number(row.guild_id);
+ }
+ return row;
+}
+function renderTabs(auto){
+ const root=$("guild-tabs"),rows=Array.isArray(auto?.guilds)?auto.guilds:[];
+ if(!rows.length){root.innerHTML="";return}
+ root.innerHTML=rows.map(g=>'<button class="guild-tab '+(Number(g.guild_id)===Number(selectedGuildId)?"active":"")+'" onclick="selectedGuildId='+Number(g.guild_id)+';render(lastPayload)">'+esc(g.guild||g.guild_id)+'</button>').join("");
+}
+function renderCandidates(row,decision){
+ const root=$("candidates"),set=row?.candidate_set||{},rows=set.rows||{},names=Array.isArray(set.candidate_actions)?set.candidate_actions:[];
+ if(!names.length){root.innerHTML='<div class="muted">Brak kandydatów.</div>';return}
+ const winner=String(decision?.action||"");
+ root.innerHTML=names.map(name=>{
+   const x=rows[name]||{},pred=Number(x.predicted_reward||0),conf=Number(x.prediction_confidence||0),score=Number(x.effective_score||0);
+   const predCls=pred>0?"pos":pred<0?"neg":"";
+   return '<div class="candidate '+(name===winner?"winner ":"")+(x.feasible===false?"disabled":"")+'">'+
+     '<div><div class="action-name">'+(name===winner?'▶ ':'')+esc(displayAction(name))+'</div><div style="margin-top:5px">'+(name===winner?'<span class="pill win">WINNER</span> ':'')+'<span class="pill '+(x.feasible!==false?"ok":"no")+'">'+(x.feasible!==false?"FEASIBLE":"BLOCKED")+'</span></div></div>'+
+     '<div class="metric"><small>score <span class="help" data-tip="Effective action score przed finalnym predicted-reward sensory pass.">?</span></small><b>'+fmt(score)+'</b><div class="bar"><i style="width:'+pct(score)+'%"></i></div></div>'+
+     '<div class="reason">'+esc(x.technical_reason||"—")+'</div>'+
+     '<div class="metric"><small>drive support</small><b>'+fmt(x.drive_support)+'</b><div class="bar"><i style="width:'+pct(x.drive_support)+'%"></i></div></div>'+
+     '<div class="metric"><small>state support</small><b>'+fmt(x.state_support)+'</b><div class="bar"><i style="width:'+pct(x.state_support)+'%"></i></div></div>'+
+     '<div class="metric optional"><small>predicted reward <span class="help" data-tip="Nauczona prognoza rewardu w zakresie około -1..+1.">?</span></small><b class="'+(pred>0?"good":pred<0?"bad":"")+'">'+(pred>=0?"+":"")+fmt(pred)+'</b><div class="bar reward"><i class="'+predCls+'" style="width:'+signedWidth(pred)+'%"></i></div></div>'+
+     '<div class="metric optional"><small>confidence</small><b>'+fmt(conf,2)+'</b><div class="bar"><i style="width:'+pct(conf)+'%"></i></div></div>'+
+   '</div>';
+ }).join("");
+}
+function renderCues(decision){
+ const cues=decision?.prediction_cues||{},root=$("cues"),entries=Object.entries(cues);
+ if(!entries.length){root.innerHTML='<div class="muted" style="font-size:10px;margin-top:10px">Brak signed reward cue — prediction była neutralna albo confidence = 0.</div>';return}
+ root.innerHTML='<div class="muted" style="font-size:10px">Prediction cues → sensory paths</div>'+entries.map(([action,x])=>
+   '<div class="cue"><b>'+esc(displayAction(action))+'</b><span>'+esc(x.mode||"sensory")+' • '+Number(x.neurons||0)+' neuronów • reach '+fmt(x.reach_max)+'</span><strong>'+fmt(x.magnitude)+'</strong></div>'
+ ).join("");
+}
+function renderHistory(items){
+ const root=$("history"),rows=Array.isArray(items)?items.slice().reverse():[];
+ if(!rows.length){root.innerHTML='<div class="muted">Brak historii — pojawi się po pierwszej decyzji 24D.</div>';return}
+ root.innerHTML=rows.map(x=>{
+   const t=new Date(Number(x.time||0)*1000).toLocaleTimeString("pl-PL");
+   const pred=Number(x.predicted_reward||0);
+   return '<div class="hist '+(x.external_effect?"external":"")+'">'+
+     '<span class="time">'+esc(t)+'</span>'+
+     '<span class="act '+(x.success?"good":"")+'">'+esc(displayAction(x.action))+'</span>'+
+     '<span class="detail" title="'+esc(x.detail||"")+'">'+esc(x.guild||"—")+' • '+esc(x.detail||"—")+'</span>'+
+     '<span class="pred '+(pred>0?"good":pred<0?"bad":"")+'">'+(pred>=0?"+":"")+fmt(pred,2)+'</span>'+
+     '<span class="rep">'+(Number(x.repeat_count||1)>1?"×"+Number(x.repeat_count):"")+'</span>'+
+   '</div>';
+ }).join("");
+}
+function render(payload){
+ lastPayload=payload||{};
+ const auto=payload?.autonomous_candidates||{},decision=auto.decision||{},exec=auto.last_execution||{},row=guildRow(auto);
+ renderTabs(auto);
+ $("enabled").textContent=auto.enabled?"ON • 24D":"OFF • legacy";
+ $("enabled").className=auto.enabled?"good":"warn";
+ $("winner").textContent=displayAction(decision.action);
+ $("execution").textContent=exec.executed?(exec.external_effect?"WYKONANO • DISCORD":"WYKONANO • INTERNAL"):(decision.action?"NIEWYKONANO":"—");
+ $("execution").className=exec.executed?"good":decision.action?"bad":"";
+ const pred=Number(decision.predicted_reward||0);
+ $("predicted").textContent=(pred>=0?"+":"")+fmt(pred)+" • conf "+fmt(decision.prediction_confidence,2);
+ $("predicted").className=pred>0?"good":pred<0?"bad":"";
+ const age=Math.max(0,Date.now()/1000-Number(auto.updated_at||0));
+ $("age").textContent=auto.updated_at?age.toFixed(1)+" s":"—";
+ const comp=decision.competition||{};
+ $("decision-action").textContent=displayAction(decision.action);
+ $("runner-up").textContent=displayAction(comp.runner_up);
+ $("margin").textContent=fmt(comp.margin);
+ $("tie-break").textContent=comp.tie_break||"—";
+ $("prediction-source").textContent=decision.prediction_source||"—";
+ $("external").textContent=exec.external_effect?"TAK":"NIE";
+ renderCandidates(row,decision);
+ renderCues(decision);
+ renderHistory(payload?.autonomous_history||[]);
+}
+async function update(){
+ try{
+   const r=await fetch("/api/state",{cache:"no-store"});
+   if(r.status===401){location="/login";return}
+   if(!r.ok)throw new Error("HTTP "+r.status);
+   render(await r.json());
+ }catch(e){
+   $("age").textContent="ROZŁĄCZONO";
+   $("age").className="bad";
+   console.error(e);
+ }
+}
+setInterval(update,LIVE_REFRESH_MS);update();
+</script>
+</main></body></html>"""
+
 LOGIN_HTML = r"""<!doctype html>
 <html lang="pl">
 <head>
