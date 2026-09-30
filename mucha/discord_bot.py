@@ -44,6 +44,7 @@ from .connectome import Connectome
 from .console_ui import ConsoleBrainUI
 from .episodic import VoiceEpisodicMemory
 from .language import OnlineLanguage
+from .voice_sensory import VoiceSensoryBus
 from .web_ui import WebDashboard
 
 log = logging.getLogger("mucha")
@@ -326,6 +327,15 @@ class MuchaClient(discord.Client):
             "error": "",
             "updated_at": time.time(),
         }
+        self._voice_sensory = VoiceSensoryBus(
+            speaker_timeout_seconds=(
+                cfg.voice.voice_sensory_speaker_timeout_seconds
+            ),
+            reply_window_seconds=(
+                cfg.voice.voice_sensory_reply_window_seconds
+            ),
+        )
+        self._voice_sensory_debug: dict[int, dict] = {}
         self._audio_playback_token = 0
         self._audio_debug: dict = {
             "status": "STARTUP",
@@ -485,6 +495,12 @@ class MuchaClient(discord.Client):
         voice_fields = [
             "poll_seconds",
             "connectome_voice_control_enabled",
+            "voice_sensory_enabled",
+            "voice_sensory_interval_seconds",
+            "voice_sensory_speaker_timeout_seconds",
+            "voice_sensory_reply_window_seconds",
+            "voice_sensory_base_magnitude",
+            "voice_sensory_steps",
             "social_drive_enabled",
             "social_drive_start_seconds",
             "social_drive_ramp_seconds",
@@ -835,6 +851,24 @@ class MuchaClient(discord.Client):
             ("voice", "poll_seconds"): (int, 1, 3600),
             ("voice", "connectome_voice_control_enabled"): (
                 bool, None, None
+            ),
+            ("voice", "voice_sensory_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "voice_sensory_interval_seconds"): (
+                float, 0.25, 10.0
+            ),
+            ("voice", "voice_sensory_speaker_timeout_seconds"): (
+                float, 0.15, 3.0
+            ),
+            ("voice", "voice_sensory_reply_window_seconds"): (
+                float, 1.0, 120.0
+            ),
+            ("voice", "voice_sensory_base_magnitude"): (
+                float, 0.05, 2.0
+            ),
+            ("voice", "voice_sensory_steps"): (
+                int, 1, 8
             ),
             ("voice", "social_drive_enabled"): (
                 bool, None, None
@@ -1265,6 +1299,23 @@ class MuchaClient(discord.Client):
                 asyncio.create_task(self._warm_stt_model())
             elif self.stt_segment_loop.is_running():
                 self.stt_segment_loop.cancel()
+
+            self.voice_sensory_loop.change_interval(
+                seconds=max(
+                    0.25,
+                    float(
+                        self.cfg.voice.voice_sensory_interval_seconds
+                    ),
+                )
+            )
+            if (
+                self.cfg.voice.enabled
+                and self.cfg.voice.voice_sensory_enabled
+            ):
+                if not self.voice_sensory_loop.is_running():
+                    self.voice_sensory_loop.start()
+            elif self.voice_sensory_loop.is_running():
+                self.voice_sensory_loop.cancel()
 
             if self.cfg.voice.tts_enabled:
                 if (
@@ -4282,6 +4333,12 @@ class MuchaClient(discord.Client):
     async def setup_hook(self) -> None:
         self.idle_loop.change_interval(seconds=self.cfg.behavior.idle_tick_seconds)
         self.voice_loop.change_interval(seconds=self.cfg.voice.poll_seconds)
+        self.voice_sensory_loop.change_interval(
+            seconds=max(
+                0.25,
+                float(self.cfg.voice.voice_sensory_interval_seconds),
+            )
+        )
         self.tts_loop.change_interval(
             seconds=max(1, self.cfg.voice.tts_interval_seconds)
         )
@@ -4290,6 +4347,11 @@ class MuchaClient(discord.Client):
         self.presence_loop.start()
         if self.cfg.voice.stt_enabled:
             self.stt_segment_loop.start()
+        if (
+            self.cfg.voice.enabled
+            and self.cfg.voice.voice_sensory_enabled
+        ):
+            self.voice_sensory_loop.start()
         if self.cfg.voice.enabled:
             self.voice_loop.start()
             if self.cfg.voice.random_audio_enabled:
@@ -4345,6 +4407,8 @@ class MuchaClient(discord.Client):
         try:
             if self.stt_segment_loop.is_running():
                 self.stt_segment_loop.cancel()
+            if self.voice_sensory_loop.is_running():
+                self.voice_sensory_loop.cancel()
             with self._stt_buffer_lock:
                 self._stt_buffers.clear()
             await self.web_ui.stop()
@@ -5763,6 +5827,18 @@ class MuchaClient(discord.Client):
                 self.cfg.behavior.reaction_cooldown_seconds - (time.monotonic() - last_react),
             )
 
+        voice_debug_rows: list[dict] = []
+        for guild_id, row in self._voice_debug.items():
+            enriched = dict(row)
+            enriched["voice_sensory"] = dict(
+                self._voice_sensory_debug.get(guild_id, {})
+            )
+            voice_debug_rows.append(enriched)
+        voice_sensory_rows = [
+            dict(row)
+            for row in self._voice_sensory_debug.values()
+        ]
+
         return {
             "source": self.connectome.metadata.get("source", "unknown"),
             "diag": diag,
@@ -5776,7 +5852,8 @@ class MuchaClient(discord.Client):
             "last_event": self._last_brain_event,
             "last_action": self._last_brain_action,
             "paused": self.paused,
-            "voice_debug": list(self._voice_debug.values()),
+            "voice_debug": voice_debug_rows,
+            "voice_sensory_debug": voice_sensory_rows,
             "attention": attention_debug,
             "action_policy": action_policy_debug,
             "episodic_memory": self.voice_episodes.diagnostics(),
@@ -6103,7 +6180,10 @@ class MuchaClient(discord.Client):
             log.exception("Nie udało się załadować modelu STT")
 
     def _ensure_voice_listener(self, vc: discord.VoiceClient) -> None:
-        if not self.cfg.voice.stt_enabled:
+        if not (
+            self.cfg.voice.stt_enabled
+            or self.cfg.voice.voice_sensory_enabled
+        ):
             return
         if voice_recv is None:
             self._stt_debug.update({
@@ -6181,7 +6261,12 @@ class MuchaClient(discord.Client):
             vc.stop()
 
     def _on_voice_pcm(self, user, data) -> None:
-        if not self.cfg.voice.stt_enabled or user is None:
+        if user is None:
+            return
+        if not (
+            self.cfg.voice.stt_enabled
+            or self.cfg.voice.voice_sensory_enabled
+        ):
             return
         if getattr(user, "bot", False):
             return
@@ -6198,6 +6283,17 @@ class MuchaClient(discord.Client):
             return
 
         now = time.monotonic()
+        if self.cfg.voice.voice_sensory_enabled:
+            self._voice_sensory.note_pcm(
+                guild.id,
+                channel.id,
+                user.id,
+                getattr(user, "display_name", str(user.id)),
+                now=now,
+            )
+        if not self.cfg.voice.stt_enabled:
+            return
+
         key = (guild.id, user.id)
         max_seconds = max(
             2.0,
@@ -6364,6 +6460,15 @@ class MuchaClient(discord.Client):
                 "updated_at": time.time(),
             })
             self._stt_transcripts_since_start += 1
+            if self.cfg.voice.voice_sensory_enabled:
+                self._voice_sensory.note_transcript(
+                    guild.id,
+                    getattr(channel, "id", int(segment["channel_id"])),
+                    member.id,
+                    member.display_name,
+                    text,
+                    duration,
+                )
             await self._handle_voice_transcript(
                 guild,
                 member,
@@ -6466,6 +6571,27 @@ class MuchaClient(discord.Client):
             and last_tts.channel_id == getattr(channel, "id", None)
             and time.monotonic() - last_tts.created <= 120.0
         )
+        if (
+            self.cfg.voice.voice_sensory_enabled
+            and recent_tts
+            and last_tts is not None
+        ):
+            tts_age = max(0.0, time.monotonic() - last_tts.created)
+            audience = self._last_tts_audience.get(guild.id, set())
+            if (
+                member.id in audience
+                and tts_age
+                <= float(
+                    self.cfg.voice.voice_sensory_reply_window_seconds
+                )
+            ):
+                self._voice_sensory.note_reply_after_tts(
+                    guild.id,
+                    getattr(channel, "id", 0),
+                    member.id,
+                    member.display_name,
+                    tts_age_seconds=tts_age,
+                )
 
         rejection = self._detect_verbal_rejection(text)
         targeted_rejection = bool(
@@ -6676,6 +6802,118 @@ class MuchaClient(discord.Client):
             source_trace=last_tts,
             brain_reward=0.025,
         )
+
+    @tasks.loop(seconds=0.5)
+    async def voice_sensory_loop(self):
+        await self.wait_until_ready()
+        if (
+            self.paused
+            or not self.cfg.voice.enabled
+            or not self.cfg.voice.voice_sensory_enabled
+        ):
+            return
+
+        for guild in self.guilds:
+            try:
+                vc = guild.voice_client
+                current = (
+                    self._current_voice_channel(guild)
+                    if vc is not None and vc.is_connected()
+                    else None
+                )
+                current_members: list[dict] = []
+                if current is not None:
+                    for member in current.members:
+                        if member.bot:
+                            continue
+                        current_members.append({
+                            "id": member.id,
+                            "name": member.display_name,
+                            "affinity": self._user_affinity(member.id),
+                        })
+
+                other_by_id: dict[int, dict] = {}
+                me = guild.me
+                for channel in guild.voice_channels:
+                    if (
+                        current is not None
+                        and channel.id == current.id
+                    ):
+                        continue
+                    if self._is_voice_channel_blocked(channel):
+                        continue
+                    if (
+                        self.cfg.voice.exclude_afk_channel
+                        and guild.afk_channel is not None
+                        and channel.id == guild.afk_channel.id
+                    ):
+                        continue
+                    if me is not None:
+                        permissions = channel.permissions_for(me)
+                        if (
+                            not permissions.view_channel
+                            or not permissions.connect
+                        ):
+                            continue
+                    for member in channel.members:
+                        if member.bot:
+                            continue
+                        other_by_id[member.id] = {
+                            "id": member.id,
+                            "name": member.display_name,
+                            "affinity": self._user_affinity(member.id),
+                        }
+
+                snap = self._voice_sensory.snapshot(
+                    guild.id,
+                    connected=current is not None,
+                    channel_id=(
+                        current.id if current is not None else None
+                    ),
+                    channel_name=(
+                        current.name if current is not None else None
+                    ),
+                    current_members=current_members,
+                    other_members=other_by_id.values(),
+                    familiar_threshold=(
+                        self.cfg.behavior.familiar_affinity_threshold
+                    ),
+                    avoid_threshold=(
+                        self.cfg.behavior.user_avoid_threshold
+                    ),
+                )
+                snap["interval_seconds"] = float(
+                    self.cfg.voice.voice_sensory_interval_seconds
+                )
+                snap["pcm_capture"] = bool(
+                    current is not None
+                    and voice_recv is not None
+                    and isinstance(vc, voice_recv.VoiceRecvClient)
+                    and vc.is_listening()
+                )
+
+                async with self._brain_lock:
+                    neural = self.brain.inject_voice_sensory_bus(
+                        guild.id,
+                        snap,
+                        base_magnitude=(
+                            self.cfg.voice.voice_sensory_base_magnitude
+                        ),
+                    )
+                    self.brain.step(
+                        max(1, int(self.cfg.voice.voice_sensory_steps))
+                    )
+                snap["brain"] = neural
+                self._voice_sensory_debug[guild.id] = snap
+            except Exception:
+                log.exception(
+                    "Błąd Voice Sensory Bus na serwerze %s",
+                    guild.id,
+                )
+
+    @voice_sensory_loop.before_loop
+    async def before_voice_sensory_loop(self):
+        await self.wait_until_ready()
 
     @tasks.loop(seconds=0.25)
     async def stt_segment_loop(self):
