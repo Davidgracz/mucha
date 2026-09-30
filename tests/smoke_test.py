@@ -194,6 +194,65 @@ def main():
         assert boredom_map.get("arousal", 0.0) > 0.0
         assert "speak" in b.INTERNAL_STATE_TARGET_ACTIONS["arousal"]
 
+        autonomous_outside = b.autonomous_action_candidates(
+            can_speak=True,
+            connected_voice=False,
+            voice_target_count=2,
+            can_explore=True,
+        )
+        assert autonomous_outside["executed"] is False
+        assert set(autonomous_outside["candidate_actions"]) == {
+            "stay",
+            "speak",
+            "voice_join",
+            "explore",
+        }
+        assert "noop" in autonomous_outside["display_candidates"]
+        assert "voice_move" not in autonomous_outside[
+            "candidate_actions"
+        ]
+        assert autonomous_outside["winner_preview"] in (
+            autonomous_outside["candidate_actions"]
+        )
+        assert autonomous_outside["rows"]["speak"]["feasible"] is True
+        assert (
+            autonomous_outside["rows"]["speak"]["drive_support"]
+            >= 0.0
+        )
+
+        autonomous_inside = b.autonomous_action_candidates(
+            can_speak=False,
+            connected_voice=True,
+            voice_target_count=1,
+            can_explore=True,
+        )
+        assert set(autonomous_inside["candidate_actions"]) == {
+            "stay",
+            "voice_move",
+            "explore",
+        }
+        assert "voice_join" not in autonomous_inside[
+            "candidate_actions"
+        ]
+        assert "speak" not in autonomous_inside["candidate_actions"]
+        assert autonomous_inside["rows"]["stay"]["feasible"] is True
+        assert autonomous_inside["rows"]["speak"]["feasible"] is False
+
+        autonomous_no_voice = b.autonomous_action_candidates(
+            can_speak=True,
+            connected_voice=False,
+            voice_target_count=0,
+            can_explore=True,
+        )
+        assert set(autonomous_no_voice["candidate_actions"]) == {
+            "stay",
+            "speak",
+            "explore",
+        }
+        assert autonomous_no_voice["rows"]["voice_join"][
+            "technical_reason"
+        ] == "no-voice-target"
+
         b.inject("signal-flow-smoke", 1.0, 64)
         b.step(2)
         signal_flow = b.signal_flow_snapshot()
@@ -1347,6 +1406,7 @@ def main():
         assert "def tick_internal_drives" in brain_source
         assert "def register_internal_drive_event" in brain_source
         assert "def internal_drive_diagnostics" in brain_source
+        assert "def autonomous_action_candidates" in brain_source
         assert "internal_drive_values" in brain_source
         assert "def voice_channel_target_decision" in brain_source
         assert "def inject_voice_target_context" in brain_source
@@ -1361,6 +1421,9 @@ def main():
         assert "_decision_trace_history_snapshot" in bot_source
         assert "deque(maxlen=48)" in bot_source
         assert "_text_decision_debug" in bot_source
+        assert "_autonomous_candidate_contexts" in bot_source
+        assert "_autonomous_candidate_debug" in bot_source
+        assert '"autonomous_candidates": deepcopy(' in bot_source
         assert "inject_voice_decision_context" in bot_source
         assert "_last_social_drive_punish" in bot_source
         assert "neural social drive outside voice" in bot_source
