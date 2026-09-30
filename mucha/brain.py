@@ -6275,6 +6275,302 @@ class FlyBrain:
             "mean_eligibility": mean_eligibility,
         }
 
+    def action_competition(
+        self,
+        actions: Iterable[str],
+    ) -> dict:
+        """Compete arbitrary action readouts without a hand-written threshold."""
+        allowed = []
+        for action in actions:
+            name = str(action)
+            if name in self.ACTIONS and name not in allowed:
+                allowed.append(name)
+        if not allowed:
+            raise ValueError("action_competition requires at least one valid action")
+
+        scores = self.action_scores()
+        policy_scores = self.action_policy_scores(scores)
+        candidates = {
+            name: float(policy_scores[name])
+            for name in allowed
+        }
+        ranked = sorted(
+            candidates.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        winner, winner_score = ranked[0]
+        runner_name, runner_score = (
+            ranked[1]
+            if len(ranked) > 1
+            else ("none", 0.0)
+        )
+
+        tie_band = 0.0025
+        tie_break = None
+        tie_evidence_margin = 0.0
+        tie_evidence: dict[str, dict] = {}
+        close_actions = tuple(
+            name
+            for name, score in ranked
+            if float(winner_score) - float(score)
+            <= tie_band
+        )
+        if len(close_actions) > 1:
+            tie_evidence = {
+                name: self._action_tie_evidence(
+                    name,
+                    close_actions,
+                )
+                for name in close_actions
+            }
+            evidence_ranked = sorted(
+                close_actions,
+                key=lambda name: float(
+                    tie_evidence[name]["support"]
+                ),
+                reverse=True,
+            )
+            best = evidence_ranked[0]
+            second = evidence_ranked[1]
+            evidence_margin = (
+                float(tie_evidence[best]["support"])
+                - float(tie_evidence[second]["support"])
+            )
+            tie_evidence_margin = float(evidence_margin)
+            if abs(evidence_margin) > 1e-9:
+                winner = best
+                runner_name = second
+                winner_score = candidates[winner]
+                runner_score = candidates[runner_name]
+                tie_break = "neural-evidence"
+            else:
+                pick = int(
+                    self.compute.scalar(
+                        self.compute.random_uniform(
+                            0.0,
+                            float(len(evidence_ranked)),
+                            size=1,
+                        )[0]
+                    )
+                )
+                pick = min(
+                    len(evidence_ranked) - 1,
+                    max(0, pick),
+                )
+                winner = evidence_ranked[pick]
+                remaining = [
+                    name
+                    for name in evidence_ranked
+                    if name != winner
+                ]
+                runner_name = (
+                    remaining[0]
+                    if remaining
+                    else "none"
+                )
+                winner_score = candidates[winner]
+                runner_score = (
+                    candidates[runner_name]
+                    if runner_name in candidates
+                    else 0.0
+                )
+                tie_break = "unbiased-flat-neural-fallback"
+
+        return {
+            "action": winner,
+            "score": float(winner_score),
+            "runner_up": runner_name,
+            "runner_up_score": float(runner_score),
+            "margin": float(
+                0.0
+                if tie_break
+                else winner_score - runner_score
+            ),
+            "raw_winner_margin": float(
+                winner_score - runner_score
+            ),
+            "candidates": candidates,
+            "raw_candidates": {
+                name: float(scores[name])
+                for name in candidates
+            },
+            "scores": scores,
+            "policy_scores": policy_scores,
+            "policy": self.action_policy_diagnostics(),
+            "source": (
+                "connectome-readout+learned-policy"
+                if self.cfg.action_policy_enabled
+                else "connectome-readout-competition"
+            ),
+            "tie_band": tie_band,
+            "tie_break": tie_break,
+            "tie_evidence_margin": tie_evidence_margin,
+            "tie_evidence": tie_evidence,
+        }
+
+    def inject_voice_target_context(
+        self,
+        guild_id: int,
+        channel_id: int,
+        *,
+        novelty: float,
+        recent: float,
+        uncertainty: float,
+        reward_opportunity_strength: float = 0.0,
+        is_current: bool = False,
+    ) -> dict:
+        """Encode target-choice features as channel-specific sensory evidence."""
+        novelty = max(0.0, min(1.0, float(novelty)))
+        recent = max(0.0, min(1.0, float(recent)))
+        uncertainty = max(0.0, min(1.0, float(uncertainty)))
+        reward_strength = max(
+            0.0,
+            min(4.0, float(reward_opportunity_strength)),
+        )
+        channel_id = int(channel_id)
+        prefix = f"voice:target:{int(guild_id)}:{channel_id}"
+        cues: list[dict] = []
+
+        def raw(suffix: str, magnitude: float, width: int = 88) -> None:
+            magnitude = max(0.0, min(2.5, float(magnitude)))
+            if magnitude <= 1e-6:
+                return
+            key = f"{prefix}:{suffix}"
+            self.inject(key, magnitude, width)
+            cues.append({
+                "key": key,
+                "magnitude": magnitude,
+                "width": int(width),
+            })
+
+        raw(
+            f"novelty:{min(5, max(0, int(round(novelty * 5.0))))}",
+            0.12 + 0.42 * novelty,
+        )
+        raw(
+            f"recent:{min(5, max(0, int(round(recent * 5.0))))}",
+            0.10 + 0.30 * recent,
+        )
+        raw(
+            f"uncertainty:{min(5, max(0, int(round(uncertainty * 5.0))))}",
+            0.10 + 0.42 * uncertainty,
+        )
+        if reward_strength > 0.0:
+            raw(
+                "reward-opportunity",
+                min(1.60, 0.25 + 0.38 * reward_strength),
+                104,
+            )
+        if is_current:
+            raw("current", 0.22, 72)
+
+        return {
+            "channel_id": channel_id,
+            "novelty": novelty,
+            "recent": recent,
+            "uncertainty": uncertainty,
+            "reward_opportunity_strength": reward_strength,
+            "is_current": bool(is_current),
+            "cue_count": len(cues),
+            "cues": cues,
+            "direct_target_bonus": False,
+        }
+
+    def voice_channel_target_decision(
+        self,
+        guild_id: int,
+        channel_ids: Iterable[int],
+    ) -> dict:
+        """Choose a voice target from channel-specific neural readouts only."""
+        ids = []
+        for channel_id in channel_ids:
+            value = int(channel_id)
+            if value not in ids:
+                ids.append(value)
+        if not ids:
+            return {
+                "channel_id": None,
+                "score": 0.0,
+                "runner_up": None,
+                "runner_up_score": 0.0,
+                "margin": 0.0,
+                "candidates": {},
+                "source": "neural-channel-readout",
+            }
+
+        candidates = {
+            channel_id: float(
+                self.readout(
+                    f"voice-affinity:{int(guild_id)}:{channel_id}",
+                    96,
+                )
+            )
+            for channel_id in ids
+        }
+        ranked = sorted(
+            candidates.items(),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        winner, winner_score = ranked[0]
+        runner, runner_score = (
+            ranked[1]
+            if len(ranked) > 1
+            else (None, 0.0)
+        )
+        margin = float(winner_score - runner_score)
+
+        # Only exact/near-flat neural states use an unbiased fallback.
+        tie_band = 0.0025
+        close = [
+            channel_id
+            for channel_id, score in ranked
+            if float(winner_score) - float(score) <= tie_band
+        ]
+        tie_break = None
+        if len(close) > 1:
+            pick = int(
+                self.compute.scalar(
+                    self.compute.random_uniform(
+                        0.0,
+                        float(len(close)),
+                        size=1,
+                    )[0]
+                )
+            )
+            pick = min(len(close) - 1, max(0, pick))
+            winner = int(close[pick])
+            winner_score = candidates[winner]
+            remaining = [cid for cid in close if cid != winner]
+            runner = remaining[0] if remaining else runner
+            runner_score = (
+                candidates[runner]
+                if runner is not None
+                else 0.0
+            )
+            margin = 0.0
+            tie_break = "unbiased-neural-target-tie"
+
+        return {
+            "channel_id": int(winner),
+            "score": float(winner_score),
+            "runner_up": (
+                int(runner)
+                if runner is not None
+                else None
+            ),
+            "runner_up_score": float(runner_score),
+            "margin": margin,
+            "candidates": {
+                str(channel_id): float(score)
+                for channel_id, score in candidates.items()
+            },
+            "source": "neural-channel-readout",
+            "tie_break": tie_break,
+            "direct_target_bonus": False,
+        }
+
     def voice_action_decision(
         self,
         *,
