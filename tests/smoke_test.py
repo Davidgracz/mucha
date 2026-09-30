@@ -17,7 +17,7 @@ from mucha.brain import FlyBrain
 from mucha.episodic import VoiceEpisodicMemory
 from mucha.language import OnlineLanguage
 from mucha.voice_sensory import VoiceSensoryBus
-from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, HTML, OVERVIEW_HTML, PUBLIC_OVERVIEW_HTML, WebDashboard
+from mucha.web_ui import AFFINITY_HTML, ASSOCIATIONS_HTML, AUTONOMY_HTML, CONFIG_HTML, CONNECTOME_HTML, NEUROMAP_HTML, HTML, OVERVIEW_HTML, PUBLIC_OVERVIEW_HTML, WebDashboard
 
 
 def main():
@@ -1542,6 +1542,9 @@ def main():
         assert "_text_decision_debug" in bot_source
         assert "_autonomous_candidate_contexts" in bot_source
         assert "_autonomous_candidate_debug" in bot_source
+        assert "_autonomous_history" in bot_source
+        assert "_remember_autonomous_execution" in bot_source
+        assert '"autonomous_history": deepcopy(' in bot_source
         assert "_execute_autonomous_action" in bot_source
         assert "_autonomous_voice_target" in bot_source
         assert "autonomous_loop_enabled" in bot_source
@@ -1754,6 +1757,15 @@ def main():
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
         assert "/api/public/state" in PUBLIC_OVERVIEW_HTML
+        assert "Autonomia 24E" in AUTONOMY_HTML
+        assert "/api/state" in AUTONOMY_HTML
+        assert "predicted reward" in AUTONOMY_HTML.lower()
+        assert "prediction_cues" in AUTONOMY_HTML
+        assert "autonomous_history" in AUTONOMY_HTML
+        assert "NIE WYBRANO W TYM TICKU" in AUTONOMY_HTML
+        assert 'href="/autonomy"' in OVERVIEW_HTML
+        assert 'app.router.add_get("/autonomy"' in web_ui_source
+        assert "def _autonomy_page" in web_ui_source
         assert "Mowa / Language Brain" in ASSOCIATIONS_HTML
         assert "Live trace ostatniej generacji" in ASSOCIATIONS_HTML
         assert "Connectome word control" in ASSOCIATIONS_HTML
