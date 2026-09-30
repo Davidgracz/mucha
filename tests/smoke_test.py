@@ -184,6 +184,15 @@ def main():
             ]
             in b.INTERNAL_DRIVE_NAMES
         )
+        social_map = dict(
+            b.INTERNAL_DRIVE_STATE_MAP["social_need"]
+        )
+        boredom_map = dict(
+            b.INTERNAL_DRIVE_STATE_MAP["boredom"]
+        )
+        assert social_map.get("arousal", 0.0) > 0.0
+        assert boredom_map.get("arousal", 0.0) > 0.0
+        assert "speak" in b.INTERNAL_STATE_TARGET_ACTIONS["arousal"]
 
         b.inject("signal-flow-smoke", 1.0, 64)
         b.step(2)
