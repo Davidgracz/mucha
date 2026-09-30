@@ -1934,7 +1934,7 @@ font:11px/1.55 ui-monospace,SFMono-Regular,Consolas,monospace;white-space:pre-wr
 <body><main>
 <div class="top">
   <div class="brand"><div class="logo">🪰</div><div><h1>Mucha Control Center</h1><div class="sub">Windows / VPS • Discord • Connectome • Chaser • Audio</div></div></div>
-  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🗣 Mowa</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
+  <div class="nav"><a class="active" href="/">🏠 Przegląd</a><a href="/autonomy">🧭 Autonomia</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🗣 Mowa</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/api/state">JSON</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
@@ -4098,6 +4098,7 @@ class WebDashboard:
 
         app = web.Application(middlewares=[self._auth_middleware])
         app.router.add_get("/", self._index)
+        app.router.add_get("/autonomy", self._autonomy_page)
         app.router.add_get("/details", self._details)
         app.router.add_get("/affinity", self._affinity_page)
         app.router.add_get("/connectome", self._connectome_page)
@@ -4155,6 +4156,13 @@ class WebDashboard:
 
     async def _index(self, request: web.Request) -> web.Response:
         html = OVERVIEW_HTML.replace(
+            "const LIVE_REFRESH_MS=250;",
+            f"const LIVE_REFRESH_MS={self.refresh_ms};",
+        )
+        return web.Response(text=html, content_type="text/html")
+
+    async def _autonomy_page(self, request: web.Request) -> web.Response:
+        html = AUTONOMY_HTML.replace(
             "const LIVE_REFRESH_MS=250;",
             f"const LIVE_REFRESH_MS={self.refresh_ms};",
         )
