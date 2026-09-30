@@ -5517,6 +5517,7 @@ class MuchaClient(discord.Client):
             },
         }
 
+        sent_ok = False
         if will_speak:
             sent_ok = await self._send_learned(
                 message.channel,
@@ -5549,6 +5550,57 @@ class MuchaClient(discord.Client):
                     "gate przeszedł, ale generator nie zwrócił tekstu "
                     "albo Discord odrzucił wysyłkę"
                 )
+
+        if (
+            self.cfg.behavior.one_brain_enabled
+            and one_brain_decision is not None
+        ):
+            winner = str(one_brain_decision.get("action", "stay"))
+            if winner == "speak":
+                ob_executed = bool(sent_ok)
+                ob_external = bool(sent_ok)
+                ob_success = bool(sent_ok)
+                ob_detail = (
+                    f"sent to #{channel_name}"
+                    if sent_ok
+                    else "language generation/send failed"
+                )
+            elif winner == "react":
+                reacted = (
+                    self._reaction_debug.get("decision")
+                    == "REAKCJA DODANA"
+                )
+                ob_executed = bool(reacted)
+                ob_external = bool(reacted)
+                ob_success = bool(reacted)
+                ob_detail = (
+                    "reaction "
+                    + str(self._reaction_debug.get("emoji") or "?")
+                    if reacted
+                    else str(
+                        self._reaction_debug.get(
+                            "decision",
+                            "reaction failed",
+                        )
+                    )
+                )
+            else:
+                ob_executed = True
+                ob_external = False
+                ob_success = True
+                ob_detail = "NOOP / STAY"
+
+            self._remember_one_brain_cycle(
+                kind="text",
+                guild_id=int(message.guild.id),
+                guild_name=str(message.guild.name),
+                candidate_set=one_brain_candidate_set,
+                decision=one_brain_decision,
+                executed=ob_executed,
+                external_effect=ob_external,
+                success=ob_success,
+                detail=ob_detail,
+            )
 
         self._remember_decision_trace(
             self._text_decision_debug,
