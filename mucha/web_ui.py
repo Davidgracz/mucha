@@ -2060,6 +2060,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .reason{padding:11px 12px;border-radius:12px;background:#0c131b;border:1px solid #1d2936;margin-bottom:12px}
 .reason b{color:var(--accent)}
 .ok{color:var(--good)}.no{color:var(--bad)}.warn{color:var(--warn)}
+.people-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.person-card{background:#0a1118;border:1px solid #1d2d3a;border-radius:13px;padding:11px;min-width:0}.person-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.person-name{font-weight:800;font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.person-id{display:block;color:var(--muted);font:9px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;margin-top:2px}.person-valence{font-size:9px;font-weight:800;border:1px solid #2a4052;border-radius:999px;padding:4px 7px;white-space:nowrap}.person-valence.positive{color:#79dfa3;border-color:#2f6550}.person-valence.negative{color:#ff9aa2;border-color:#653b42}.person-valence.mixed{color:#ffd277;border-color:#5b4a29}.person-kpis{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin:9px 0}.person-kpi{background:#071019;border:1px solid #172635;border-radius:9px;padding:7px;min-width:0}.person-kpi small{display:block;color:#6f8395;font-size:8px;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px}.person-kpi b{font-size:11px;word-break:break-word}.person-lines{font-size:9px;color:#98aaba;line-height:1.55}.person-lines b{color:#d4e3ee}.person-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.person-tag{border:1px solid #213548;background:#08121a;border-radius:999px;padding:4px 6px;font-size:8px;color:#a8bac8}
 .learning-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:9px;margin-bottom:12px}
 .kpi{background:#0c131b;border:1px solid #1d2936;border-radius:12px;padding:11px;min-width:0}
 .kpi small{display:block;color:var(--muted);margin-bottom:6px}.kpi strong{font-size:16px;word-break:break-word}
@@ -2080,7 +2081,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 @media(max-width:1100px){.system-strip{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.voice-summary,.learning-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.voice-tech-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.attention-shell{grid-template-columns:1fr 1fr}.attention-shell>.attention-panel:last-child{grid-column:span 2}}
 @media(max-width:700px){.system-strip{grid-template-columns:1fr 1fr}
-main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template-columns:1fr}.trace-grid{grid-template-columns:1fr}.trace-head{flex-direction:column}.trace-meta{text-align:left}.flow-arrow{transform:rotate(90deg);height:14px}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:grid}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:auto}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.trace-history-item{grid-template-columns:65px 55px minmax(90px,.7fr) minmax(0,1fr);gap:5px;font-size:9px}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
+main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template-columns:1fr}.trace-grid{grid-template-columns:1fr}.trace-head{flex-direction:column}.trace-meta{text-align:left}.flow-arrow{transform:rotate(90deg);height:14px}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:grid}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:auto}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid,.people-grid{grid-template-columns:1fr}.trace-history-item{grid-template-columns:65px 55px minmax(90px,.7fr) minmax(0,1fr);gap:5px;font-size:9px}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
 </style>
 </head>
 <body>
@@ -2299,6 +2300,12 @@ main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template
 
     <div class="section-heading" id="social-section"><div><span class="section-no">04 / RELACJE</span><h2>Relacje i reakcje</h2><p>Jak Mucha reaguje na ludzi, słowa i feedback społeczny.</p></div></div>
 
+    <div class="card span3 focus-card">
+      <h2>🧠 Long-term People Memory <span class="help-dot" data-help-key="person-memory" tabindex="0">?</span></h2>
+      <div class="reason" id="people-memory-summary">Czekam na trwałe doświadczenia z ludźmi…</div>
+      <div class="people-grid" id="people-memory-grid"><div class="trace-empty">Brak profili osób.</div></div>
+    </div>
+
     <div class="card span2">
       <h2>Social Learning / Relacje <span class="help-dot" data-help-key="social-learning" tabindex="0">?</span></h2>
       <div class="learning-grid">
@@ -2485,6 +2492,7 @@ const HELP={
   "sleep":{title:"Sleep / Offline Consolidation",body:"Po dłuższej ciszy runtime zawiesza zwykłe autonomiczne decyzje i wykonuje serię MEMORY REPLAY na ważnych epizodach. Replay przechodzi przez connectome, captured learning trace i istniejącą plastyczność.",read:"Sen nie tworzy nowych zdarzeń Discord. Semantic rehearsal stabilizuje tylko istniejące uogólnienia i nie zwiększa liczby realnych obserwacji."},
   "learning-startup":{title:"Learning Since Startup",body:"Liczniki uczenia od uruchomienia procesu: język, reward events i skumulowane zmiany.",read:"Te liczniki resetują się po restarcie, nawet jeśli trwały stan został zapisany."},
   "social-learning":{title:"Social Learning / Relacje",body:"Długoterminowe sygnały społeczne i affinity użytkowników.",read:"Nie myl z Attention: affinity opisuje relację, Attention opisuje to, co zajmuje Muchę teraz."},
+  "person-memory":{title:"Long-term People Memory",body:"Profil osoby powstaje z trwałej pamięci semantycznej: kontaktów tekstowych i voice, wyników wcześniejszych akcji przy tej osobie, signed social events, kanałów i utrwalonych epizodów.",read:"Familiarity mówi ile doświadczenia zebrała Mucha. Valence opisuje typowy wynik zapisanych doświadczeń. To nie jest bezpośredni bonus do decyzji — profil wraca do sensorycznych neuronów connectomu."},
   "reaction-debug":{title:"Reaction Debug",body:"Readout react, próg, cooldown, kandydaci emoji i wynik próby reakcji.",read:"Jeśli score jest wysoki, ale brak reakcji, sprawdź cooldown i Discord permissions."},
   "plasticity":{title:"Plasticity",body:"Trwałe zmiany bias neuronów i wag synaptycznych nałożone na bazowy FAFB.",read:"Bazowy connectome pozostaje nienaruszony; uczenie jest nakładką."},
   "reward-timeline":{title:"Reward timeline",body:"Historia reinforcement events wraz z bieżącym reward trace.",read:"Porównuj znaczniki nagród/kar z Action History i Learning Debug."},
@@ -3282,6 +3290,57 @@ function renderLearning(l){
     (Number(n.activation)>=0?"+":"")+Number(n.activation).toFixed(4)+'</td></tr>'
   ).join("");
 }
+function renderPersonProfiles(items){
+  const root=$("people-memory-grid"),summary=$("people-memory-summary");
+  items=Array.isArray(items)?items:[];
+  if(!items.length){
+    summary.innerHTML='<b>Brak dojrzałych profili.</b> Profile zaczną rosnąć od kontaktów tekstowych, STT i epizodów voice.';
+    root.innerHTML='<div class="trace-empty">Brak profili osób.</div>';
+    return;
+  }
+  const mature=items.filter(x=>Number(x.observations||0)>=2);
+  const avgFam=mature.length
+    ? mature.reduce((a,x)=>a+Number(x.familiarity||0),0)/mature.length
+    : 0;
+  summary.innerHTML='<b>'+nfmt(items.length)+' profili</b> • '+nfmt(mature.length)+' z min. 2 obserwacjami • średnia familiarity '+(avgFam*100).toFixed(0)+'% • dane trwałe w voice_episodes.sqlite3';
+
+  root.innerHTML=items.slice(0,16).map(p=>{
+    const fam=Math.max(0,Math.min(1,Number(p.familiarity||0)));
+    const conf=Math.max(0,Math.min(1,Number(p.confidence||0)));
+    const val=Math.max(-1,Math.min(1,Number(p.valence||0)));
+    const label=String(p.valence_label||"neutral");
+    const preferred=p.preferred_action||null, avoided=p.avoided_action||null;
+    const contacts=(p.contact_sources||[]).slice(0,4);
+    const social=(p.social_events||[]).slice(0,4);
+    const channels=(p.channels||[]).slice(0,3);
+    const recent=(p.recent_episodes||[])[0]||null;
+    const inj=p.last_injection||{},brain=inj.brain||{};
+    const tags=[];
+    contacts.forEach(x=>tags.push('<span class="person-tag">'+esc(x.source||"contact")+' ×'+nfmt(x.observations||0)+'</span>'));
+    social.forEach(x=>{
+      const sig=Number(x.signal||0);
+      tags.push('<span class="person-tag">'+esc(x.event||"social")+' '+(sig>=0?"+":"")+sig.toFixed(2)+'</span>');
+    });
+    return '<div class="person-card">'+
+      '<div class="person-head"><div><div class="person-name">'+esc(p.display_name||p.user_id||"—")+'</div><span class="person-id">'+esc(p.user_id||"")+'</span></div>'+
+      '<span class="person-valence '+esc(label)+'">'+esc(label.toUpperCase())+' '+(val>=0?"+":"")+val.toFixed(2)+'</span></div>'+
+      '<div class="person-kpis">'+
+        '<div class="person-kpi"><small>Familiarity</small><b>'+(fam*100).toFixed(0)+'%</b></div>'+
+        '<div class="person-kpi"><small>Confidence</small><b>'+(conf*100).toFixed(0)+'%</b></div>'+
+        '<div class="person-kpi"><small>Doświadczenia</small><b>'+nfmt(p.observations||0)+'</b></div>'+
+        '<div class="person-kpi"><small>Contact / social</small><b>'+nfmt(p.contact_observations||0)+' / '+nfmt(p.social_observations||0)+'</b></div>'+
+      '</div>'+
+      '<div class="person-lines">'+
+        '<div><b>Typowa dobra akcja:</b> '+(preferred?esc(preferred.action)+' '+(Number(preferred.signal||0)>=0?"+":"")+Number(preferred.signal||0).toFixed(2):'—')+'</div>'+
+        '<div><b>Typowa zła akcja:</b> '+(avoided?esc(avoided.action)+' '+Number(avoided.signal||0).toFixed(2):'—')+'</div>'+
+        '<div><b>Kanały:</b> '+(channels.length?channels.map(x=>esc(x.channel_name||x.channel_id)+' ('+nfmt(x.observations||0)+')').join(' • '):'—')+'</div>'+
+        '<div><b>Ostatni epizod:</b> '+(recent?(esc(recent.action||"—")+' • '+esc(recent.channel_name||"poza VC")+' • reward '+(Number(recent.actual_reward||0)>=0?"+":"")+Number(recent.actual_reward||0).toFixed(2)):'—')+'</div>'+
+        '<div><b>Ostatnie wejście do connectomu:</b> '+(inj.checked_at?(esc(inj.source||"—")+' • '+nfmt(brain.cue_count||0)+' cues • '+Math.max(0,Date.now()/1000-Number(inj.checked_at)).toFixed(0)+'s temu'):'jeszcze nie użyty w bieżącej sesji')+'</div>'+
+      '</div>'+
+      '<div class="person-tags">'+(tags.join('')||'<span class="person-tag">brak dodatkowych sygnałów</span>')+'</div>'+
+    '</div>';
+  }).join("");
+}
 function renderSocial(s){
   const d=s.social_debug||{}, settings=s.social_settings||{};
   const amount=Number(d.amount||0);
@@ -3501,6 +3560,7 @@ async function update(){
     renderLearning(s.learning_debug||{});
     renderSleep(s.sleep||{});
     renderLearningSinceStart(s.learning_since_start||{});
+    renderPersonProfiles(s.person_profiles||[]);
     renderSocial(s);
     renderActionHistory(s.action_history||[]);
     renderGuildLearningContext(s.guild_learning_context||[]);
