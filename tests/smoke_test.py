@@ -220,6 +220,52 @@ def main():
             for row in semantic_top
         )
         assert restored.diagnostics()["semantic_entries"] > 0
+
+        restored.observe_person_contact(11, "text", now=time.time())
+        restored.observe_person_contact(11, "text", now=time.time())
+        restored.observe_person_contact(
+            11,
+            "voice_speech",
+            now=time.time(),
+        )
+        restored.observe_person_social_event(
+            11,
+            "DIRECT_REPLY",
+            0.35,
+            now=time.time(),
+        )
+        restored.observe_person_social_event(
+            11,
+            "VOICE_REJECTION",
+            -0.10,
+            now=time.time(),
+        )
+        person = restored.person_profile(11)
+        assert person["user_id"] == 11
+        assert person["display_name"] == "Dawid"
+        assert person["observations"] >= 7
+        assert person["voice_observations"] >= 2
+        assert person["contact_observations"] == 3
+        assert person["social_observations"] == 2
+        assert person["familiarity"] > 0.0
+        assert person["confidence"] > 0.0
+        assert person["preferred_action"]["action"] == "voice_move"
+        assert any(
+            row["source"] == "text"
+            and row["observations"] == 2
+            for row in person["contact_sources"]
+        )
+        assert any(
+            row["event"] == "DIRECT_REPLY"
+            and row["signal"] > 0.0
+            for row in person["social_events"]
+        )
+        assert person["recent_episodes"]
+        assert any(
+            row["user_id"] == 11
+            for row in restored.person_profiles(8)
+        )
+
         replay_candidates = restored.replay_candidates(
             limit=4,
             max_age_seconds=86400,
@@ -799,6 +845,9 @@ def main():
         assert "dopamine_plasticity_gain" in CONFIG_HTML
         assert "neural_social_memory_enabled" in CONFIG_HTML
         assert "neural_affinity_weight" in CONFIG_HTML
+        assert "person_model_enabled" in CONFIG_HTML
+        assert "person_model_min_observations" in CONFIG_HTML
+        assert "person_model_sensory_magnitude" in CONFIG_HTML
         assert "connectome_voice_control_enabled" in CONFIG_HTML
         assert "social_drive_enabled" in CONFIG_HTML
         assert "social_drive_max_magnitude" in CONFIG_HTML
@@ -855,6 +904,10 @@ def main():
         assert "information_gain_reward_max" in CONFIG_HTML
         assert "information_gain_min_delta" in CONFIG_HTML
         assert "Pamięć semantyczna" in HTML
+        assert "Long-term People Memory" in HTML
+        assert "renderPersonProfiles" in HTML
+        assert 'id="people-memory-grid"' in HTML
+        assert "person-memory" in HTML
         assert "Curiosity / Uncertainty" in HTML
         assert "Tryb rozmowy" in HTML
         assert "Speech ratio 60s" in HTML
@@ -1006,6 +1059,13 @@ def main():
         )
         assert "rehearse_semantic_replay" in episodic_source
         assert "must not increase the observation count" in episodic_source
+        assert "observe_person_contact" in episodic_source
+        assert "observe_person_social_event" in episodic_source
+        assert '"person_contact"' in episodic_source
+        assert '"person_social"' in episodic_source
+        assert "inject_person_profile" in bot_source
+        assert "observe_person_contact" in bot_source
+        assert "observe_person_social_event" in bot_source
         assert "_attention_observe_text" in bot_source
         assert "_inject_attention_context" in bot_source
         assert "_attention_language_context" in bot_source
