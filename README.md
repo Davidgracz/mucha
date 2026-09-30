@@ -735,6 +735,41 @@ information_gain_min_delta = 0.01
 
 Stan jest widoczny w `/details` jako **Curiosity / Uncertainty**, razem z najbardziej nieznanymi kanałami, cue do attractora i ostatnim information gain.
 
+# Decision Trace — „Dlaczego zrobiła X?”
+
+Prywatny widok `/details` posiada teraz spójny **Decision Trace** zapisujący faktyczne dane użyte przez runtime przy decyzji.
+
+Dla decyzji tekstowych trace zapisuje m.in.:
+
+- bodziec tekstowy i aktywny Attention / Working Memory,
+- dominujący internal state oraz poziomy neuromodulatorów,
+- surowy `speak` readout,
+- wynik po Learned Action Policy,
+- bazowy i learned raw threshold,
+- affinity użytkownika,
+- cooldown, gotowość języka i blokady kanału,
+- wynik równoległego gate'a reakcji,
+- informację, czy wiadomość została rzeczywiście wysłana.
+
+Dla voice trace składa istniejący bogaty debug decyzji w jeden łańcuch:
+
+```text
+voice sensory / context
+→ episodic + semantic recall
+→ uncertainty / curiosity
+→ internal states
+→ connectome propagation
+→ raw action candidates
+→ learned policy
+→ winner / runner-up / margin
+→ ograniczenia wykonania
+→ realna decyzja
+```
+
+To jest telemetryczny zapis działania algorytmu, a nie deklaracja ukrytego „toku myślenia”.
+
+---
+
 # Live System Telemetry
 
 Prywatny dashboard ma szybki kanał telemetryczny odświeżany domyślnie co **250 ms**.
@@ -761,9 +796,9 @@ Cięższe dane, takie jak logi systemd i status usług, pozostają na wolniejszy
 
 Dalsze kierunki:
 
-- bogatsze sensory voice,
-- sleep / offline consolidation,
-- pełny panel **„dlaczego zrobiła X?”** pokazujący drogę od bodźca przez connectome do decyzji.
+- **sleep / offline consolidation** — osobny stan ciszy, w którym replay utrwala istotne doświadczenia bez bieżących bodźców Discord,
+- bogatsze sensory voice i lepsze kodowanie dynamiki rozmowy,
+- historia Decision Trace, aby można było cofać się po kilku ostatnich decyzjach zamiast oglądać wyłącznie najnowszą.
 
 ---
 
