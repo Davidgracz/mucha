@@ -1050,13 +1050,88 @@ Prywatny `/details` pokazuje panel **Long-term Social Situations** z familiarity
 
 ---
 
+# Reward-learned Conversation Dynamics
+
+Mucha uczy się teraz **wyników akcji dla powtarzalnych wzorców rozmowy**, niezależnie od konkretnej osoby i kanału.
+
+Klucz dynamiki łączy:
+
+```text
+conversation mode
++ intensity
++ speech ratio
++ speaker switches
++ overlap / crosstalk
++ handoff latency
++ średnia długość tury
++ speaker dominance
++ długość ciszy
++ speech rate
+```
+
+Przykładowy wzorzec:
+
+```text
+DIALOGUE
+intensity 2/3
+speech 2/3
+switches 2/3
+overlap 1/3
+handoff normal
+turn medium
+dominance 2/3
+silence active
+speech-rate normal
+```
+
+Neutralne widzenie wzorca zwiększa tylko familiarity i jest ograniczone cooldownem, aby szybki polling nie pompował obserwacji.
+
+Realny reward/punish przez temporal credit zapisuje historyczny outcome:
+
+```text
+DIALOGUE + niski overlap
+→ STAY +0.55
+→ VOICE_MOVE -0.40
+→ SPEAK +0.30
+```
+
+Akcje voice `STAY / MOVE / LEAVE` uczą się z istniejącego temporal credit. `SPEAK` dostaje outcome z realnego feedbacku po TTS, m.in. kontynuacji rozmowy, reuse słowa/frazy albo werbalnego odrzucenia.
+
+Wyuczona dynamika wraca do connectomu jako sensory:
+
+```text
+voice:dynamics-memory:<hash>
+voice:dynamics-memory:familiarity:<bucket>
+voice:dynamics-memory:confidence:<bucket>
+voice:dynamics-memory:valence:<...>
+voice:dynamics-memory:mode:<...>
+voice:dynamics-memory:handoff:<...>
+voice:dynamics-memory:turn:<...>
+voice:dynamics-memory:silence:<...>
+voice:dynamics-memory:speech-rate:<...>
+voice:dynamics-memory:intensity:<bucket>
+voice:dynamics-memory:speech:<bucket>
+voice:dynamics-memory:switches:<bucket>
+voice:dynamics-memory:overlap:<bucket>
+voice:dynamics-memory:dominance:<bucket>
+voice:dynamics-history:action:<action>:<positive|negative>
+```
+
+To nie jest `if CROSSTALK: speak -= 0.3`. Historyczny wynik jest reiniektowany jako sensoryczny kontekst, a wpływ na zachowanie musi przejść przez connectome i jego wyuczoną plastyczność.
+
+Prywatny `/details` ma panel **Reward-learned Conversation Dynamics**, który pokazuje familiarity, confidence, parametry wzorca, liczbę realnych outcome oraz historycznie najlepsze i najgorsze wyniki akcji.
+
+Decision Trace przechowuje również `voice_dynamics_key`, familiarity i valence z chwili decyzji.
+
+---
+
 # Najbliższy kierunek rozwoju
 
 Dalsze kierunki:
 
-- uczenie reakcji na dynamikę rozmowy z rewardu zamiast ręcznego mapowania scen na decyzje,
 - dalsza redukcja ręcznie zakodowanych wyjątków na rzecz sygnałów sensorycznych i konkurencji readoutów connectomu,
-- coraz większa integracja tekstu, voice, pamięci i zachowania społecznego w jeden współdzielony stan neuronalny.
+- coraz większa integracja tekstu, voice, pamięci i zachowania społecznego w jeden współdzielony stan neuronalny,
+- dalsze przenoszenie wyboru zachowania z progów i wyjątków na wyuczone readouty oraz pamięć sytuacyjną.
 
 ---
 
