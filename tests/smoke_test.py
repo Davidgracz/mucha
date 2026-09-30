@@ -266,6 +266,22 @@ def main():
             == "voice_join"
         )
         assert autonomous_rewarded["prediction_executed"] is False
+        autonomous_decision = b.autonomous_action_decision(
+            autonomous_rewarded,
+            predicted_reward_gain=0.85,
+            propagation_steps=2,
+        )
+        assert autonomous_decision["action"] in (
+            autonomous_rewarded["candidate_actions"]
+        )
+        assert autonomous_decision["executed"] is False
+        assert autonomous_decision["propagation_steps"] == 2
+        assert "voice_join" in autonomous_decision["prediction_cues"]
+        assert (
+            autonomous_decision["source"]
+            == "predicted-reward sensory guidance -> FAFB propagation -> "
+            "connectome action competition"
+        )
 
         autonomous_inside = b.autonomous_action_candidates(
             can_speak=False,
@@ -284,6 +300,20 @@ def main():
         assert "speak" not in autonomous_inside["candidate_actions"]
         assert autonomous_inside["rows"]["stay"]["feasible"] is True
         assert autonomous_inside["rows"]["speak"]["feasible"] is False
+
+        autonomous_refractory = b.autonomous_action_candidates(
+            can_speak=False,
+            connected_voice=True,
+            voice_target_count=1,
+            can_explore=False,
+            can_voice_move=False,
+        )
+        assert set(autonomous_refractory["candidate_actions"]) == {
+            "stay",
+        }
+        assert autonomous_refractory["rows"]["voice_move"][
+            "technical_reason"
+        ] == "motor-refractory"
 
         autonomous_no_voice = b.autonomous_action_candidates(
             can_speak=True,
@@ -1472,6 +1502,8 @@ def main():
         assert "def internal_drive_diagnostics" in brain_source
         assert "def autonomous_action_candidates" in brain_source
         assert "def action_reward_prediction" in brain_source
+        assert "def autonomous_action_decision" in brain_source
+        assert "autonomous-predicted-reward:" in brain_source
         assert "predicted_reward_order" in brain_source
         assert "internal_drive_values" in brain_source
         assert "def voice_channel_target_decision" in brain_source
@@ -1489,6 +1521,10 @@ def main():
         assert "_text_decision_debug" in bot_source
         assert "_autonomous_candidate_contexts" in bot_source
         assert "_autonomous_candidate_debug" in bot_source
+        assert "_execute_autonomous_action" in bot_source
+        assert "_autonomous_voice_target" in bot_source
+        assert "autonomous_loop_enabled" in bot_source
+        assert "24D AUTONOMOUS LOOP" in bot_source
         assert "contextual_reward_predictions" in bot_source
         assert "predictions_detailed" in bot_source
         assert '"autonomous_candidates": deepcopy(' in bot_source
