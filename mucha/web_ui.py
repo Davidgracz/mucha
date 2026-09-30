@@ -268,7 +268,7 @@ const groups=[
   ["sleep_enabled","SLEEP / offline consolidation","bool",0,0,0,"Po dłuższej ciszy Mucha wchodzi w osobny stan snu i wykonuje serię mocniejszych replay bez normalnych decyzji voice/text."],
   ["sleep_idle_seconds","Sleep: cisza przed snem","number",60,60,604800,"Ile sekund realnej ciszy Discord musi minąć zanim może rozpocząć się jedna sesja snu."],
   ["sleep_cycle_interval_seconds","Sleep: odstęp cykli","number",5,5,3600,"Minimalny odstęp pomiędzy kolejnymi cyklami offline replay podczas snu."],
-  ["sleep_max_cycles","Sleep: cykle na sesję","number",1,1,64,"Po ilu cyklach sen kończy się. Następny sen wymaga nowej aktywności i kolejnego okresu ciszy."],
+  ["sleep_max_cycles","Sleep: cykle na sesję","number",1,1,64,"Po ilu cyklach kończy się jedna sesja snu. Jeśli dalej trwa cisza, Mucha automatycznie uzbroi kolejną sesję po następnym sleep_idle_seconds; aktywność wybudza ją i zeruje licznik."],
   ["sleep_replay_batch_size","Sleep: epizody na cykl","number",1,1,16,"Ile istotnych wspomnień może zostać reaktywowanych w jednym cyklu snu."],
   ["sleep_replay_magnitude_multiplier","Sleep: × siła reaktywacji","number",0.05,0.25,4,"Mnożnik siły sensorycznego replay względem zwykłego MEMORY REPLAY."],
   ["sleep_reward_scale_multiplier","Sleep: × plastyczność replay","number",0.05,0.25,4,"Mnożnik niewielkiego reward/punish używanego do ponownej plastyczności podczas snu."],
