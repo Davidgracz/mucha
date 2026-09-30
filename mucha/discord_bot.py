@@ -4774,6 +4774,12 @@ class MuchaClient(discord.Client):
 
         async with self._brain_lock:
             self.brain.inject_text(message.content, message.author.id, mentioned)
+            if not message.author.bot:
+                self.brain.register_internal_drive_event(
+                    "social_contact",
+                    0.75 if mentioned else 0.45,
+                    inject=False,
+                )
             person_profile_neural = {}
             if (
                 self.cfg.behavior.person_model_enabled
@@ -6497,10 +6503,32 @@ class MuchaClient(discord.Client):
         if await self._sleep_tick(now):
             return
         await self._maybe_memory_replay(now)
+        recent_external = bool(
+            now - float(self._last_external_activity)
+            <= max(
+                10.0,
+                2.0 * float(self.cfg.behavior.idle_tick_seconds),
+            )
+        )
+        social_contact = any(
+            vc is not None
+            and vc.is_connected()
+            and getattr(vc, "channel", None) is not None
+            and any(
+                not member.bot
+                for member in vc.channel.members
+            )
+            for vc in self.voice_clients
+        )
         async with self._brain_lock:
             self.brain.consolidate_and_forget(now=wall_now)
             for guild in self.guilds:
                 self._inject_attention_context(guild.id)
+            self.brain.tick_internal_drives(
+                float(self.cfg.behavior.idle_tick_seconds),
+                external_stimulation=recent_external,
+                social_contact=social_contact,
+            )
             self.brain.inject("internal:time", 0.035, 32)
             self.brain.step(self.cfg.brain.idle_steps)
             scores = self.brain.action_scores()
@@ -10535,6 +10563,11 @@ class MuchaClient(discord.Client):
                         "arousal",
                         0.45 + 0.45 * panic_scale,
                         key=f"internal-state:arousal:chaser:{guild.id}",
+                    )
+                    self.brain.register_internal_drive_event(
+                        "threat",
+                        0.35 + 0.65 * panic_scale,
+                        inject=False,
                     )
                 voice_context_diag = (
                     self.brain.inject_voice_decision_context(
