@@ -236,6 +236,36 @@ class MuchaClient(discord.Client):
             "last_at": 0.0,
             "last": [],
         }
+        self._sleep_active = False
+        self._sleep_armed = True
+        self._sleep_started = 0.0
+        self._sleep_last_cycle = 0.0
+        self._sleep_cycle = 0
+        self._sleep_debug: dict = {
+            "enabled": bool(cfg.voice.sleep_enabled),
+            "active": False,
+            "state": "AWAKE",
+            "reason": "startup",
+            "quiet_for": 0.0,
+            "idle_required": float(cfg.voice.sleep_idle_seconds),
+            "cycle": 0,
+            "max_cycles": int(cfg.voice.sleep_max_cycles),
+            "progress": 0.0,
+            "started_at": 0.0,
+            "completed_at": 0.0,
+            "woke_at": 0.0,
+            "last_cycle_at": 0.0,
+            "next_cycle_in": 0.0,
+            "episodes_replayed": 0,
+            "changed_neurons": 0,
+            "changed_synapses": 0,
+            "semantic_rehearsed": 0,
+            "memory_strength_delta": 0.0,
+            "consolidated_scenes": 0,
+            "consolidated_synapses": 0,
+            "fading_synapses": 0,
+            "last": [],
+        }
         self.last_reply: dict[int, float] = {}
         self.last_spontaneous: dict[int, float] = {}
         self.last_text_channel: dict[int, int] = {}
@@ -549,6 +579,14 @@ class MuchaClient(discord.Client):
             "memory_replay_reward_scale",
             "memory_replay_steps",
             "memory_replay_max_age_days",
+            "sleep_enabled",
+            "sleep_idle_seconds",
+            "sleep_cycle_interval_seconds",
+            "sleep_max_cycles",
+            "sleep_replay_batch_size",
+            "sleep_replay_magnitude_multiplier",
+            "sleep_reward_scale_multiplier",
+            "sleep_steps_multiplier",
             "episodic_consolidation_gain",
             "episodic_forgetting_half_life_days",
             "episodic_forgetting_interval_seconds",
@@ -1011,6 +1049,30 @@ class MuchaClient(discord.Client):
             ),
             ("voice", "memory_replay_max_age_days"): (
                 int, 1, 365
+            ),
+            ("voice", "sleep_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "sleep_idle_seconds"): (
+                int, 60, 604800
+            ),
+            ("voice", "sleep_cycle_interval_seconds"): (
+                int, 5, 3600
+            ),
+            ("voice", "sleep_max_cycles"): (
+                int, 1, 64
+            ),
+            ("voice", "sleep_replay_batch_size"): (
+                int, 1, 16
+            ),
+            ("voice", "sleep_replay_magnitude_multiplier"): (
+                float, 0.25, 4.0
+            ),
+            ("voice", "sleep_reward_scale_multiplier"): (
+                float, 0.25, 4.0
+            ),
+            ("voice", "sleep_steps_multiplier"): (
+                float, 0.5, 4.0
             ),
             ("voice", "episodic_consolidation_gain"): (
                 float, 0.0, 1.0
@@ -4422,7 +4484,7 @@ class MuchaClient(discord.Client):
     async def on_message(self, message: discord.Message):
         if message.guild is None or message.author.id == self.user.id:
             return
-        self._last_external_activity = time.monotonic()
+        self._note_external_activity("text")
         if message.content.startswith(self.cfg.discord.command_prefix):
             await self._admin_command(message)
             return
@@ -5041,7 +5103,7 @@ class MuchaClient(discord.Client):
             )
 
     async def on_voice_state_update(self, member: discord.Member, before: discord.VoiceState, after: discord.VoiceState):
-        self._last_external_activity = time.monotonic()
+        self._note_external_activity("voice-state")
         if self.paused:
             return
         if self.user and member.id == self.user.id:
@@ -5278,10 +5340,331 @@ class MuchaClient(discord.Client):
             )
             self._ensure_chaser_scream_loop(member.guild)
 
+    def _note_external_activity(self, reason: str) -> None:
+        """Record real Discord activity and immediately wake sleep mode."""
+        self._last_external_activity = time.monotonic()
+        self._sleep_armed = True
+        if not self._sleep_active:
+            return
+        self._sleep_active = False
+        self._sleep_debug.update({
+            "active": False,
+            "state": "AWAKE",
+            "reason": f"wake:{reason}",
+            "quiet_for": 0.0,
+            "woke_at": time.time(),
+            "next_cycle_in": 0.0,
+        })
+        self._last_brain_event = f"WAKE • {reason}"
+        self._last_brain_action = "WAKE"
+
+    async def _sleep_tick(
+        self,
+        now: float | None = None,
+    ) -> bool:
+        """Run one offline consolidation cycle when the runtime is asleep."""
+        now = time.monotonic() if now is None else float(now)
+        enabled = bool(self.cfg.voice.sleep_enabled)
+        quiet_for = max(
+            0.0,
+            now - float(self._last_external_activity),
+        )
+        max_cycles = max(
+            1,
+            int(self.cfg.voice.sleep_max_cycles),
+        )
+        self._sleep_debug.update({
+            "enabled": enabled,
+            "active": bool(self._sleep_active),
+            "quiet_for": quiet_for,
+            "idle_required": float(
+                self.cfg.voice.sleep_idle_seconds
+            ),
+            "cycle": int(self._sleep_cycle),
+            "max_cycles": max_cycles,
+            "progress": min(
+                1.0,
+                float(self._sleep_cycle) / max_cycles,
+            ),
+        })
+
+        if not enabled or not self.cfg.voice.memory_replay_enabled:
+            self._sleep_active = False
+            self._sleep_debug.update({
+                "active": False,
+                "state": "OFF",
+                "reason": (
+                    "sleep-disabled"
+                    if not enabled
+                    else "memory-replay-disabled"
+                ),
+            })
+            return False
+
+        connected_voice = any(
+            vc is not None and vc.is_connected()
+            for vc in self.voice_clients
+        )
+        chaser_active = any(
+            self._chaser_panic_remaining(guild.id, now) > 0.0
+            for guild in self.guilds
+        )
+        if self._sleep_active and (connected_voice or chaser_active):
+            self._sleep_active = False
+            self._sleep_armed = True
+            reason = (
+                "voice-connected"
+                if connected_voice
+                else "chaser-panic"
+            )
+            self._sleep_debug.update({
+                "active": False,
+                "state": "AWAKE",
+                "reason": f"wake:{reason}",
+                "woke_at": time.time(),
+                "next_cycle_in": 0.0,
+            })
+            return False
+
+        if not self._sleep_active:
+            if not self._sleep_armed:
+                # One sleep session per quiet period. A new external event
+                # arms the next one.
+                self._sleep_debug.update({
+                    "active": False,
+                    "quiet_for": quiet_for,
+                    "next_cycle_in": 0.0,
+                })
+                return False
+
+            idle_required = max(
+                60.0,
+                float(self.cfg.voice.sleep_idle_seconds),
+            )
+            if quiet_for < idle_required:
+                self._sleep_debug.update({
+                    "state": "AWAKE",
+                    "reason": "activity",
+                    "next_cycle_in": idle_required - quiet_for,
+                })
+                return False
+            if connected_voice:
+                self._sleep_debug.update({
+                    "state": "WAITING",
+                    "reason": "voice-connected",
+                    "next_cycle_in": 0.0,
+                })
+                return False
+            if chaser_active:
+                self._sleep_debug.update({
+                    "state": "WAITING",
+                    "reason": "chaser-panic",
+                    "next_cycle_in": 0.0,
+                })
+                return False
+
+            candidates = self.voice_episodes.replay_candidates(
+                limit=1,
+                max_age_seconds=max(
+                    86400.0,
+                    float(self.cfg.voice.memory_replay_max_age_days)
+                    * 86400.0,
+                ),
+            )
+            if not candidates:
+                self._sleep_debug.update({
+                    "state": "WAITING",
+                    "reason": "no-episodes",
+                    "next_cycle_in": 0.0,
+                })
+                return False
+
+            self._sleep_active = True
+            self._sleep_armed = False
+            self._sleep_started = now
+            self._sleep_last_cycle = 0.0
+            self._sleep_cycle = 0
+            episodic_diag = self.voice_episodes.diagnostics()
+            async with self._brain_lock:
+                synaptic_diag = self.brain.learned_synapses_snapshot(
+                    limit=1
+                )
+            self._sleep_debug.update({
+                "active": True,
+                "state": "SLEEP",
+                "reason": "offline-consolidation",
+                "started_at": time.time(),
+                "completed_at": 0.0,
+                "woke_at": 0.0,
+                "cycle": 0,
+                "progress": 0.0,
+                "episodes_replayed": 0,
+                "changed_neurons": 0,
+                "changed_synapses": 0,
+                "semantic_rehearsed": 0,
+                "memory_strength_delta": 0.0,
+                "consolidated_scenes": int(
+                    episodic_diag.get("consolidated_scenes", 0)
+                ),
+                "consolidated_synapses": int(
+                    synaptic_diag.get("consolidated", 0)
+                ),
+                "fading_synapses": int(
+                    synaptic_diag.get("fading", 0)
+                ),
+                "last": [],
+            })
+            self._last_brain_event = (
+                f"SLEEP ENTER • quiet {quiet_for:.0f}s"
+            )
+            self._last_brain_action = "SLEEP"
+
+        interval = max(
+            5.0,
+            float(self.cfg.voice.sleep_cycle_interval_seconds),
+        )
+        since_cycle = (
+            interval
+            if self._sleep_last_cycle <= 0.0
+            else max(0.0, now - self._sleep_last_cycle)
+        )
+        if since_cycle < interval:
+            self._sleep_debug.update({
+                "active": True,
+                "state": "SLEEP",
+                "reason": "between-cycles",
+                "next_cycle_in": interval - since_cycle,
+            })
+            return True
+
+        replayed = await self._maybe_memory_replay(
+            now,
+            sleep_mode=True,
+        )
+        self._sleep_last_cycle = now
+        if replayed:
+            self._sleep_cycle += 1
+
+        episodic_diag = self.voice_episodes.diagnostics()
+        async with self._brain_lock:
+            # Normal time-based pruning still runs during sleep. The actual
+            # strengthening happened through replay -> reward -> plasticity.
+            self.brain.consolidate_and_forget(now=time.time())
+            synaptic_diag = self.brain.learned_synapses_snapshot(
+                limit=1
+            )
+
+        changed_neurons = sum(
+            int(row.get("changed_neurons", 0))
+            for row in replayed
+        )
+        changed_synapses = sum(
+            int(row.get("changed_synapses", 0))
+            for row in replayed
+        )
+        semantic_rehearsed = sum(
+            int(row.get("semantic_rehearsed", 0))
+            for row in replayed
+        )
+        strength_delta = sum(
+            float(row.get("memory_strength_delta", 0.0))
+            for row in replayed
+        )
+        self._sleep_debug.update({
+            "active": True,
+            "state": "SLEEP",
+            "reason": (
+                "offline-consolidation"
+                if replayed
+                else "no-replay-candidates"
+            ),
+            "cycle": int(self._sleep_cycle),
+            "max_cycles": max_cycles,
+            "progress": min(
+                1.0,
+                float(self._sleep_cycle) / max_cycles,
+            ),
+            "last_cycle_at": time.time(),
+            "next_cycle_in": interval,
+            "episodes_replayed": int(
+                self._sleep_debug.get("episodes_replayed", 0)
+            ) + len(replayed),
+            "changed_neurons": int(
+                self._sleep_debug.get("changed_neurons", 0)
+            ) + changed_neurons,
+            "changed_synapses": int(
+                self._sleep_debug.get("changed_synapses", 0)
+            ) + changed_synapses,
+            "semantic_rehearsed": int(
+                self._sleep_debug.get("semantic_rehearsed", 0)
+            ) + semantic_rehearsed,
+            "memory_strength_delta": float(
+                self._sleep_debug.get(
+                    "memory_strength_delta",
+                    0.0,
+                )
+            ) + strength_delta,
+            "consolidated_scenes": int(
+                episodic_diag.get("consolidated_scenes", 0)
+            ),
+            "consolidated_synapses": int(
+                synaptic_diag.get("consolidated", 0)
+            ),
+            "fading_synapses": int(
+                synaptic_diag.get("fading", 0)
+            ),
+            "last": replayed,
+        })
+
+        if replayed:
+            self._last_brain_event = (
+                f"SLEEP CYCLE {self._sleep_cycle}/{max_cycles} • "
+                f"{len(replayed)} episode(s)"
+            )
+            self._last_brain_action = (
+                f"SLEEP REPLAY • cycle {self._sleep_cycle}"
+            )
+
+        if not replayed or self._sleep_cycle >= max_cycles:
+            self._sleep_active = False
+            self._sleep_debug.update({
+                "active": False,
+                "state": "COMPLETE",
+                "reason": (
+                    "cycle-complete"
+                    if self._sleep_cycle >= max_cycles
+                    else "no-replay-candidates"
+                ),
+                "completed_at": time.time(),
+                "next_cycle_in": 0.0,
+                "progress": (
+                    1.0
+                    if self._sleep_cycle >= max_cycles
+                    else min(
+                        1.0,
+                        float(self._sleep_cycle) / max_cycles,
+                    )
+                ),
+            })
+            async with self._brain_lock:
+                self.brain.save()
+            self._last_save = now
+            self._last_brain_event = (
+                f"SLEEP COMPLETE • {self._sleep_cycle} cycle(s)"
+            )
+            self._last_brain_action = "WAKE AFTER CONSOLIDATION"
+            # Consume this idle period. A real external event must re-arm
+            # another sleep session.
+            return True
+
+        return True
+
     async def _maybe_memory_replay(
         self,
         now: float | None = None,
-    ) -> None:
+        *,
+        sleep_mode: bool = False,
+    ) -> list[dict]:
         now = time.monotonic() if now is None else float(now)
         self._memory_replay_debug["enabled"] = bool(
             self.cfg.voice.memory_replay_enabled
@@ -5294,7 +5677,7 @@ class MuchaClient(discord.Client):
                 "state": "OFF",
                 "reason": "disabled",
             })
-            return
+            return []
 
         idle_seconds = max(
             10.0,
@@ -5304,19 +5687,31 @@ class MuchaClient(discord.Client):
             0.0,
             now - float(self._last_external_activity),
         )
-        if quiet_for < idle_seconds:
+        if not sleep_mode and quiet_for < idle_seconds:
             self._memory_replay_debug.update({
                 "state": "WAITING",
                 "reason": "activity",
                 "quiet_for": quiet_for,
             })
-            return
+            return []
 
-        interval = max(
-            30.0,
-            float(self.cfg.voice.memory_replay_interval_seconds),
+        interval = (
+            max(
+                5.0,
+                float(self.cfg.voice.sleep_cycle_interval_seconds),
+            )
+            if sleep_mode
+            else max(
+                30.0,
+                float(self.cfg.voice.memory_replay_interval_seconds),
+            )
         )
-        since_last = max(0.0, now - self._memory_replay_last)
+        last_cycle = (
+            self._sleep_last_cycle
+            if sleep_mode
+            else self._memory_replay_last
+        )
+        since_last = max(0.0, now - last_cycle)
         if self._memory_replay_last > 0.0 and since_last < interval:
             self._memory_replay_debug.update({
                 "state": "WAITING",
@@ -5324,7 +5719,7 @@ class MuchaClient(discord.Client):
                 "quiet_for": quiet_for,
                 "next_in": interval - since_last,
             })
-            return
+            return []
 
         if any(
             vc is not None and vc.is_connected()
@@ -5335,7 +5730,7 @@ class MuchaClient(discord.Client):
                 "reason": "voice-connected",
                 "quiet_for": quiet_for,
             })
-            return
+            return []
 
         if any(
             self._chaser_panic_remaining(guild.id, now) > 0.0
@@ -5346,11 +5741,18 @@ class MuchaClient(discord.Client):
                 "reason": "chaser-panic",
                 "quiet_for": quiet_for,
             })
-            return
+            return []
 
         batch_size = max(
             1,
-            min(8, int(self.cfg.voice.memory_replay_batch_size)),
+            min(
+                16 if sleep_mode else 8,
+                int(
+                    self.cfg.voice.sleep_replay_batch_size
+                    if sleep_mode
+                    else self.cfg.voice.memory_replay_batch_size
+                ),
+            ),
         )
         candidates = self.voice_episodes.replay_candidates(
             limit=max(12, batch_size * 8),
@@ -5366,7 +5768,7 @@ class MuchaClient(discord.Client):
                 "reason": "no-episodes",
                 "quiet_for": quiet_for,
             })
-            return
+            return []
 
         recent = set(self._memory_replay_recent_keys)
         selected = []
@@ -5399,13 +5801,32 @@ class MuchaClient(discord.Client):
 
         magnitude = max(
             0.0,
-            min(1.5, float(self.cfg.voice.memory_replay_magnitude)),
+            min(
+                2.5,
+                float(self.cfg.voice.memory_replay_magnitude)
+                * (
+                    float(
+                        self.cfg.voice
+                        .sleep_replay_magnitude_multiplier
+                    )
+                    if sleep_mode
+                    else 1.0
+                ),
+            ),
         )
         reward_scale = max(
             0.0,
             min(
-                0.5,
-                float(self.cfg.voice.memory_replay_reward_scale),
+                1.0,
+                float(self.cfg.voice.memory_replay_reward_scale)
+                * (
+                    float(
+                        self.cfg.voice
+                        .sleep_reward_scale_multiplier
+                    )
+                    if sleep_mode
+                    else 1.0
+                ),
             ),
         )
         if magnitude <= 0.001:
@@ -5414,10 +5835,25 @@ class MuchaClient(discord.Client):
                 "reason": "zero-magnitude",
                 "quiet_for": quiet_for,
             })
-            return
+            return []
         steps = max(
             1,
-            min(24, int(self.cfg.voice.memory_replay_steps)),
+            min(
+                64,
+                int(
+                    round(
+                        float(self.cfg.voice.memory_replay_steps)
+                        * (
+                            float(
+                                self.cfg.voice
+                                .sleep_steps_multiplier
+                            )
+                            if sleep_mode
+                            else 1.0
+                        )
+                    )
+                ),
+            ),
         )
         replayed = []
 
@@ -5485,10 +5921,24 @@ class MuchaClient(discord.Client):
                 else:
                     learning = {}
                 self.brain.step(1)
+                memory_before = float(
+                    episode.get("memory_strength", 0.0)
+                )
                 memory_consolidation = (
                     self.voice_episodes.consolidate_replay(
                         episode,
                         replay_reward,
+                    )
+                )
+                semantic_rehearsal = (
+                    self.voice_episodes.rehearse_semantic_replay(
+                        episode
+                    )
+                )
+                memory_after = float(
+                    memory_consolidation.get(
+                        "strength",
+                        memory_before,
                     )
                 )
 
@@ -5509,11 +5959,13 @@ class MuchaClient(discord.Client):
                         episode.get("replay_score", 0.0)
                     ),
                     "replay_reward": float(replay_reward),
-                    "memory_strength": float(
-                        memory_consolidation.get(
-                            "strength",
-                            episode.get("memory_strength", 0.0),
-                        )
+                    "memory_strength_before": memory_before,
+                    "memory_strength": memory_after,
+                    "memory_strength_delta": (
+                        memory_after - memory_before
+                    ),
+                    "semantic_rehearsed": len(
+                        semantic_rehearsal
                     ),
                     "memory_status": str(
                         memory_consolidation.get(
@@ -5555,8 +6007,16 @@ class MuchaClient(discord.Client):
         self._memory_replay_last = now
         self._memory_replay_count += len(replayed)
         self._memory_replay_debug.update({
-            "state": "REPLAY",
-            "reason": "idle-memory-consolidation",
+            "state": (
+                "SLEEP REPLAY"
+                if sleep_mode
+                else "REPLAY"
+            ),
+            "reason": (
+                "sleep-offline-consolidation"
+                if sleep_mode
+                else "idle-memory-consolidation"
+            ),
             "quiet_for": quiet_for,
             "last_at": time.time(),
             "count": self._memory_replay_count,
@@ -5564,12 +6024,21 @@ class MuchaClient(discord.Client):
             "last": replayed,
         })
         self._last_brain_event = (
-            f"MEMORY REPLAY • {len(replayed)} episode(s)"
+            (
+                "SLEEP REPLAY"
+                if sleep_mode
+                else "MEMORY REPLAY"
+            )
+            + f" • {len(replayed)} episode(s)"
         )
         if replayed:
             last = replayed[-1]
             self._last_brain_action = (
-                "REPLAY → "
+                (
+                    "SLEEP REPLAY → "
+                    if sleep_mode
+                    else "REPLAY → "
+                )
                 f"{last['action']} "
                 f"{last['replay_reward']:+.3f}"
             )
@@ -5584,6 +6053,7 @@ class MuchaClient(discord.Client):
                 ),
                 guild,
             )
+        return replayed
 
     @tasks.loop(seconds=5)
     async def idle_loop(self):
@@ -5592,6 +6062,8 @@ class MuchaClient(discord.Client):
             return
         now = time.monotonic()
         wall_now = time.time()
+        if await self._sleep_tick(now):
+            return
         await self._maybe_memory_replay(now)
         async with self._brain_lock:
             self.brain.consolidate_and_forget(now=wall_now)
@@ -5656,6 +6128,14 @@ class MuchaClient(discord.Client):
         """
         mean_abs = float(diag["mean_abs"])
         active = int(diag["active_abs_gt_0_1"])
+
+        if self._sleep_active:
+            cycle = int(self._sleep_debug.get("cycle", 0))
+            maximum = int(self._sleep_debug.get("max_cycles", 0))
+            return (
+                discord.ActivityType.watching,
+                f"💤 konsoliduje pamięć • {cycle}/{maximum}",
+            )
 
         candidates = {
             "speak": scores["speak"],
@@ -6193,6 +6673,7 @@ class MuchaClient(discord.Client):
             "action_policy": action_policy_debug,
             "episodic_memory": self.voice_episodes.diagnostics(),
             "memory_replay": dict(self._memory_replay_debug),
+            "sleep": dict(self._sleep_debug),
             "audio_debug": dict(self._audio_debug),
             "stt_debug": dict(self._stt_debug),
             "reaction_debug": reaction_debug,
@@ -7433,6 +7914,7 @@ class MuchaClient(discord.Client):
         await self.wait_until_ready()
         if (
             self.paused
+            or self._sleep_active
             or not self.cfg.voice.tts_enabled
             or not self.language.ready()
         ):
@@ -7635,7 +8117,11 @@ class MuchaClient(discord.Client):
     @tasks.loop(seconds=1)
     async def random_audio_loop(self):
         await self.wait_until_ready()
-        if self.paused or not self.cfg.voice.random_audio_enabled:
+        if (
+            self.paused
+            or self._sleep_active
+            or not self.cfg.voice.random_audio_enabled
+        ):
             return
 
         candidates = [
@@ -7717,7 +8203,7 @@ class MuchaClient(discord.Client):
     @tasks.loop(seconds=15)
     async def voice_loop(self):
         await self.wait_until_ready()
-        if self.paused:
+        if self.paused or self._sleep_active:
             return
         for guild in self.guilds:
             try:
