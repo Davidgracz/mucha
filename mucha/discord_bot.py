@@ -6501,6 +6501,24 @@ class MuchaClient(discord.Client):
                 f"{float(row.get('threat_level', 0.0)):.2f}"
             )
 
+        person_rows = list(row.get("person_profiles") or [])
+        person_familiarity_mean = (
+            sum(
+                float(item.get("familiarity", 0.0))
+                for item in person_rows
+            ) / len(person_rows)
+            if person_rows
+            else 0.0
+        )
+        person_valence_mean = (
+            sum(
+                float(item.get("valence", 0.0))
+                for item in person_rows
+            ) / len(person_rows)
+            if person_rows
+            else 0.0
+        )
+
         memory = {
             "predicted_reward": float(
                 row.get("predicted_reward", 0.0)
@@ -6524,6 +6542,9 @@ class MuchaClient(discord.Client):
                     0.0,
                 )
             ),
+            "person_profiles": len(person_rows),
+            "person_familiarity": person_familiarity_mean,
+            "person_valence": person_valence_mean,
         }
 
         return {
@@ -6806,6 +6827,52 @@ class MuchaClient(discord.Client):
                     row.get("affinity", 0.0)
                 )
 
+        affinity_by_user = {
+            int(row["user_id"]): row
+            for row in user_affinities
+        }
+        person_profiles = (
+            self.voice_episodes.person_profiles(30)
+            if self.cfg.behavior.person_model_enabled
+            else []
+        )
+        for profile in person_profiles:
+            uid = int(profile["user_id"])
+            affinity_row = affinity_by_user.get(uid)
+            cached_user = self.get_user(uid)
+            if not profile.get("display_name") and cached_user is not None:
+                profile["display_name"] = getattr(
+                    cached_user,
+                    "display_name",
+                    getattr(cached_user, "name", str(uid)),
+                )
+            if affinity_row is not None:
+                profile["legacy_affinity"] = float(
+                    affinity_row.get("legacy_affinity", 0.0)
+                )
+                profile["neural_affinity"] = float(
+                    affinity_row.get("neural_affinity", 0.0)
+                )
+                profile["neural_maturity"] = float(
+                    affinity_row.get("neural_maturity", 0.0)
+                )
+                profile["effective_affinity"] = float(
+                    affinity_row.get(
+                        "effective_affinity",
+                        affinity_row.get("affinity", 0.0),
+                    )
+                )
+                if not profile.get("display_name"):
+                    profile["display_name"] = str(
+                        affinity_row.get(
+                            "display_name",
+                            uid,
+                        )
+                    )
+            profile["last_injection"] = dict(
+                self._person_model_debug.get(uid, {})
+            )
+
         voice_parts = []
         for guild in self.guilds:
             vc = guild.voice_client
@@ -6869,6 +6936,7 @@ class MuchaClient(discord.Client):
             "affinity_rules": self._affinity_rules_snapshot(),
             "social_debug": dict(self._social_debug),
             "user_affinities": user_affinities,
+            "person_profiles": person_profiles,
             "word_feedback": self.language.top_word_feedback(30),
             "social_settings": {
                 "user_avoid_threshold": self.cfg.behavior.user_avoid_threshold,
@@ -6878,6 +6946,9 @@ class MuchaClient(discord.Client):
                 "neural_social_memory_enabled": self.cfg.behavior.neural_social_memory_enabled,
                 "neural_affinity_weight": self.cfg.behavior.neural_affinity_weight,
                 "neural_social_learning_scale": self.cfg.behavior.neural_social_learning_scale,
+                "person_model_enabled": self.cfg.behavior.person_model_enabled,
+                "person_model_min_observations": self.cfg.behavior.person_model_min_observations,
+                "person_model_sensory_magnitude": self.cfg.behavior.person_model_sensory_magnitude,
             },
             "action_history": self._action_history[-40:],
             "reward_history": self._reward_history[-80:],
@@ -9117,6 +9188,58 @@ class MuchaClient(discord.Client):
             self._voice_prediction_corrections.get(guild.id, [])
         )
         debug["memory_replay"] = dict(self._memory_replay_debug)
+
+        person_profiles_by_id: dict[int, dict] = {}
+        if self.cfg.behavior.person_model_enabled:
+            min_person_observations = max(
+                1,
+                int(
+                    self.cfg.behavior
+                    .person_model_min_observations
+                ),
+            )
+            for _, humans in channels:
+                for member in humans[:12]:
+                    uid = int(member.id)
+                    if uid in person_profiles_by_id:
+                        continue
+                    profile = self.voice_episodes.person_profile(uid)
+                    if int(profile.get("observations", 0)) < (
+                        min_person_observations
+                    ):
+                        continue
+                    if not profile.get("display_name"):
+                        profile["display_name"] = (
+                            member.display_name
+                        )
+                    person_profiles_by_id[uid] = profile
+
+        debug["person_profiles"] = [
+            {
+                "user_id": int(uid),
+                "display_name": str(
+                    profile.get("display_name") or uid
+                ),
+                "observations": int(
+                    profile.get("observations", 0)
+                ),
+                "familiarity": float(
+                    profile.get("familiarity", 0.0)
+                ),
+                "confidence": float(
+                    profile.get("confidence", 0.0)
+                ),
+                "valence": float(
+                    profile.get("valence", 0.0)
+                ),
+                "valence_label": str(
+                    profile.get("valence_label", "neutral")
+                ),
+            }
+            for uid, profile in person_profiles_by_id.items()
+            if uid in set(prediction_user_ids)
+        ]
+
         disliked_strength = max(
             (
                 min(1.0, max(0.0, -float(affinity)))
@@ -9204,6 +9327,72 @@ class MuchaClient(discord.Client):
                     [m.id for m in humans],
                     sensory_scale=sensory_scale,
                 )
+                if self.cfg.behavior.person_model_enabled:
+                    for member in humans[:8]:
+                        profile = person_profiles_by_id.get(
+                            int(member.id)
+                        )
+                        if profile is None:
+                            continue
+                        profile_magnitude = float(
+                            self.cfg.behavior
+                            .person_model_sensory_magnitude
+                        ) * (
+                            0.70
+                            if current is not None
+                            and ch.id == current.id
+                            else 0.35
+                        )
+                        person_diag = (
+                            self.brain.inject_person_profile(
+                                profile,
+                                magnitude=profile_magnitude,
+                                current_channel_id=ch.id,
+                            )
+                        )
+                        self._person_model_debug[
+                            int(member.id)
+                        ] = {
+                            "user_id": int(member.id),
+                            "display_name": member.display_name,
+                            "source": "voice",
+                            "guild": guild.name,
+                            "channel": ch.name,
+                            "checked_at": time.time(),
+                            "profile": {
+                                "observations": int(
+                                    profile.get(
+                                        "observations",
+                                        0,
+                                    )
+                                ),
+                                "familiarity": float(
+                                    profile.get(
+                                        "familiarity",
+                                        0.0,
+                                    )
+                                ),
+                                "confidence": float(
+                                    profile.get(
+                                        "confidence",
+                                        0.0,
+                                    )
+                                ),
+                                "valence": float(
+                                    profile.get(
+                                        "valence",
+                                        0.0,
+                                    )
+                                ),
+                                "valence_label": str(
+                                    profile.get(
+                                        "valence_label",
+                                        "neutral",
+                                    )
+                                ),
+                            },
+                            "brain": dict(person_diag),
+                        }
             deadly_duration = max(
                 1.0,
                 float(self.cfg.voice.deadly_channel_seconds),
