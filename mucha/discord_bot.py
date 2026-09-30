@@ -6453,6 +6453,48 @@ class MuchaClient(discord.Client):
                 "available_humans": int(
                     row.get("available_humans", 0)
                 ),
+                "conversation_mode": str(
+                    (row.get("voice_sensory") or {}).get(
+                        "conversation_mode",
+                        "—",
+                    )
+                ),
+                "conversation_intensity": float(
+                    (row.get("voice_sensory") or {}).get(
+                        "conversation_intensity",
+                        0.0,
+                    )
+                ),
+                "speech_ratio_60s": float(
+                    (row.get("voice_sensory") or {}).get(
+                        "speech_ratio_60s",
+                        0.0,
+                    )
+                ),
+                "speaker_switches_60s": int(
+                    (row.get("voice_sensory") or {}).get(
+                        "speaker_switches_60s",
+                        0,
+                    )
+                ),
+                "overlap_events_60s": int(
+                    (row.get("voice_sensory") or {}).get(
+                        "overlap_events_60s",
+                        0,
+                    )
+                ),
+                "silence_seconds": float(
+                    (row.get("voice_sensory") or {}).get(
+                        "silence_seconds",
+                        0.0,
+                    )
+                ),
+                "reply_after_tts": bool(
+                    (row.get("voice_sensory") or {}).get(
+                        "reply_after_tts",
+                        False,
+                    )
+                ),
                 "social_drive": float(
                     row.get("social_drive_level", 0.0)
                 ),
