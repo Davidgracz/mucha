@@ -252,6 +252,7 @@ class MuchaClient(discord.Client):
         self._last_brain_event = "startup"
         self._last_brain_action = "brak"
         self._voice_debug: dict[int, dict] = {}
+        self._text_decision_debug: dict = {}
         self._reaction_debug: dict = {
             "score": 0.0,
             "effective_score": 0.0,
@@ -4505,6 +4506,16 @@ class MuchaClient(discord.Client):
                 scores["speak"],
                 self.cfg.behavior.speak_threshold,
             )
+            decision_internal_states = (
+                self.brain.internal_state_diagnostics()
+            )
+            decision_neuromodulators = (
+                self.brain.neuromodulator_diagnostics()
+            )
+            decision_attention = self._attention_ranked(
+                message.guild.id,
+                include_neural=True,
+            )
 
         now = time.monotonic()
 
@@ -4529,6 +4540,7 @@ class MuchaClient(discord.Client):
             "target": f"#{channel_name} / {message.author.display_name}",
             "cooldown_remaining": react_cooldown,
             "guild_id": message.guild.id,
+            "checked_at": time.time(),
         }
         if (
             not disliked_user
@@ -4614,13 +4626,134 @@ class MuchaClient(discord.Client):
             )
 
         last = self.last_reply.get(message.guild.id, 0.0)
-        if (
-            not blocked_text
-            and not disliked_user
-            and self.language.ready()
-            and speak_gate["passed"]
-            and now - last >= self.cfg.language.reply_cooldown_seconds
-        ):
+        reply_cooldown_remaining = max(
+            0.0,
+            float(self.cfg.language.reply_cooldown_seconds)
+            - (now - last),
+        )
+        language_ready = bool(self.language.ready())
+        text_constraints: list[str] = []
+        if blocked_text:
+            text_constraints.append("kanał tekstowy jest zablokowany")
+        if disliked_user:
+            text_constraints.append(
+                f"social avoid: affinity {user_affinity:+.2f}"
+            )
+        if not language_ready:
+            text_constraints.append("model języka nie jest jeszcze gotowy")
+        if not speak_gate["passed"]:
+            text_constraints.append(
+                "policy/gate speak nie przeszedł progu"
+            )
+        if reply_cooldown_remaining > 0.0:
+            text_constraints.append(
+                f"reply cooldown {reply_cooldown_remaining:.1f}s"
+            )
+
+        will_speak = not text_constraints
+        actual_actions: list[str] = []
+        if self._reaction_debug.get("decision") == "REAKCJA DODANA":
+            actual_actions.append(
+                "REACTION → "
+                + str(self._reaction_debug.get("emoji") or "?")
+            )
+        if will_speak:
+            actual_actions.append(f"SPEAK → #{channel_name}")
+
+        ranked_scores = sorted(
+            (
+                (str(name), float(value))
+                for name, value in scores.items()
+            ),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        runner_up = (
+            ranked_scores[1]
+            if len(ranked_scores) > 1
+            else (None, None)
+        )
+        self._text_decision_debug = {
+            "kind": "text",
+            "source_label": "TEXT / Discord",
+            "checked_at": time.time(),
+            "guild": message.guild.name,
+            "guild_id": message.guild.id,
+            "stimulus": self._last_brain_event,
+            "decision": "SPEAK" if will_speak else "NO SPEAK",
+            "reason": (
+                "gate speak przeszedł i brak blokad wykonania"
+                if will_speak
+                else "; ".join(text_constraints)
+            ),
+            "actual_action": (
+                " + ".join(actual_actions)
+                if actual_actions
+                else "BRAK AKCJI"
+            ),
+            "attention_focus": (
+                dict(decision_attention[0])
+                if decision_attention
+                else None
+            ),
+            "internal_states": decision_internal_states,
+            "neuromodulators": decision_neuromodulators,
+            "readout": {
+                "action": "speak",
+                "raw_score": float(scores["speak"]),
+                "effective_score": float(
+                    speak_gate["effective_score"]
+                ),
+                "threshold": float(
+                    speak_gate["base_threshold"]
+                ),
+                "learned_raw_threshold": float(
+                    speak_gate["learned_raw_threshold"]
+                ),
+                "policy_bias": float(speak_gate["bias"]),
+                "passed": bool(speak_gate["passed"]),
+                "runner_up": runner_up[0],
+                "runner_up_score": runner_up[1],
+            },
+            "scores": {
+                str(name): float(value)
+                for name, value in scores.items()
+            },
+            "constraints": text_constraints,
+            "signals": {
+                "mentioned": bool(mentioned),
+                "affinity": float(user_affinity),
+                "blocked_text": bool(blocked_text),
+                "disliked_user": bool(disliked_user),
+                "language_ready": language_ready,
+                "reply_cooldown_remaining": float(
+                    reply_cooldown_remaining
+                ),
+                "reaction_gate": {
+                    "raw_score": float(scores["react"]),
+                    "effective_score": float(
+                        react_gate["effective_score"]
+                    ),
+                    "threshold": float(
+                        react_gate["base_threshold"]
+                    ),
+                    "passed": bool(react_gate["passed"]),
+                    "decision": str(
+                        self._reaction_debug.get(
+                            "decision",
+                            "—",
+                        )
+                    ),
+                    "emoji": self._reaction_debug.get("emoji"),
+                },
+            },
+            "memory": {
+                "affinity": float(user_affinity),
+                "attention_items": len(decision_attention),
+            },
+        }
+
+        if will_speak:
             await self._send_learned(
                 message.channel,
                 message.content,
@@ -5657,6 +5790,182 @@ class MuchaClient(discord.Client):
             "source": self.connectome.metadata.get("source", "unknown"),
         }
 
+    def _decision_trace_snapshot(
+        self,
+        voice_debug_rows: list[dict],
+    ) -> dict:
+        """Return the newest factual decision trace for the dashboard.
+
+        This is algorithm telemetry, not a hidden chain-of-thought. It records
+        the actual inputs/readouts/gates that the bot code used.
+        """
+        text_trace = dict(self._text_decision_debug or {})
+        newest_voice = max(
+            voice_debug_rows,
+            key=lambda row: float(row.get("checked_at", 0.0)),
+            default=None,
+        )
+        text_at = float(text_trace.get("checked_at", 0.0))
+        voice_at = float(
+            (newest_voice or {}).get("checked_at", 0.0)
+        )
+
+        if text_trace and text_at >= voice_at:
+            return text_trace
+
+        if newest_voice is None:
+            return text_trace
+
+        row = dict(newest_voice)
+        brain_decision = dict(row.get("brain_decision") or {})
+        raw_candidates = dict(
+            brain_decision.get("raw_candidates") or {}
+        )
+        effective_candidates = dict(
+            brain_decision.get("candidates") or {}
+        )
+        chosen = str(
+            brain_decision.get("action")
+            or row.get("decision")
+            or "stay"
+        )
+        raw_score = raw_candidates.get(
+            chosen,
+            (row.get("scores") or {}).get(chosen),
+        )
+        effective_score = effective_candidates.get(
+            chosen,
+            brain_decision.get("score", raw_score),
+        )
+
+        internal = dict(row.get("internal_states") or {})
+        semantic = dict(row.get("semantic_recall") or {})
+        chosen_semantic = dict(semantic.get(chosen) or {})
+        constraints: list[str] = []
+        if float(row.get("dwell_remaining", 0.0)) > 0.0:
+            constraints.append(
+                "motor refractory / minimum dwell "
+                f"{float(row['dwell_remaining']):.1f}s"
+            )
+        if row.get("chaser_active"):
+            constraints.append("aktywny Chaser / panic")
+        if row.get("social_avoid_active"):
+            constraints.append("social avoid na bieżącym VC")
+        if not row.get("channels"):
+            constraints.append("brak dostępnych kanałów voice")
+        if row.get("threat_active"):
+            constraints.append(
+                "threat "
+                f"{float(row.get('threat_level', 0.0)):.2f}"
+            )
+
+        memory = {
+            "predicted_reward": float(
+                row.get("predicted_reward", 0.0)
+            ),
+            "semantic_signal": float(
+                chosen_semantic.get("signal", 0.0)
+            ),
+            "semantic_confidence": float(
+                chosen_semantic.get("confidence", 0.0)
+            ),
+            "uncertainty": float(
+                row.get("uncertainty_overall", 0.0)
+            ),
+            "episodic_recall_actions": int(
+                len(row.get("episodic_recall") or {})
+            ),
+            "semantic_recall_actions": int(len(semantic)),
+            "information_gain": float(
+                (row.get("information_gain_last") or {}).get(
+                    "information_gain",
+                    0.0,
+                )
+            ),
+        }
+
+        return {
+            "kind": "voice",
+            "source_label": "VOICE / connectome",
+            "checked_at": float(row.get("checked_at", 0.0)),
+            "guild": row.get("guild"),
+            "guild_id": row.get("guild_id"),
+            "stimulus": (
+                "VOICE decision cycle • "
+                + str(row.get("current") or "poza voice")
+            ),
+            "decision": str(row.get("decision") or chosen),
+            "reason": str(row.get("reason") or "—"),
+            "actual_action": str(
+                row.get("decision") or chosen
+            ),
+            "attention_focus": None,
+            "internal_states": internal,
+            "neuromodulators": {},
+            "readout": {
+                "action": chosen,
+                "raw_score": (
+                    float(raw_score)
+                    if raw_score is not None
+                    else None
+                ),
+                "effective_score": (
+                    float(effective_score)
+                    if effective_score is not None
+                    else None
+                ),
+                "threshold": None,
+                "learned_raw_threshold": None,
+                "policy_bias": float(
+                    (
+                        brain_decision.get("policy_scores")
+                        or {}
+                    ).get(chosen, 0.0)
+                    - (
+                        raw_score
+                        if raw_score is not None
+                        else 0.0
+                    )
+                ),
+                "passed": True,
+                "runner_up": brain_decision.get("runner_up"),
+                "runner_up_score": brain_decision.get(
+                    "runner_up_score"
+                ),
+                "margin": brain_decision.get("margin"),
+                "tie_break": brain_decision.get("tie_break"),
+            },
+            "scores": {
+                str(name): float(value)
+                for name, value in (
+                    row.get("scores") or {}
+                ).items()
+            },
+            "constraints": constraints,
+            "signals": {
+                "current": row.get("current"),
+                "available_humans": int(
+                    row.get("available_humans", 0)
+                ),
+                "social_drive": float(
+                    row.get("social_drive_level", 0.0)
+                ),
+                "social_fatigue": float(
+                    row.get("social_fatigue_level", 0.0)
+                ),
+                "habituation": float(
+                    row.get("habituation_level", 0.0)
+                ),
+                "exploration_drive": float(
+                    row.get("exploration_drive_level", 0.0)
+                ),
+                "threat": float(
+                    row.get("threat_level", 0.0)
+                ),
+            },
+            "memory": memory,
+        }
+
     async def _console_snapshot(self) -> dict:
         async with self._brain_lock:
             scores = self.brain.action_scores()
@@ -5838,6 +6147,9 @@ class MuchaClient(discord.Client):
             dict(row)
             for row in self._voice_sensory_debug.values()
         ]
+        decision_trace = self._decision_trace_snapshot(
+            voice_debug_rows,
+        )
 
         return {
             "source": self.connectome.metadata.get("source", "unknown"),
@@ -5851,6 +6163,7 @@ class MuchaClient(discord.Client):
             "voice": ", ".join(voice_parts) if voice_parts else "poza voice",
             "last_event": self._last_brain_event,
             "last_action": self._last_brain_action,
+            "decision_trace": decision_trace,
             "paused": self.paused,
             "voice_debug": voice_debug_rows,
             "voice_sensory_debug": voice_sensory_rows,
