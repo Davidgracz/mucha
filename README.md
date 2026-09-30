@@ -1125,13 +1125,99 @@ Decision Trace przechowuje również `voice_dynamics_key`, familiarity i valence
 
 ---
 
+# Reduced-hardcode Voice Decisions
+
+Kolejna warstwa ręcznych preferencji została usunięta z autonomii voice.
+
+## SPEAK vs STAY
+
+TTS nie używa już prostego:
+
+```python
+if speak_score < speak_threshold:
+    return
+```
+
+Zamiast tego `SPEAK` i `STAY` konkurują przez wspólny `action_competition()`, który używa:
+
+- surowych readoutów connectomu,
+- learned action policy,
+- neural tie evidence,
+- unbiased fallback tylko przy praktycznie płaskim stanie sieci.
+
+## Wybór konkretnego kanału
+
+Przy `connectome_voice_control_enabled = true` cel JOIN/MOVE nie jest już wybierany przez ręczne:
+
+```text
+affinity
++ novelty bonus
+- recent penalty
++ uncertainty bonus
++ forced reward-opportunity target
+```
+
+Każdy kandydat dostaje własny sensoryczny kontekst:
+
+```text
+voice:target:<guild>:<channel>:novelty:<bucket>
+voice:target:<guild>:<channel>:recent:<bucket>
+voice:target:<guild>:<channel>:uncertainty:<bucket>
+voice:target:<guild>:<channel>:reward-opportunity
+voice:target:<guild>:<channel>:current
+```
+
+Po propagacji wybór celu odbywa się przez kanałowe neural readouty `voice-affinity:<guild>:<channel>`. Ręcznie ważony exploration score pozostaje tylko w trybie legacy.
+
+Losowa reward opportunity nadal jest bodźcem, ale nie wymusza już konkretnego kanału przez `preferred_channel_id`.
+
+## Reward nie zmienia decyzji po fakcie
+
+Social-drive punish, missed reward-opportunity punish i overstay punish uczą ślad neuronalny, ale **nie przeliczają ponownie bieżącej decyzji w tym samym ticku**.
+
+Przebieg jest teraz:
+
+```text
+sensory
+→ connectome
+→ decyzja
+→ wykonanie decyzji
+→ outcome / reward
+→ plastyczność
+→ wpływ na następne decyzje
+```
+
+zamiast:
+
+```text
+decyzja STAY
+→ skrypt daje punish
+→ natychmiastowe ponowne losowanie decyzji
+→ skrypt próbuje wymusić zmianę
+```
+
+## Co celowo pozostaje twarde
+
+Nie są usuwane ograniczenia, które nie są preferencją Muchy:
+
+- Discord permissions / brak możliwości połączenia,
+- blocked guild/channel,
+- kanał AFK, jeśli został wyłączony,
+- motor refractory / minimum dwell jako fizyczna blokada ponownego ruchu,
+- Chaser panic i escape,
+- brak dostępnego celu.
+
+Prywatny `/details` pokazuje teraz **Target selection = neural-channel-readout**, target score kanałów oraz informację, gdy reward został zapisany wyłącznie dla następnych decyzji.
+
+---
+
 # Najbliższy kierunek rozwoju
 
 Dalsze kierunki:
 
-- dalsza redukcja ręcznie zakodowanych wyjątków na rzecz sygnałów sensorycznych i konkurencji readoutów connectomu,
-- coraz większa integracja tekstu, voice, pamięci i zachowania społecznego w jeden współdzielony stan neuronalny,
-- dalsze przenoszenie wyboru zachowania z progów i wyjątków na wyuczone readouty oraz pamięć sytuacyjną.
+- większa integracja tekstu, voice, pamięci i zachowania społecznego w jeden współdzielony stan neuronalny,
+- ograniczenie pozostałych legacy threshold paths do trybu kompatybilności,
+- wspólna konkurencja zachowań tekstowych, voice i reakcji zamiast osobnych schedulerów.
 
 ---
 
