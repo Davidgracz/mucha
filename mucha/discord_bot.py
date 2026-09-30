@@ -2134,6 +2134,15 @@ class MuchaClient(discord.Client):
             }
         )
         affinity = float(components["effective"])
+        if (
+            member is not None
+            and self.cfg.behavior.person_model_enabled
+        ):
+            self.voice_episodes.observe_person_social_event(
+                member.id,
+                event,
+                amount,
+            )
         self._social_debug = {
             "event": event,
             "detail": detail,
@@ -4521,6 +4530,14 @@ class MuchaClient(discord.Client):
         self.last_text_author[message.guild.id] = message.author.id
         await self._apply_social_message_feedback(message)
         self.language.learn(message.content)
+        if (
+            self.cfg.behavior.person_model_enabled
+            and not message.author.bot
+        ):
+            self.voice_episodes.observe_person_contact(
+                message.author.id,
+                "text",
+            )
         user_affinity = self._user_affinity(message.author.id)
         person_profile = (
             self.voice_episodes.person_profile(
@@ -4913,6 +4930,24 @@ class MuchaClient(discord.Client):
                 ),
                 "person_valence": float(
                     person_profile.get("valence", 0.0)
+                ),
+                "person_contact_observations": int(
+                    person_profile.get(
+                        "contact_observations",
+                        0,
+                    )
+                ),
+                "person_social_observations": int(
+                    person_profile.get(
+                        "social_observations",
+                        0,
+                    )
+                ),
+                "person_valence_label": str(
+                    person_profile.get(
+                        "valence_label",
+                        "neutral",
+                    )
                 ),
             },
         }
@@ -6872,6 +6907,15 @@ class MuchaClient(discord.Client):
             profile["last_injection"] = dict(
                 self._person_model_debug.get(uid, {})
             )
+            profile["contact_sources"] = list(
+                profile.get("contact_sources") or []
+            )[:8]
+            profile["social_events"] = list(
+                profile.get("social_events") or []
+            )[:8]
+            profile["recent_episodes"] = list(
+                profile.get("recent_episodes") or []
+            )[:6]
 
         voice_parts = []
         for guild in self.guilds:
@@ -7606,6 +7650,16 @@ class MuchaClient(discord.Client):
         self.last_text_context[guild.id] = text
         self.last_text_author[guild.id] = member.id
         self.language.learn(text)
+        if self.cfg.behavior.person_model_enabled:
+            self.voice_episodes.observe_person_contact(
+                member.id,
+                "voice_speech",
+            )
+        person_profile = (
+            self.voice_episodes.person_profile(member.id)
+            if self.cfg.behavior.person_model_enabled
+            else {}
+        )
         self._attention_observe_text(
             guild.id,
             member.id,
@@ -7634,6 +7688,67 @@ class MuchaClient(discord.Client):
                 member.id,
                 mentioned,
             )
+            if (
+                self.cfg.behavior.person_model_enabled
+                and int(person_profile.get("observations", 0))
+                >= int(
+                    self.cfg.behavior
+                    .person_model_min_observations
+                )
+            ):
+                person_diag = self.brain.inject_person_profile(
+                    person_profile,
+                    magnitude=float(
+                        self.cfg.behavior
+                        .person_model_sensory_magnitude
+                    ),
+                    current_channel_id=getattr(
+                        channel,
+                        "id",
+                        None,
+                    ),
+                )
+                self._person_model_debug[int(member.id)] = {
+                    "user_id": int(member.id),
+                    "display_name": member.display_name,
+                    "source": "voice_speech",
+                    "guild": guild.name,
+                    "channel": channel_name,
+                    "checked_at": time.time(),
+                    "profile": {
+                        "observations": int(
+                            person_profile.get("observations", 0)
+                        ),
+                        "familiarity": float(
+                            person_profile.get("familiarity", 0.0)
+                        ),
+                        "confidence": float(
+                            person_profile.get("confidence", 0.0)
+                        ),
+                        "valence": float(
+                            person_profile.get("valence", 0.0)
+                        ),
+                        "valence_label": str(
+                            person_profile.get(
+                                "valence_label",
+                                "neutral",
+                            )
+                        ),
+                        "contact_observations": int(
+                            person_profile.get(
+                                "contact_observations",
+                                0,
+                            )
+                        ),
+                        "social_observations": int(
+                            person_profile.get(
+                                "social_observations",
+                                0,
+                            )
+                        ),
+                    },
+                    "brain": dict(person_diag),
+                }
             self._inject_attention_context(guild.id)
             if affinity >= float(
                 self.cfg.behavior.familiar_affinity_threshold
