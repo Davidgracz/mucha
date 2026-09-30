@@ -88,6 +88,12 @@ class VoiceConfig:
     enabled: bool = True
     poll_seconds: int = 15
     connectome_voice_control_enabled: bool = True
+    voice_sensory_enabled: bool = True
+    voice_sensory_interval_seconds: float = 0.50
+    voice_sensory_speaker_timeout_seconds: float = 0.55
+    voice_sensory_reply_window_seconds: float = 15.0
+    voice_sensory_base_magnitude: float = 0.55
+    voice_sensory_steps: int = 1
     social_drive_enabled: bool = True
     social_drive_start_seconds: int = 60
     social_drive_ramp_seconds: int = 300
