@@ -1928,6 +1928,7 @@ main{max-width:1500px;margin:auto;padding:22px}
 .trace-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}.trace-stage{background:#081018;border:1px solid #192735;border-radius:11px;padding:9px;min-width:0}.trace-stage small{display:block;color:#7890a5;font-size:8px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:5px}.trace-stage b{display:block;font-size:11px;line-height:1.35;word-break:break-word}.trace-stage em{display:block;color:#7f93a5;font-size:9px;font-style:normal;line-height:1.45;margin-top:5px}
 .trace-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.trace-chip{border:1px solid #213548;background:#09121a;border-radius:999px;padding:5px 7px;font-size:9px;color:#a9bac9}.trace-chip.good{border-color:#285747;color:#74e8ac}.trace-chip.warn{border-color:#5b4a29;color:#ffd277}.trace-chip.bad{border-color:#63363d;color:#ff9099}
 .trace-empty{color:var(--muted);font-size:11px;padding:10px 0}
+.trace-history-card{background:#0d151e;border-color:#273d50}.trace-history-head{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}.trace-history-head h2{margin:0}.trace-history-controls{display:flex;gap:6px;flex-wrap:wrap}.trace-history-btn{border:1px solid #294153;background:#09121a;color:#9fb2c2;border-radius:8px;padding:6px 9px;font-size:9px;font-weight:800;cursor:pointer}.trace-history-btn:hover{border-color:#4a6b83;color:#e6f5ff}.trace-history-btn.active{background:#17303a;border-color:#3b8076;color:#a5fff0}.trace-history-list{display:flex;flex-direction:column;gap:6px;max-height:330px;overflow:auto}.trace-history-item{display:grid;grid-template-columns:82px 70px 145px minmax(0,1fr);gap:8px;align-items:center;width:100%;border:1px solid #1c2c3a;background:#081018;border-radius:10px;padding:8px 9px;color:#c9d8e4;text-align:left;cursor:pointer;font:10px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace}.trace-history-item:hover{border-color:#3b5a70;background:#0b151e}.trace-history-item.selected{border-color:var(--accent);background:#0e2225;box-shadow:inset 3px 0 0 var(--accent)}.trace-history-time{color:#75899b}.trace-history-kind{font-weight:800;text-transform:uppercase;color:#73b8e8}.trace-history-item[data-kind="text"] .trace-history-kind{color:#7be2bd}.trace-history-decision{font-weight:800;color:#edf6fc;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.trace-history-action{color:#93a6b6;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.trace-history-empty{padding:12px;color:var(--muted);font-size:10px;border:1px dashed #223646;border-radius:10px}
 .flow-step{min-width:0;background:#091119;border:1px solid #1d2d3b;border-radius:13px;padding:11px}
 .flow-step small{display:flex;align-items:center;gap:6px;color:#758697;font-size:9px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px}
 .flow-step strong{display:block;font-size:13px;line-height:1.35;word-break:break-word}.flow-step em{display:block;margin-top:5px;color:#7f91a2;font-size:9px;font-style:normal;line-height:1.4}
@@ -2037,7 +2038,7 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 @media(max-width:1100px){.system-strip{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.voice-summary,.learning-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.voice-tech-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.attention-shell{grid-template-columns:1fr 1fr}.attention-shell>.attention-panel:last-child{grid-column:span 2}}
 @media(max-width:700px){.system-strip{grid-template-columns:1fr 1fr}
-main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template-columns:1fr}.trace-grid{grid-template-columns:1fr}.trace-head{flex-direction:column}.trace-meta{text-align:left}.flow-arrow{transform:rotate(90deg);height:14px}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:grid}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:auto}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
+main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template-columns:1fr}.trace-grid{grid-template-columns:1fr}.trace-head{flex-direction:column}.trace-meta{text-align:left}.flow-arrow{transform:rotate(90deg);height:14px}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:grid}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:auto}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.trace-history-item{grid-template-columns:65px 55px minmax(90px,.7fr) minmax(0,1fr);gap:5px;font-size:9px}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
 </style>
 </head>
 <body>
@@ -2106,6 +2107,19 @@ main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template
         <div class="trace-meta" id="decision-trace-meta">czekam na pierwszy cykl decyzyjny…</div>
       </div>
       <div id="decision-trace"><div class="trace-empty">Brak trace. Pojawi się po pierwszej decyzji tekstowej albo voice.</div></div>
+    </div>
+
+    <div class="card span3 trace-history-card">
+      <div class="trace-history-head">
+        <div><h2>🕘 Historia Decision Trace <span class="help-dot" data-help-key="decision-trace-history" tabindex="0">?</span></h2><div class="footer" id="decision-history-status">LIVE • ostatnie decyzje</div></div>
+        <div class="trace-history-controls">
+          <button type="button" class="trace-history-btn active" id="trace-live-btn" onclick="selectDecisionTrace(null)">● LIVE</button>
+          <button type="button" class="trace-history-btn active" id="trace-filter-all" onclick="setDecisionTraceFilter('all')">WSZYSTKIE</button>
+          <button type="button" class="trace-history-btn" id="trace-filter-voice" onclick="setDecisionTraceFilter('voice')">VOICE</button>
+          <button type="button" class="trace-history-btn" id="trace-filter-text" onclick="setDecisionTraceFilter('text')">TEXT</button>
+        </div>
+      </div>
+      <div class="trace-history-list" id="decision-trace-history"><div class="trace-history-empty">Historia zapełni się po kolejnych decyzjach.</div></div>
     </div>
 
     <div class="panel-explainer"><span class="help-dot" data-help-key="simple-mode" tabindex="0">?</span><div><b>Tryb PROSTY</b> ukrywa część surowej telemetrii. Niczego nie wyłącza w Musze — zmienia tylko sposób wyświetlania. Tryb PEŁNY pokazuje cały debug.</div></div>
@@ -2405,6 +2419,7 @@ function esc(v){
 const HELP={
   "decision-flow":{title:"Jak czytać ścieżkę decyzji?",body:"To skrót jednego cyklu: bodziec → uwaga/pamięć → stan connectomu → readout zachowania → faktyczna akcja.",read:"Czytaj od lewej do prawej. Jeśli readout i akcja się różnią, niżej szukaj cooldownu, blokady albo ograniczenia operacyjnego."},
   "decision-trace":{title:"Decision Trace",body:"To telemetryczny zapis danych faktycznie użytych przez kod przy ostatnim cyklu decyzyjnym. Nie jest opisem ukrytego toku rozumowania ani interpretacją zachowania.",read:"Porównaj raw score z effective score, następnie sprawdź pamięć/sygnały i listę ograniczeń. Pole AKCJA mówi co runtime faktycznie zdecydował wykonać."},
+  "decision-trace-history":{title:"Historia Decision Trace",body:"Runtime przechowuje w RAM do 48 pełnych zamrożonych trace’ów. Dashboard pokazuje ostatnie 40. Kliknięcie wpisu otwiera stan dokładnie z tamtej decyzji zamiast bieżącego LIVE.",read:"Użyj filtrów VOICE/TEXT. Przycisk LIVE wraca do najnowszego trace. Historia zeruje się po restarcie Muchy."},
   "simple-mode":{title:"PROSTY vs PEŁNY",body:"PROSTY pokazuje tylko elementy potrzebne do zrozumienia bieżącego zachowania. PEŁNY odsłania telemetrię techniczną.",read:"To zmienia wyłącznie interfejs. Nie zmienia configu ani zachowania Muchy."},
   "last-event":{title:"Ostatni bodziec",body:"Ostatnie zdarzenie zapisane jako wejście dla runtime'u, np. tekst, STT, reward, voice albo threat.",read:"To punkt startowy, gdy chcesz sprawdzić co poprzedziło zmianę zachowania."},
   "attention":{title:"Attention / Working Memory",body:"Krótkotrwały kontekst osób, kanałów i tematów. Ślad zanika, a aktywny focus jest ponownie podawany do connectomu.",read:"Attention jest chwilowe. Affinity jest relacją długoterminową. Working memory pokazuje ostatnie sceny nadal dostępne jako kontekst."},
@@ -2606,7 +2621,7 @@ function renderActionPolicy(p){
     '<div class="policy-wrap"><table class="policy-table"><thead><tr><th>Akcja</th><th>Raw connectome</th><th>Learned bias</th><th>Effective</th><th>Reward EMA</th><th>Updates</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
-function renderDecisionTrace(t){
+function renderDecisionTrace(t,viewMode="live"){
   const root=$("decision-trace"),meta=$("decision-trace-meta");
   t=t||{};
   if(!t.checked_at){
@@ -2615,7 +2630,7 @@ function renderDecisionTrace(t){
     return;
   }
   const age=Math.max(0,Date.now()/1000-Number(t.checked_at||0));
-  meta.textContent=String(t.source_label||t.kind||"decision")+" • "+String(t.guild||"—")+" • "+age.toFixed(age<10?1:0)+" s temu";
+  meta.textContent=(viewMode==="history"?"HISTORIA • ":"LIVE • ")+String(t.source_label||t.kind||"decision")+" • "+String(t.guild||"—")+" • "+age.toFixed(age<10?1:0)+" s temu";
   const focus=t.attention_focus||{};
   const states=t.internal_states||{},stateMap=states.states||{};
   const dominant=states.dominant||"—",dominantLevel=Number(states.dominant_level||0);
@@ -2666,6 +2681,75 @@ function renderDecisionTrace(t){
       '<div class="trace-stage"><small>5 • PAMIĘĆ / BLOKADY</small><b>'+esc(memoryParts.length?memoryParts.join(" • "):"brak silnego dodatkowego sygnału")+'</b><em>'+esc(constraints.length?constraints.join(" • "):"brak blokad")+'</em></div>'+
     '</div>'+
     '<div class="trace-chips">'+chips.join("")+'</div>';
+}
+let decisionTraceHistory=[];
+let decisionTraceLive={};
+let selectedDecisionTraceId=null;
+let decisionTraceFilter="all";
+
+function decisionTraceById(id){
+  return decisionTraceHistory.find(x=>Number(x.history_id)===Number(id))||null;
+}
+function selectDecisionTrace(id){
+  selectedDecisionTraceId=id==null?null:Number(id);
+  const selected=selectedDecisionTraceId==null?null:decisionTraceById(selectedDecisionTraceId);
+  if(selected){
+    renderDecisionTrace(selected,"history");
+    $("decision-history-status").textContent="ZAMROŻONY • #"+selected.history_id+" • kliknij LIVE, aby wrócić";
+  }else{
+    selectedDecisionTraceId=null;
+    renderDecisionTrace(decisionTraceLive||{},"live");
+    $("decision-history-status").textContent="LIVE • ostatnie decyzje";
+  }
+  renderDecisionTraceHistoryList();
+}
+function setDecisionTraceFilter(filter){
+  decisionTraceFilter=["voice","text"].includes(filter)?filter:"all";
+  ["all","voice","text"].forEach(name=>$("trace-filter-"+name)?.classList.toggle("active",name===decisionTraceFilter));
+  renderDecisionTraceHistoryList();
+}
+function renderDecisionTraceHistoryList(){
+  const root=$("decision-trace-history");
+  $("trace-live-btn")?.classList.toggle("active",selectedDecisionTraceId==null);
+  const rows=decisionTraceHistory
+    .filter(x=>decisionTraceFilter==="all"||String(x.kind||"")===decisionTraceFilter)
+    .slice()
+    .reverse();
+  if(!rows.length){
+    root.innerHTML='<div class="trace-history-empty">Brak decyzji dla tego filtra.</div>';
+    return;
+  }
+  root.innerHTML=rows.map(x=>{
+    const id=Number(x.history_id||0);
+    const time=new Date(Number(x.checked_at||0)*1000).toLocaleTimeString("pl-PL");
+    const kind=String(x.kind||"—");
+    const selected=id===selectedDecisionTraceId?" selected":"";
+    return '<button type="button" class="trace-history-item'+selected+'" data-kind="'+esc(kind)+'" onclick="selectDecisionTrace('+id+')">'+
+      '<span class="trace-history-time">'+esc(time)+'</span>'+
+      '<span class="trace-history-kind">'+esc(kind)+'</span>'+
+      '<span class="trace-history-decision">'+esc(x.decision||"—")+'</span>'+
+      '<span class="trace-history-action">'+esc(x.actual_action||x.reason||"—")+'</span>'+
+    '</button>';
+  }).join("");
+}
+function renderDecisionTraceHistory(items,latest){
+  decisionTraceHistory=Array.isArray(items)?items:[];
+  decisionTraceLive=latest||{};
+  if(
+    selectedDecisionTraceId!=null
+    && !decisionTraceById(selectedDecisionTraceId)
+  ){
+    selectedDecisionTraceId=null;
+  }
+  if(selectedDecisionTraceId==null){
+    renderDecisionTrace(decisionTraceLive,"live");
+    $("decision-history-status").textContent="LIVE • "+decisionTraceHistory.length+" zapisanych decyzji";
+  }else{
+    const selected=decisionTraceById(selectedDecisionTraceId);
+    if(selected)renderDecisionTrace(selected,"history");
+    $("decision-history-status").textContent="ZAMROŻONY • #"+selectedDecisionTraceId+" • "+decisionTraceHistory.length+" w buforze";
+  }
+  renderDecisionTraceHistoryList();
 }
 function renderAttention(a){
   const root=$("attention-debug");
@@ -3369,7 +3453,7 @@ async function update(){
       ? String(traceRead.action)+" • "+Number(traceRead.raw_score||0).toFixed(3)+(traceRead.effective_score==null?"":" → "+Number(traceRead.effective_score).toFixed(3))
       : String(dominantAction[0])+" • "+Number(dominantAction[1]||0).toFixed(3);
     $("flow-action").textContent=trace.actual_action||s.last_action||"brak wykonanej akcji";
-    renderDecisionTrace(trace);
+    renderDecisionTraceHistory(s.decision_trace_history||[],trace);
     renderActions(scores);
     renderReaction(s.reaction_debug||{});
     renderLearning(s.learning_debug||{});
