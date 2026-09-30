@@ -308,6 +308,13 @@ def main():
             "Dawid",
             now=100.00,
         )
+        sensory_bus.note_pcm(
+            7,
+            555,
+            11,
+            "Dawid",
+            now=100.10,
+        )
         first_sensory = sensory_bus.snapshot(
             7,
             connected=True,
@@ -362,6 +369,13 @@ def main():
             22,
             "Stivi",
             now=100.25,
+        )
+        sensory_bus.note_pcm(
+            7,
+            555,
+            22,
+            "Stivi",
+            now=100.30,
         )
         sensory_bus.note_reply_after_tts(
             7,
