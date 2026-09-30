@@ -290,11 +290,14 @@ class MuchaClient(discord.Client):
         self._decision_trace_seq = 0
         self._decision_trace_last_key: tuple | None = None
         self._autonomous_candidate_debug: dict = {
-            "stage": "24B",
+            "stage": "24D",
             "updated_at": 0.0,
             "guilds": [],
+            "enabled": bool(cfg.behavior.autonomous_loop_enabled),
             "executed": False,
+            "last_execution": None,
         }
+        self._last_autonomous_explore: dict[int, float] = {}
         self._reaction_debug: dict = {
             "score": 0.0,
             "effective_score": 0.0,
@@ -6501,7 +6504,7 @@ class MuchaClient(discord.Client):
 
 
     def _autonomous_candidate_contexts(self) -> list[dict]:
-        """Collect only technical feasibility for 24B candidate generation."""
+        """Collect technical and learned context for the 24D autonomy loop."""
         now = time.monotonic()
         contexts: list[dict] = []
         language_ready = bool(
@@ -6510,25 +6513,35 @@ class MuchaClient(discord.Client):
         )
 
         for guild in self.guilds:
-            if self._is_voice_guild_blocked(guild):
-                voice_enabled = False
-            else:
-                voice_enabled = bool(self.cfg.voice.enabled)
+            voice_enabled = bool(
+                self.cfg.voice.enabled
+                and not self._is_voice_guild_blocked(guild)
+            )
 
             cid = self.last_text_channel.get(guild.id)
             text_channel = guild.get_channel(cid) if cid else None
+            last_author = self.last_text_author.get(guild.id)
+            text_social_ok = bool(
+                not self.cfg.behavior.ignore_disliked_users_text
+                or last_author is None
+                or not self._is_disliked_user(last_author)
+            )
+            speak_cooldown_ready = bool(
+                now - self.last_spontaneous.get(guild.id, 0.0)
+                >= float(self.cfg.language.spontaneous_cooldown_seconds)
+            )
             can_speak = bool(
                 language_ready
+                and speak_cooldown_ready
+                and text_social_ok
                 and isinstance(text_channel, discord.TextChannel)
                 and not self._is_text_channel_blocked(text_channel)
             )
 
             vc = guild.voice_client
             current = (
-                vc.channel
-                if vc is not None
-                and vc.is_connected()
-                and getattr(vc, "channel", None) is not None
+                self._current_voice_channel(guild)
+                if vc is not None and vc.is_connected()
                 else None
             )
             connected = current is not None
@@ -6537,8 +6550,28 @@ class MuchaClient(discord.Client):
             chaser_active = (
                 self._chaser_panic_remaining(guild.id, now) > 0.0
             )
-            targets: list[dict] = []
 
+            arrived = self.voice_arrived.setdefault(guild.id, now)
+            dwell_elapsed = max(0.0, now - arrived)
+            dwell_remaining = (
+                max(
+                    0.0,
+                    float(self.cfg.voice.minimum_dwell_seconds)
+                    - dwell_elapsed,
+                )
+                if connected
+                else 0.0
+            )
+            can_voice_move = bool(
+                connected
+                and not chaser_active
+                and dwell_remaining <= 0.0
+            )
+
+            voice_pairs: list[
+                tuple[discord.VoiceChannel, list[discord.Member]]
+            ] = []
+            targets: list[dict] = []
             if voice_enabled and me is not None:
                 for channel in guild.voice_channels:
                     if current is not None and channel.id == current.id:
@@ -6585,27 +6618,85 @@ class MuchaClient(discord.Client):
                         )
                     ):
                         continue
+                    voice_pairs.append((channel, humans))
                     targets.append({
                         "id": int(channel.id),
                         "name": str(channel.name),
                         "humans": int(len(humans)),
                     })
 
-            voice_debug = self._voice_debug.get(
-                guild.id,
-                {},
+            available_human_ids = sorted({
+                int(member.id)
+                for _channel, humans in voice_pairs
+                for member in humans
+            })
+            current_humans = (
+                [
+                    member
+                    for member in getattr(current, "members", [])
+                    if not member.bot
+                ]
+                if current is not None
+                else []
             )
-            prediction_context = str(
-                voice_debug.get("prediction_context") or ""
-            )
-            prediction_scene_key = str(
-                voice_debug.get("prediction_scene_key") or ""
-            )
-            contextual_reward_predictions: dict[str, dict] = {}
+            outside_seconds = dwell_elapsed if current is None else 0.0
+            social_drive_level = 0.0
             if (
-                self.cfg.voice.episodic_prediction_enabled
-                and prediction_context
+                self.cfg.voice.social_drive_enabled
+                and current is None
+                and available_human_ids
+                and not chaser_active
             ):
+                start_after = max(
+                    0.0,
+                    float(self.cfg.voice.social_drive_start_seconds),
+                )
+                ramp = max(
+                    1.0,
+                    float(self.cfg.voice.social_drive_ramp_seconds),
+                )
+                social_drive_level = max(
+                    0.0,
+                    min(
+                        1.0,
+                        (outside_seconds - start_after) / ramp,
+                    ),
+                )
+
+            homeostasis = self._voice_homeostasis_levels(
+                guild.id,
+                int(current.id) if current is not None else None,
+                [int(member.id) for member in current_humans],
+                now=now,
+                dwell_elapsed=dwell_elapsed,
+                outside_seconds=outside_seconds,
+                alternatives=len(voice_pairs),
+            )
+            prediction_context = self._voice_prediction_context(
+                connected=connected,
+                social_need=social_drive_level,
+                social_fatigue=float(homeostasis["social_fatigue"]),
+                habituation=float(homeostasis["habituation"]),
+                exploration=float(homeostasis["exploration"]),
+                human_count=(
+                    len(current_humans)
+                    if connected
+                    else len(available_human_ids)
+                ),
+                alternatives=len(voice_pairs),
+            )
+            prediction_user_ids = (
+                [int(member.id) for member in current_humans]
+                if connected
+                else available_human_ids
+            )
+            prediction_scene_key = self.voice_episodes.make_scene_key(
+                int(current.id) if current is not None else None,
+                prediction_user_ids,
+            )
+
+            contextual_reward_predictions: dict[str, dict] = {}
+            if self.cfg.voice.episodic_prediction_enabled:
                 prediction_actions = (
                     ("stay", "voice_move")
                     if connected
@@ -6619,10 +6710,41 @@ class MuchaClient(discord.Client):
                     )
                 )
 
+            reward_opportunity = None
+            if (
+                self.cfg.voice.connectome_voice_control_enabled
+                and not connected
+                and not chaser_active
+            ):
+                reward_opportunity = self._voice_reward_opportunity_for(
+                    guild.id,
+                    voice_pairs,
+                    now,
+                )
+            elif connected:
+                self._voice_reward_opportunity.pop(guild.id, None)
+
+            opportunity_effective_strength = 0.0
+            if reward_opportunity is not None:
+                opportunity_effective_strength = min(
+                    4.0,
+                    float(reward_opportunity["strength"])
+                    * (1.0 + 0.75 * social_drive_level),
+                )
+
+            can_explore = bool(
+                now - self._last_autonomous_explore.get(guild.id, 0.0)
+                >= float(
+                    self.cfg.behavior.autonomous_explore_cooldown_seconds
+                )
+            )
+
             contexts.append({
                 "guild_id": int(guild.id),
                 "guild": str(guild.name),
                 "can_speak": can_speak,
+                "speak_cooldown_ready": speak_cooldown_ready,
+                "text_social_ok": text_social_ok,
                 "text_channel_id": (
                     int(text_channel.id)
                     if can_speak
@@ -6644,17 +6766,35 @@ class MuchaClient(discord.Client):
                     if current is not None
                     else None
                 ),
+                "dwell_elapsed": float(
+                    dwell_elapsed if connected else 0.0
+                ),
+                "dwell_remaining": float(dwell_remaining),
+                "can_voice_move": can_voice_move,
                 "voice_target_count": int(len(targets)),
                 "voice_targets": targets[:12],
-                "can_explore": True,
-                "reward_prediction_context": (
-                    prediction_context or None
+                "can_explore": can_explore,
+                "social_drive_level": float(social_drive_level),
+                "social_fatigue_level": float(
+                    homeostasis["social_fatigue"]
                 ),
-                "reward_prediction_scene_key": (
-                    prediction_scene_key or None
+                "habituation_level": float(homeostasis["habituation"]),
+                "exploration_drive_level": float(
+                    homeostasis["exploration"]
                 ),
+                "reward_prediction_context": prediction_context,
+                "reward_prediction_scene_key": prediction_scene_key,
+                "prediction_user_ids": prediction_user_ids,
                 "contextual_reward_predictions": (
                     contextual_reward_predictions
+                ),
+                "reward_opportunity": (
+                    dict(reward_opportunity)
+                    if reward_opportunity is not None
+                    else None
+                ),
+                "reward_opportunity_effective_strength": float(
+                    opportunity_effective_strength
                 ),
             })
 
