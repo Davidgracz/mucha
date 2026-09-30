@@ -4947,13 +4947,106 @@ class MuchaClient(discord.Client):
 
         now = time.monotonic()
 
-        # Autonomous reaction path. The connectome decides whether to react and
-        # separately scores the available emoji outputs.
+        # Stage 25: one shared text-event arbitration. Technical constraints
+        # decide which motor options may enter the competition; the connectome
+        # then chooses exactly one of REACT / SPEAK / STAY.
         last_react = self._last_reaction.get(message.guild.id, 0.0)
         react_cooldown = max(
             0.0,
             self.cfg.behavior.reaction_cooldown_seconds - (now - last_react),
         )
+        last = self.last_reply.get(message.guild.id, 0.0)
+        reply_cooldown_remaining = max(
+            0.0,
+            float(self.cfg.language.reply_cooldown_seconds)
+            - (now - last),
+        )
+        language_ready = bool(self.language.ready())
+
+        event_reaction_candidates = []
+        event_reaction_pool_total = 0
+        if not disliked_user and react_cooldown <= 0.0:
+            (
+                event_reaction_candidates,
+                event_reaction_pool_total,
+            ) = self._reaction_candidates(message.guild)
+
+        react_feasible = bool(
+            not disliked_user
+            and react_cooldown <= 0.0
+            and event_reaction_candidates
+        )
+        speak_feasible = bool(
+            not blocked_text
+            and not disliked_user
+            and language_ready
+            and reply_cooldown_remaining <= 0.0
+        )
+        one_brain_decision = None
+        one_brain_candidate_set = None
+        if self.cfg.behavior.one_brain_enabled:
+            technical_reasons = {
+                "stay": "always-available-noop",
+                "react": (
+                    "reaction-target-and-cooldown-ready"
+                    if react_feasible
+                    else (
+                        "social-avoid"
+                        if disliked_user
+                        else (
+                            "reaction-cooldown"
+                            if react_cooldown > 0.0
+                            else "no-reaction-target"
+                        )
+                    )
+                ),
+                "speak": (
+                    "text-target-and-language-ready"
+                    if speak_feasible
+                    else (
+                        "blocked-text-channel"
+                        if blocked_text
+                        else (
+                            "social-avoid"
+                            if disliked_user
+                            else (
+                                "language-not-ready"
+                                if not language_ready
+                                else "reply-cooldown"
+                            )
+                        )
+                    )
+                ),
+            }
+            async with self._brain_lock:
+                one_brain_candidate_set = (
+                    self.brain.one_brain_candidate_set(
+                        {
+                            "stay": True,
+                            "react": react_feasible,
+                            "speak": speak_feasible,
+                        },
+                        technical_reasons=technical_reasons,
+                    )
+                )
+                one_brain_decision = (
+                    self.brain.one_brain_action_decision(
+                        one_brain_candidate_set,
+                        decision_context=(
+                            f"text-event:{message.guild.id}:"
+                            f"{message.channel.id}"
+                        ),
+                        predicted_reward_gain=float(
+                            self.cfg.behavior
+                            .one_brain_predicted_reward_gain
+                        ),
+                        propagation_steps=int(
+                            self.cfg.behavior
+                            .one_brain_prediction_steps
+                        ),
+                    )
+                )
+
         self._reaction_debug = {
             "score": scores["react"],
             "effective_score": react_gate["effective_score"],
@@ -4963,11 +5056,22 @@ class MuchaClient(discord.Client):
             ],
             "policy_bias": react_gate["bias"],
             "policy_updates": react_gate["updates"],
-            "decision_mode": str(
-                react_gate.get("decision_mode", "legacy-threshold")
+            "decision_mode": (
+                "one-brain"
+                if self.cfg.behavior.one_brain_enabled
+                else str(
+                    react_gate.get(
+                        "decision_mode",
+                        "legacy-threshold",
+                    )
+                )
             ),
             "competition": dict(
-                react_gate.get("competition", {})
+                (
+                    one_brain_decision.get("competition", {})
+                    if one_brain_decision is not None
+                    else react_gate.get("competition", {})
+                )
             ),
             "decision": "NIE REAGUJĘ",
             "emoji": None,
@@ -4976,12 +5080,29 @@ class MuchaClient(discord.Client):
             "guild_id": message.guild.id,
             "checked_at": time.time(),
         }
-        if (
-            not disliked_user
-            and react_gate["passed"]
-            and react_cooldown <= 0.0
-        ):
-            candidates, pool_total = self._reaction_candidates(message.guild)
+        react_selected = bool(
+            (
+                one_brain_decision is not None
+                and one_brain_decision.get("action") == "react"
+            )
+            if self.cfg.behavior.one_brain_enabled
+            else (
+                not disliked_user
+                and react_gate["passed"]
+                and react_cooldown <= 0.0
+            )
+        )
+        if react_selected:
+            candidates = (
+                event_reaction_candidates
+                if self.cfg.behavior.one_brain_enabled
+                else self._reaction_candidates(message.guild)[0]
+            )
+            pool_total = (
+                event_reaction_pool_total
+                if self.cfg.behavior.one_brain_enabled
+                else self._reaction_candidates(message.guild)[1]
+            )
             async with self._brain_lock:
                 ranked = sorted(
                     (
@@ -5069,13 +5190,6 @@ class MuchaClient(discord.Client):
                     f"{react_gate['base_threshold']:.3f}"
                 )
 
-        last = self.last_reply.get(message.guild.id, 0.0)
-        reply_cooldown_remaining = max(
-            0.0,
-            float(self.cfg.language.reply_cooldown_seconds)
-            - (now - last),
-        )
-        language_ready = bool(self.language.ready())
         text_constraints: list[str] = []
         if blocked_text:
             text_constraints.append("kanał tekstowy jest zablokowany")
@@ -5085,7 +5199,21 @@ class MuchaClient(discord.Client):
             )
         if not language_ready:
             text_constraints.append("model języka nie jest jeszcze gotowy")
-        if not speak_gate["passed"]:
+        if self.cfg.behavior.one_brain_enabled:
+            if (
+                one_brain_decision is None
+                or one_brain_decision.get("action") != "speak"
+            ):
+                text_constraints.append(
+                    "One Brain wybrał "
+                    + str(
+                        (
+                            one_brain_decision
+                            or {"action": "stay"}
+                        ).get("action", "stay")
+                    )
+                )
+        elif not speak_gate["passed"]:
             text_constraints.append(
                 (
                     "connectome competition wybrało "
