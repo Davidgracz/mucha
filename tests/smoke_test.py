@@ -194,6 +194,45 @@ def main():
         assert boredom_map.get("arousal", 0.0) > 0.0
         assert "speak" in b.INTERNAL_STATE_TARGET_ACTIONS["arousal"]
 
+        one_brain_set = b.one_brain_candidate_set(
+            {
+                "stay": True,
+                "speak": True,
+                "react": False,
+            },
+            technical_reasons={
+                "stay": "always-available-noop",
+                "speak": "text-target-and-language-ready",
+                "react": "reaction-cooldown",
+            },
+        )
+        assert set(one_brain_set["candidate_actions"]) == {
+            "stay",
+            "speak",
+        }
+        assert one_brain_set["rows"]["react"]["feasible"] is False
+        assert one_brain_set["rows"]["react"][
+            "technical_reason"
+        ] == "reaction-cooldown"
+        one_brain_decision = b.one_brain_action_decision(
+            one_brain_set,
+            decision_context="smoke:text-event",
+            predicted_reward_gain=0.85,
+            propagation_steps=2,
+        )
+        assert one_brain_decision["action"] in {
+            "stay",
+            "speak",
+        }
+        assert one_brain_decision["decision_context"] == (
+            "smoke:text-event"
+        )
+        assert one_brain_decision["propagation_steps"] == 2
+        assert one_brain_decision["executed"] is False
+        assert one_brain_decision["source"].startswith(
+            "one-brain predicted-reward sensory guidance"
+        )
+
         unobserved_reward = b.action_reward_prediction("speak")
         assert unobserved_reward["predicted_reward"] == 0.0
         assert unobserved_reward["confidence"] == 0.0
@@ -1511,6 +1550,9 @@ def main():
             encoding="utf-8"
         )
         for key in (
+            "one_brain_enabled",
+            "one_brain_predicted_reward_gain",
+            "one_brain_prediction_steps",
             "autonomous_loop_enabled",
             "autonomous_predicted_reward_gain",
             "autonomous_prediction_steps",
@@ -1526,6 +1568,7 @@ def main():
         assert "def action_reward_prediction" in brain_source
         assert "def one_brain_candidate_set" in brain_source
         assert "def one_brain_action_decision" in brain_source
+        assert "one-brain generic feasibility + learned reward" in brain_source
         assert "def autonomous_action_decision" in brain_source
         assert "one-brain-predicted-reward:" in brain_source
         assert "predicted_reward_order" in brain_source
@@ -1546,6 +1589,15 @@ def main():
         assert "_autonomous_candidate_contexts" in bot_source
         assert "_autonomous_candidate_debug" in bot_source
         assert "_autonomous_history" in bot_source
+        assert "_one_brain_history" in bot_source
+        assert "_one_brain_debug" in bot_source
+        assert "_remember_one_brain_cycle" in bot_source
+        assert '"one_brain": deepcopy(self._one_brain_debug)' in bot_source
+        assert '"one_brain_history": deepcopy(' in bot_source
+        assert "one-brain-deferred" in bot_source
+        assert "defer_to_one_brain=bool(" in bot_source
+        assert 'decision_context="autonomous-idle"' in brain_source
+        assert "voice-tts:" in bot_source
         assert "_remember_autonomous_execution" in bot_source
         assert '"autonomous_history": deepcopy(' in bot_source
         assert "_execute_autonomous_action" in bot_source
@@ -1768,6 +1820,9 @@ def main():
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
         assert "/api/public/state" in PUBLIC_OVERVIEW_HTML
         assert "Autonomia 24E" in AUTONOMY_HTML
+        assert "One Brain 25" in AUTONOMY_HTML
+        assert "One Brain timeline" in AUTONOMY_HTML
+        assert "one_brain_history" in AUTONOMY_HTML
         assert "/api/state" in AUTONOMY_HTML
         assert "predicted reward" in AUTONOMY_HTML.lower()
         assert "prediction_cues" in AUTONOMY_HTML
