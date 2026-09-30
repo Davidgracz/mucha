@@ -3244,6 +3244,68 @@ class FlyBrain:
         overlap = max(0, int(snapshot.get("overlap_count", 0)))
         silence = max(0.0, float(snapshot.get("silence_seconds", 0.0)))
         turns = max(0, int(snapshot.get("turns_per_minute", 0)))
+        speech_ratio = max(
+            0.0,
+            min(1.0, float(snapshot.get("speech_ratio_60s", 0.0))),
+        )
+        unique_speakers = max(
+            0,
+            int(snapshot.get("unique_speakers_60s", 0)),
+        )
+        speaker_switches = max(
+            0,
+            int(snapshot.get("speaker_switches_60s", 0)),
+        )
+        overlap_events = max(
+            0,
+            int(snapshot.get("overlap_events_60s", 0)),
+        )
+        handoff_seconds_raw = snapshot.get("mean_handoff_seconds")
+        handoff_seconds = (
+            max(0.0, float(handoff_seconds_raw))
+            if handoff_seconds_raw is not None
+            else None
+        )
+        mean_turn = max(
+            0.0,
+            float(snapshot.get("mean_turn_seconds", 0.0)),
+        )
+        longest_turn = max(
+            0.0,
+            float(snapshot.get("longest_turn_seconds", 0.0)),
+        )
+        dominance = max(
+            0.0,
+            min(1.0, float(snapshot.get("speaker_dominance", 0.0))),
+        )
+        intensity = max(
+            0.0,
+            min(
+                1.0,
+                float(snapshot.get("conversation_intensity", 0.0)),
+            ),
+        )
+        conversation_mode = str(
+            snapshot.get("conversation_mode") or "QUIET"
+        ).lower()
+        tts_pending_reply = bool(
+            snapshot.get("tts_pending_reply")
+        )
+        tts_age = max(
+            0.0,
+            float(snapshot.get("tts_age_seconds") or 0.0),
+        )
+        last_transcript = dict(
+            snapshot.get("last_transcript") or {}
+        )
+        speech_rate = max(
+            0.0,
+            float(last_transcript.get("words_per_second", 0.0)),
+        )
+        transcript_age = max(
+            0.0,
+            float(last_transcript.get("age_seconds", 9999.0)),
+        )
         other_humans = max(
             0,
             int(snapshot.get("other_voice_humans", 0)),
@@ -3344,6 +3406,141 @@ class FlyBrain:
                 96,
             )
 
+        activity_bucket = min(
+            5,
+            max(0, int(round(speech_ratio * 5.0))),
+        )
+        raw(
+            f"voice:sensory:speech-ratio:{activity_bucket}",
+            base * (0.20 + 0.70 * speech_ratio),
+            96,
+        )
+        if unique_speakers:
+            raw(
+                f"voice:sensory:unique-speakers:{min(6, unique_speakers)}",
+                base * min(
+                    1.15,
+                    0.28 + 0.14 * unique_speakers,
+                ),
+                104,
+            )
+        if speaker_switches:
+            switch_bucket = min(
+                6,
+                max(1, speaker_switches // 2 + 1),
+            )
+            raw(
+                f"voice:sensory:speaker-switches:{switch_bucket}",
+                base * min(
+                    1.25,
+                    0.30 + 0.055 * speaker_switches,
+                ),
+                112,
+            )
+        if overlap_events:
+            raw(
+                f"voice:sensory:overlap-events:{min(6, overlap_events)}",
+                base * min(
+                    1.40,
+                    0.42 + 0.12 * overlap_events,
+                ),
+                120,
+            )
+        if handoff_seconds is not None:
+            if handoff_seconds < 0.35:
+                handoff_bucket = "rapid"
+            elif handoff_seconds < 1.0:
+                handoff_bucket = "normal"
+            elif handoff_seconds < 2.5:
+                handoff_bucket = "slow"
+            else:
+                handoff_bucket = "long-gap"
+            raw(
+                f"voice:sensory:handoff:{handoff_bucket}",
+                base * min(
+                    1.05,
+                    0.30 + 0.18 * math.log1p(handoff_seconds),
+                ),
+                96,
+            )
+        if mean_turn > 0.0:
+            if mean_turn < 1.5:
+                turn_bucket = "short"
+            elif mean_turn < 4.0:
+                turn_bucket = "medium"
+            elif mean_turn < 9.0:
+                turn_bucket = "long"
+            else:
+                turn_bucket = "very-long"
+            raw(
+                f"voice:sensory:turn-length:{turn_bucket}",
+                base * min(
+                    1.05,
+                    0.28 + 0.14 * math.log1p(mean_turn),
+                ),
+                96,
+            )
+        if longest_turn >= 8.0:
+            raw(
+                "voice:sensory:extended-turn",
+                base * min(
+                    1.20,
+                    0.38 + 0.12 * math.log1p(longest_turn),
+                ),
+                104,
+            )
+        if dominance >= 0.55:
+            dominance_bucket = min(
+                5,
+                max(1, int(round(dominance * 5.0))),
+            )
+            raw(
+                f"voice:sensory:speaker-dominance:{dominance_bucket}",
+                base * (0.22 + 0.72 * dominance),
+                104,
+            )
+        raw(
+            f"voice:sensory:conversation-mode:{conversation_mode}",
+            base * (0.24 + 0.80 * intensity),
+            112,
+        )
+        if intensity > 0.05:
+            intensity_bucket = min(
+                5,
+                max(1, int(round(intensity * 5.0))),
+            )
+            raw(
+                f"voice:sensory:conversation-intensity:{intensity_bucket}",
+                base * (0.22 + 0.85 * intensity),
+                112,
+            )
+        if tts_pending_reply:
+            raw(
+                "voice:sensory:post-tts-wait",
+                base * min(
+                    1.20,
+                    0.36 + 0.08 * math.log1p(tts_age),
+                ),
+                112,
+            )
+        if transcript_age <= 20.0 and speech_rate > 0.0:
+            if speech_rate < 1.4:
+                rate_bucket = "slow"
+            elif speech_rate < 2.6:
+                rate_bucket = "normal"
+            elif speech_rate < 4.0:
+                rate_bucket = "fast"
+            else:
+                rate_bucket = "very-fast"
+            raw(
+                f"voice:sensory:speech-rate:{rate_bucket}",
+                base * min(
+                    1.05,
+                    0.26 + 0.16 * speech_rate,
+                ),
+                88,
+            )
+
         if other_humans:
             raw(
                 f"voice:sensory:other-vc-humans:{min(8, other_humans)}",
@@ -3417,6 +3614,18 @@ class FlyBrain:
             "silence_seconds": silence,
             "human_count": humans,
             "other_voice_humans": other_humans,
+            "speech_ratio_60s": speech_ratio,
+            "unique_speakers_60s": unique_speakers,
+            "speaker_switches_60s": speaker_switches,
+            "overlap_events_60s": overlap_events,
+            "mean_handoff_seconds": handoff_seconds,
+            "mean_turn_seconds": mean_turn,
+            "longest_turn_seconds": longest_turn,
+            "speaker_dominance": dominance,
+            "conversation_intensity": intensity,
+            "conversation_mode": conversation_mode,
+            "tts_pending_reply": tts_pending_reply,
+            "speech_rate_wps": speech_rate,
         }
 
     def inject_voice_reward_opportunity(
