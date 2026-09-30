@@ -198,6 +198,12 @@ const groups=[
  {id:"voice-main",title:"Voice",desc:"Ruch po kanałach i podstawowe zachowanie głosowe.",section:"voice",open:false,fields:[
   ["poll_seconds","Interwał decyzji voice","number",1,1,3600,"Co ile sekund Mucha ocenia sytuację na voice."],
   ["connectome_voice_control_enabled","Voice sterowany connectomem","bool",0,0,0,"Join / stay / move / leave wybiera konkurencja readoutów. Progi voice zostają tylko jako tryb legacy po wyłączeniu tej opcji."],
+  ["voice_sensory_enabled","Voice Sensory Bus","bool",0,0,0,"Live sensory z PCM i sceny Discorda: kto mówi, cisza, overlap, tempo rozmowy, affinity i odpowiedź po TTS. Dane trafiają do sensory neurons bez bezpośredniego bonusu do akcji."],
+  ["voice_sensory_interval_seconds","Sensory Bus: interwał","number",0.05,0.25,10,"Co ile sekund aktualna scena voice jest ponownie podawana do connectomu."],
+  ["voice_sensory_speaker_timeout_seconds","Sensory Bus: timeout mówcy","number",0.05,0.15,3,"Po jakiej przerwie w pakietach PCM uznać, że użytkownik przestał mówić."],
+  ["voice_sensory_reply_window_seconds","Sensory Bus: reply po TTS","number",1,1,120,"Okno czasu, w którym wypowiedź użytkownika po TTS Muchy jest oznaczana jako odpowiedź na jej głos."],
+  ["voice_sensory_base_magnitude","Sensory Bus: siła bazowa","number",0.05,0.05,2,"Bazowa amplituda surowych cue voice. Nie jest action score ani JOIN boostem."],
+  ["voice_sensory_steps","Sensory Bus: ticki","number",1,1,8,"Liczba ticków propagacji po każdej aktualizacji surowej sceny voice."],
   ["social_drive_enabled","Neuralny social drive","bool",0,0,0,"Długi pobyt poza voice przy dostępnych ludziach daje narastający bodziec sensoryczny. Nie wymusza JOIN — decyzję nadal podejmuje connectome."],
   ["social_drive_start_seconds","Social drive: start","number",5,0,86400,"Po ilu sekundach poza voice zaczyna rosnąć bodziec społeczny, jeśli są dostępni ludzie."],
   ["social_drive_ramp_seconds","Social drive: ramp","number",5,1,86400,"Ile sekund trwa wzrost od 0 do pełnej siły bodźca."],
@@ -2629,6 +2635,7 @@ function renderVoiceDebug(items){
 
   root.innerHTML=items.map(v=>{
     const s=v.scores||{},bd=v.brain_decision||{},neural=!!v.connectome_voice_control;
+    const vs=v.voice_sensory||{},vsBrain=vs.brain||{};
     const winner=String(bd.action||"—");
     const tie=bd.tie_evidence||{};
     const tieSummary=Object.entries(tie).map(([name,row])=>
@@ -2761,6 +2768,25 @@ function renderVoiceDebug(items){
           drive("SATIETY",internalLevel("satiety"),"warn-fill")+
           drive("AROUSAL",internalLevel("arousal"),"")+
           '<div class="voice-note">Dominujący attractor: <b>'+esc((v.internal_states||{}).dominant||"—")+'</b> '+(Number((v.internal_states||{}).dominant_level||0)*100).toFixed(0)+'% • brak bezpośredniego action-score bonusu.</div>'+
+        '</div>'+
+
+        '<div class="voice-box">'+
+          '<h3>🎙 Voice Sensory Bus — LIVE</h3>'+
+          '<div class="voice-kpis">'+
+            kpi("Status",esc(vs.status||"—"),vs.status==="SPEAKING"?"ok":vs.status==="SILENCE"?"warn":"")+
+            kpi("PCM capture",vs.pcm_capture?"LIVE":"brak / poza VC",vs.pcm_capture?"ok":"warn")+
+            kpi("Mówi teraz",String(Number(vs.speaker_count||0)))+
+            kpi("Overlap",String(Number(vs.overlap_count||0)),Number(vs.overlap_count||0)>0?"warn":"")+
+            kpi("Cisza",Number(vs.silence_seconds||0).toFixed(1)+" s")+
+            kpi("Tempo",Number(vs.turns_per_minute||0)+" turn/min")+
+            kpi("Ludzie tutaj",String(Number(vs.human_count||0)))+
+            kpi("Znajomi gdzie indziej",Number(vs.other_familiar_humans||0)+" / "+Number(vs.other_voice_humans||0))+
+            kpi("Reply po TTS",vs.reply_after_tts?(esc(vs.reply_user_name||vs.reply_user_id||"tak")+" • "+Number(vs.reply_age_seconds||0).toFixed(1)+" s"):"nie",vs.reply_after_tts?"ok":"")+
+            kpi("Raw cues",String(Number(vsBrain.cue_count||0)),vsBrain.mode==="raw-sensory-only"?"ok":"")+
+          '</div>'+
+          '<div class="voice-note"><b>Mówcy:</b> '+((vs.speakers||[]).length?(vs.speakers||[]).map(x=>esc(x.name||x.id)+" "+Number(x.speaking_for||0).toFixed(1)+"s • aff "+(Number(x.affinity||0)>=0?"+":"")+Number(x.affinity||0).toFixed(2)).join(" | "):"nikt")+'</div>'+
+          '<div class="voice-note"><b>Wejścia neuronalne:</b> '+((vsBrain.cues||[]).length?(vsBrain.cues||[]).slice(0,8).map(x=>esc(x.key)+" "+Number(x.magnitude||0).toFixed(2)).join(" • "):"—")+'</div>'+
+          '<div class="voice-note"><b>Tryb:</b> '+esc(vsBrain.mode||"—")+' • action-guided: '+(vsBrain.action_guided?"TAK":"NIE")+' • direct action bias: '+(vsBrain.direct_action_bias?"TAK":"NIE")+'. Surowe sensory trafiają do connectomu; nie są ręcznym JOIN/MOVE/LEAVE score.</div>'+
         '</div>'+
 
         '<div class="voice-box">'+
