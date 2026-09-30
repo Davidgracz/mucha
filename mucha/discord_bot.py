@@ -4909,6 +4909,12 @@ class MuchaClient(discord.Client):
             ],
             "policy_bias": react_gate["bias"],
             "policy_updates": react_gate["updates"],
+            "decision_mode": str(
+                react_gate.get("decision_mode", "legacy-threshold")
+            ),
+            "competition": dict(
+                react_gate.get("competition", {})
+            ),
             "decision": "NIE REAGUJĘ",
             "emoji": None,
             "target": f"#{channel_name} / {message.author.display_name}",
@@ -4991,13 +4997,23 @@ class MuchaClient(discord.Client):
         elif react_cooldown > 0.0:
             self._reaction_debug["decision"] = "COOLDOWN"
         else:
-            self._reaction_debug["decision"] = (
-                f"react raw {scores['react']:.3f} • "
-                f"policy {react_gate['effective_score']:.3f} < "
-                f"{react_gate['base_threshold']:.3f} • "
-                f"learned raw threshold "
-                f"{react_gate['learned_raw_threshold']:.3f}"
-            )
+            if (
+                react_gate.get("decision_mode")
+                == "connectome-competition"
+            ):
+                comp = dict(react_gate.get("competition", {}))
+                self._reaction_debug["decision"] = (
+                    "CONNECTOME • "
+                    f"{comp.get('action', 'stay')} wygrało • "
+                    f"react {react_gate['effective_score']:.3f} • "
+                    f"margin {float(comp.get('margin', 0.0)):.3f}"
+                )
+            else:
+                self._reaction_debug["decision"] = (
+                    f"LEGACY • react raw {scores['react']:.3f} • "
+                    f"policy {react_gate['effective_score']:.3f} < "
+                    f"{react_gate['base_threshold']:.3f}"
+                )
 
         last = self.last_reply.get(message.guild.id, 0.0)
         reply_cooldown_remaining = max(
@@ -5017,7 +5033,18 @@ class MuchaClient(discord.Client):
             text_constraints.append("model języka nie jest jeszcze gotowy")
         if not speak_gate["passed"]:
             text_constraints.append(
-                "policy/gate speak nie przeszedł progu"
+                (
+                    "connectome competition wybrało "
+                    + str(
+                        (speak_gate.get("competition") or {}).get(
+                            "action",
+                            "stay",
+                        )
+                    )
+                    if speak_gate.get("decision_mode")
+                    == "connectome-competition"
+                    else "legacy speak gate nie przeszedł progu"
+                )
             )
         if reply_cooldown_remaining > 0.0:
             text_constraints.append(
@@ -5056,7 +5083,12 @@ class MuchaClient(discord.Client):
             "stimulus": self._last_brain_event,
             "decision": "SPEAK" if will_speak else "NO SPEAK",
             "reason": (
-                "gate speak przeszedł i brak blokad wykonania"
+                (
+                    "connectome competition wybrało speak i brak blokad wykonania"
+                    if speak_gate.get("decision_mode")
+                    == "connectome-competition"
+                    else "legacy speak gate przeszedł i brak blokad wykonania"
+                )
                 if will_speak
                 else "; ".join(text_constraints)
             ),
@@ -5086,8 +5118,40 @@ class MuchaClient(discord.Client):
                 ),
                 "policy_bias": float(speak_gate["bias"]),
                 "passed": bool(speak_gate["passed"]),
-                "runner_up": runner_up[0],
-                "runner_up_score": runner_up[1],
+                "decision_mode": str(
+                    speak_gate.get(
+                        "decision_mode",
+                        "legacy-threshold",
+                    )
+                ),
+                "runner_up": (
+                    (speak_gate.get("competition") or {}).get(
+                        "runner_up"
+                    )
+                    if speak_gate.get("decision_mode")
+                    == "connectome-competition"
+                    else runner_up[0]
+                ),
+                "runner_up_score": (
+                    (speak_gate.get("competition") or {}).get(
+                        "runner_up_score"
+                    )
+                    if speak_gate.get("decision_mode")
+                    == "connectome-competition"
+                    else runner_up[1]
+                ),
+                "margin": float(
+                    (speak_gate.get("competition") or {}).get(
+                        "margin",
+                        0.0,
+                    )
+                ),
+                "source": str(
+                    (speak_gate.get("competition") or {}).get(
+                        "source",
+                        "legacy-threshold",
+                    )
+                ),
             },
             "scores": {
                 str(name): float(value)
@@ -5113,6 +5177,21 @@ class MuchaClient(discord.Client):
                     ),
                     "threshold": float(
                         react_gate["base_threshold"]
+                    ),
+                    "decision_mode": str(
+                        react_gate.get(
+                            "decision_mode",
+                            "legacy-threshold",
+                        )
+                    ),
+                    "winner": (
+                        react_gate.get("competition") or {}
+                    ).get("action"),
+                    "margin": float(
+                        (react_gate.get("competition") or {}).get(
+                            "margin",
+                            0.0,
+                        )
                     ),
                     "passed": bool(react_gate["passed"]),
                     "decision": str(
