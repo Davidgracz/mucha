@@ -896,11 +896,61 @@ Jeżeli NVIDIA / `nvidia-smi` nie jest dostępne, panel pokazuje `GPU unavailabl
 
 Cięższe dane, takie jak logi systemd i status usług, pozostają na wolniejszym interwale, aby sam dashboard nie powodował niepotrzebnego obciążenia.
 
+# Long-term People Memory
+
+Mucha posiada teraz trwałe profile konkretnych ludzi, budowane z realnych interakcji zamiast wyłącznie z jednej liczby affinity.
+
+Profil osoby łączy:
+
+- kontakty tekstowe,
+- wypowiedzi STT na voice,
+- wyniki wcześniejszych akcji przy tej osobie,
+- trwałe semantic memory typu użytkownik → akcja,
+- użytkownik + kanał,
+- użytkownik + stan sytuacji,
+- signed social events, np. pozytywne odpowiedzi, reuse słów/fraz i odrzucenia,
+- ostatnie epizody voice,
+- legacy affinity i neural social memory.
+
+Kontakt sam w sobie jest zapisywany jako **neutralne doświadczenie**: zwiększa familiarity, ale nie udaje rewardu. Dopiero realne pozytywne lub negatywne sygnały społeczne wpływają na valence.
+
+Profil wraca do mózgu jako zwykłe sensory:
+
+```text
+social:person-profile:user:<id>
+social:person-profile:familiarity:<bucket>
+social:person-profile:valence:<positive|neutral|mixed|negative>
+social:person-contact:<text|voice_speech>:<bucket>
+social:person-event:<event>:<positive|negative>
+social:person-history:action:<action>:<positive|negative>
+```
+
+Te sygnały **nie zmieniają action score bezpośrednio**. Są wstrzykiwane do sensorycznych populacji connectomu i muszą przejść przez normalną propagację FAFB.
+
+Prywatny `/details` ma panel **Long-term People Memory**, który pokazuje m.in.:
+
+- familiarity i confidence,
+- liczbę trwałych doświadczeń,
+- liczbę kontaktów i signed social events,
+- valence,
+- typową korzystną i niekorzystną akcję przy tej osobie,
+- najczęstsze kanały,
+- ostatni epizod,
+- ostatnią reiniekcję profilu do connectomu.
+
+Dane są przechowywane w istniejącym:
+
+```text
+state/voice_episodes.sqlite3
+```
+
+---
+
 # Najbliższy kierunek rozwoju
 
 Dalsze kierunki:
 
-- bogatsza długoterminowa reprezentacja ludzi, kanałów i powtarzalnych sytuacji,
+- długoterminowa reprezentacja kanałów i powtarzalnych sytuacji,
 - uczenie reakcji na dynamikę rozmowy z rewardu zamiast ręcznego mapowania scen na decyzje,
 - dalsza redukcja ręcznie zakodowanych wyjątków na rzecz sygnałów sensorycznych i konkurencji readoutów connectomu,
 - coraz większa integracja tekstu, voice, pamięci i zachowania społecznego w jeden współdzielony stan neuronalny.
