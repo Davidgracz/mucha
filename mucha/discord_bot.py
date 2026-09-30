@@ -7520,6 +7520,13 @@ class MuchaClient(discord.Client):
                 self._autonomous_candidate_debug[
                     "executed"
                 ] = bool(execution.get("executed", False))
+                if isinstance(
+                    self._autonomous_candidate_debug.get("decision"),
+                    dict,
+                ):
+                    self._autonomous_candidate_debug["decision"][
+                        "executed"
+                    ] = bool(execution.get("executed", False))
                 self._autonomous_candidate_debug[
                     "last_execution"
                 ] = dict(execution)
