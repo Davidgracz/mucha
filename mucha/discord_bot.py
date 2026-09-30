@@ -6284,13 +6284,43 @@ class MuchaClient(discord.Client):
 
         now = time.monotonic()
         if self.cfg.voice.voice_sensory_enabled:
-            self._voice_sensory.note_pcm(
+            speech_started = self._voice_sensory.note_pcm(
                 guild.id,
                 channel.id,
                 user.id,
                 getattr(user, "display_name", str(user.id)),
                 now=now,
             )
+            if speech_started:
+                last_tts = self._last_tts_trace.get(guild.id)
+                audience = self._last_tts_audience.get(
+                    guild.id,
+                    set(),
+                )
+                if (
+                    last_tts is not None
+                    and last_tts.channel_id == channel.id
+                    and user.id in audience
+                ):
+                    tts_age = max(0.0, now - last_tts.created)
+                    if (
+                        tts_age
+                        <= float(
+                            self.cfg.voice.voice_sensory_reply_window_seconds
+                        )
+                    ):
+                        self._voice_sensory.note_reply_after_tts(
+                            guild.id,
+                            channel.id,
+                            user.id,
+                            getattr(
+                                user,
+                                "display_name",
+                                str(user.id),
+                            ),
+                            tts_age_seconds=tts_age,
+                            now=now,
+                        )
         if not self.cfg.voice.stt_enabled:
             return
 
@@ -6571,28 +6601,6 @@ class MuchaClient(discord.Client):
             and last_tts.channel_id == getattr(channel, "id", None)
             and time.monotonic() - last_tts.created <= 120.0
         )
-        if (
-            self.cfg.voice.voice_sensory_enabled
-            and recent_tts
-            and last_tts is not None
-        ):
-            tts_age = max(0.0, time.monotonic() - last_tts.created)
-            audience = self._last_tts_audience.get(guild.id, set())
-            if (
-                member.id in audience
-                and tts_age
-                <= float(
-                    self.cfg.voice.voice_sensory_reply_window_seconds
-                )
-            ):
-                self._voice_sensory.note_reply_after_tts(
-                    guild.id,
-                    getattr(channel, "id", 0),
-                    member.id,
-                    member.display_name,
-                    tts_age_seconds=tts_age,
-                )
-
         rejection = self._detect_verbal_rejection(text)
         targeted_rejection = bool(
             rejection
