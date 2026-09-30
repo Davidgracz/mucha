@@ -3135,6 +3135,174 @@ class FlyBrain:
             "top_edges": top_edges,
         }
 
+    def inject_person_profile(
+        self,
+        profile: dict,
+        *,
+        magnitude: float = 0.35,
+        current_channel_id: int | None = None,
+    ) -> dict:
+        """Inject a learned person model as raw social sensory context.
+
+        The profile never edits an action score directly. Stable semantic
+        features enter sensory populations and must propagate through the
+        connectome before they can affect behavior.
+        """
+        user_id = int(profile.get("user_id", 0) or 0)
+        observations = max(
+            0,
+            int(profile.get("observations", 0) or 0),
+        )
+        if user_id <= 0 or observations <= 0:
+            return {
+                "enabled": False,
+                "user_id": user_id,
+                "cue_count": 0,
+                "cues": [],
+            }
+
+        base = max(0.02, min(1.5, float(magnitude)))
+        familiarity = max(
+            0.0,
+            min(1.0, float(profile.get("familiarity", 0.0))),
+        )
+        confidence = max(
+            0.0,
+            min(1.0, float(profile.get("confidence", 0.0))),
+        )
+        valence = max(
+            -1.0,
+            min(1.0, float(profile.get("valence", 0.0))),
+        )
+        valence_label = str(
+            profile.get("valence_label") or "neutral"
+        )
+        cues: list[dict] = []
+
+        def cue(key: str, value: float, width: int = 96) -> None:
+            amount = max(0.0, min(2.0, float(value)))
+            if amount <= 1e-6:
+                return
+            self.inject(key, amount, width)
+            cues.append({
+                "key": key,
+                "magnitude": amount,
+                "width": int(width),
+            })
+
+        self.activate_user_memory(
+            user_id,
+            min(
+                1.0,
+                0.10 + base * (0.25 + 0.50 * familiarity),
+            ),
+        )
+        cue(
+            f"social:person-profile:user:{user_id}",
+            base * (0.22 + 0.58 * familiarity),
+            112,
+        )
+        fam_bucket = min(
+            5,
+            max(0, int(round(familiarity * 5.0))),
+        )
+        cue(
+            f"social:person-profile:familiarity:{fam_bucket}",
+            base * (0.20 + 0.70 * familiarity),
+            96,
+        )
+        conf_bucket = min(
+            5,
+            max(0, int(round(confidence * 5.0))),
+        )
+        cue(
+            f"social:person-profile:confidence:{conf_bucket}",
+            base * (0.18 + 0.62 * confidence),
+            88,
+        )
+        cue(
+            f"social:person-profile:valence:{valence_label}",
+            base * (0.20 + 0.60 * abs(valence)),
+            104,
+        )
+
+        obs_bucket = min(
+            6,
+            max(
+                1,
+                int(math.log2(max(1, observations))) + 1,
+            ),
+        )
+        cue(
+            f"social:person-profile:experience:{obs_bucket}",
+            base * min(
+                1.0,
+                0.22 + 0.10 * math.log1p(observations),
+            ),
+            88,
+        )
+
+        for row in list(profile.get("actions") or [])[:4]:
+            signal = max(
+                -1.0,
+                min(1.0, float(row.get("signal", 0.0))),
+            )
+            if abs(signal) < 0.04:
+                continue
+            action = str(row.get("action") or "unknown")
+            sign = "positive" if signal > 0.0 else "negative"
+            cue(
+                f"social:person-history:action:{action}:{sign}",
+                base * (0.16 + 0.62 * abs(signal)),
+                96,
+            )
+
+        if current_channel_id is not None:
+            current_channel_id = int(current_channel_id)
+            channel_match = next(
+                (
+                    row
+                    for row in list(profile.get("channels") or [])
+                    if str(row.get("channel_id"))
+                    == str(current_channel_id)
+                ),
+                None,
+            )
+            if channel_match is not None:
+                channel_conf = max(
+                    0.0,
+                    min(
+                        1.0,
+                        float(channel_match.get("confidence", 0.0)),
+                    ),
+                )
+                cue(
+                    "social:person-profile:known-current-channel",
+                    base * (0.18 + 0.55 * channel_conf),
+                    96,
+                )
+                cue(
+                    (
+                        "social:person-profile:user-channel:"
+                        f"{user_id}:{current_channel_id}"
+                    ),
+                    base * (0.14 + 0.45 * channel_conf),
+                    80,
+                )
+
+        return {
+            "enabled": True,
+            "user_id": user_id,
+            "observations": observations,
+            "familiarity": familiarity,
+            "confidence": confidence,
+            "valence": valence,
+            "valence_label": valence_label,
+            "cue_count": len(cues),
+            "cues": cues[:16],
+            "direct_action_bias": False,
+        }
+
     def inject_text(self, text: str, author_id: int, mentioned: bool) -> None:
         stripped = text.strip()
         if not stripped:
