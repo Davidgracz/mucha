@@ -254,6 +254,9 @@ class BehaviorConfig:
     neural_social_memory_enabled: bool = True
     neural_affinity_weight: float = 0.70
     neural_social_learning_scale: float = 1.00
+    person_model_enabled: bool = True
+    person_model_min_observations: int = 2
+    person_model_sensory_magnitude: float = 0.35
     social_window_seconds: int = 900
     word_reuse_reward: float = 0.20
     phrase_reuse_reward: float = 0.35
