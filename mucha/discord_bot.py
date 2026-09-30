@@ -513,6 +513,9 @@ class MuchaClient(discord.Client):
             "speak_threshold",
             "reaction_threshold",
             "connectome_behavior_competition_enabled",
+            "one_brain_enabled",
+            "one_brain_predicted_reward_gain",
+            "one_brain_prediction_steps",
             "autonomous_loop_enabled",
             "autonomous_predicted_reward_gain",
             "autonomous_prediction_steps",
@@ -896,6 +899,15 @@ class MuchaClient(discord.Client):
             ("behavior", "reaction_threshold"): (float, 0.0, 1.0),
             ("behavior", "connectome_behavior_competition_enabled"): (
                 bool, None, None
+            ),
+            ("behavior", "one_brain_enabled"): (
+                bool, None, None
+            ),
+            ("behavior", "one_brain_predicted_reward_gain"): (
+                float, 0.0, 4.0
+            ),
+            ("behavior", "one_brain_prediction_steps"): (
+                int, 0, 8
             ),
             ("behavior", "autonomous_loop_enabled"): (
                 bool, None, None
