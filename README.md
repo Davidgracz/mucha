@@ -1273,3 +1273,69 @@ internal_drive_caution_decay_per_minute = 0.055
 
 To jest warstwa 24A. Następny etap 24B może użyć tych potrzeb do autonomicznego generowania kandydatów akcji, przy zachowaniu `STAY/NOOP` jako normalnej konkurującej możliwości.
 
+---
+
+# Stage 24B — Autonomous Action Candidates
+
+Mucha tworzy teraz własny zestaw kandydatów akcji podczas każdego `idle_loop`.
+
+To nadal **nie wykonuje akcji**. 24B odpowiada wyłącznie za pytanie:
+
+```text
+co w tej chwili ma sens rozważyć?
+```
+
+Generator bierze pod uwagę:
+
+- techniczną wykonalność akcji,
+- bieżące homeostatic drives z 24A,
+- aktywność neuronalnych internal-state attractors,
+- aktualne readouty connectomu,
+- learned action policy.
+
+Typowy zestaw poza voice:
+
+```text
+NOOP / STAY
+SPEAK
+VOICE_JOIN
+EXPLORE
+```
+
+Po wejściu na voice:
+
+```text
+NOOP / STAY
+SPEAK
+VOICE_MOVE
+EXPLORE
+```
+
+`STAY` jest wystawiany na zewnątrz jako `NOOP` i nigdy nie jest usuwany z zestawu. Autonomia nie oznacza więc obowiązku wykonania akcji.
+
+`SPEAK` pozostaje kandydatem, jeżeli istnieje dozwolony ostatni kanał tekstowy i model języka jest gotowy. Drive'y nie mają prawa wyciszyć tej akcji na stałe.
+
+JOIN/MOVE pojawiają się tylko wtedy, gdy istnieje technicznie dostępny kanał voice: z respektowaniem blokad, AFK, permissions, deadly-channel oraz aktywnego Chasera.
+
+Każdy kandydat zawiera diagnostykę:
+
+```text
+raw_score
+effective_score
+drive_support
+state_support
+supporting_drives
+supporting_states
+technical_reason
+```
+
+Następnie wykonywany jest wyłącznie **competition preview** przez istniejące `action_competition()`. Wynik jest zapisywany do dashboard snapshot jako `autonomous_candidates`, ale ma `executed = false`.
+
+To celowo oddziela:
+
+```text
+24B: wygeneruj możliwości
+24C: przewidź reward możliwości
+24D: pozwól autonomicznej pętli wykonać zwycięzcę
+```
+
