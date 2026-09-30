@@ -9165,6 +9165,12 @@ class MuchaClient(discord.Client):
                 if connectome_voice_control
                 else "legacy-thresholds"
             ),
+            "target_selection_source": (
+                "neural-channel-readout"
+                if connectome_voice_control
+                else "legacy-affinity-exploration"
+            ),
+            "learning_updates_do_not_override_current_decision": False,
             "brain_decision": None,
             "current": current.name if current else None,
             "decision": "ANALIZA",
