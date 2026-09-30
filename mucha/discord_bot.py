@@ -7636,6 +7636,7 @@ class MuchaClient(discord.Client):
         await self.wait_until_ready()
         if (
             self.paused
+            or self._sleep_active
             or not self.cfg.voice.enabled
             or not self.cfg.voice.voice_sensory_enabled
         ):
@@ -8056,6 +8057,12 @@ class MuchaClient(discord.Client):
                 guild_id=guild.id,
                 channel_id=vc.channel.id,
             )
+            if self.cfg.voice.voice_sensory_enabled:
+                self._voice_sensory.note_tts(
+                    guild.id,
+                    vc.channel.id,
+                    text_out,
+                )
             self._last_tts_audience[guild.id] = {
                 member.id
                 for member in vc.channel.members
