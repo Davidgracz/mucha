@@ -141,6 +141,14 @@ class VoiceConfig:
     memory_replay_reward_scale: float = 0.10
     memory_replay_steps: int = 6
     memory_replay_max_age_days: int = 14
+    sleep_enabled: bool = True
+    sleep_idle_seconds: int = 900
+    sleep_cycle_interval_seconds: int = 15
+    sleep_max_cycles: int = 8
+    sleep_replay_batch_size: int = 4
+    sleep_replay_magnitude_multiplier: float = 1.60
+    sleep_reward_scale_multiplier: float = 1.50
+    sleep_steps_multiplier: float = 2.00
     episodic_consolidation_gain: float = 0.08
     episodic_forgetting_half_life_days: float = 14.0
     episodic_forgetting_interval_seconds: int = 300
