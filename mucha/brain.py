@@ -3540,6 +3540,150 @@ class FlyBrain:
             "direct_action_bias": False,
         }
 
+    def inject_social_scene_profile(
+        self,
+        profile: dict,
+        *,
+        magnitude: float = 0.36,
+    ) -> dict:
+        """Inject one learned recurring social situation as sensory context."""
+        scene_key = str(profile.get("scene_key") or "")
+        observations = max(0, int(profile.get("observations", 0) or 0))
+        if not scene_key or observations <= 0:
+            return {
+                "enabled": False,
+                "scene_key": scene_key,
+                "cue_count": 0,
+                "cues": [],
+            }
+
+        base = max(0.02, min(1.5, float(magnitude)))
+        familiarity = max(
+            0.0,
+            min(1.0, float(profile.get("familiarity", 0.0))),
+        )
+        confidence = max(
+            0.0,
+            min(1.0, float(profile.get("confidence", 0.0))),
+        )
+        valence = max(
+            -1.0,
+            min(1.0, float(profile.get("valence", 0.0))),
+        )
+        mode = str(profile.get("conversation_mode") or "UNKNOWN").lower()
+        dominant_state = str(profile.get("dominant_state") or "none").lower()
+        human_count = max(0, min(6, int(profile.get("human_count", 0) or 0)))
+        scene_hash = hashlib.sha1(
+            scene_key.encode("utf-8", errors="ignore")
+        ).hexdigest()[:12]
+        cues: list[dict] = []
+
+        def cue(key: str, value: float, width: int = 96) -> None:
+            amount = max(0.0, min(2.0, float(value)))
+            if amount <= 1e-6:
+                return
+            self.inject(key, amount, width)
+            cues.append({
+                "key": key,
+                "magnitude": amount,
+                "width": int(width),
+            })
+
+        cue(
+            f"social:scene-profile:{scene_hash}",
+            base * (0.20 + 0.68 * familiarity),
+            112,
+        )
+        cue(
+            f"social:scene-profile:familiarity:{min(5, max(0, int(round(familiarity * 5.0))))}",
+            base * (0.18 + 0.70 * familiarity),
+            96,
+        )
+        cue(
+            f"social:scene-profile:confidence:{min(5, max(0, int(round(confidence * 5.0))))}",
+            base * (0.16 + 0.60 * confidence),
+            88,
+        )
+        valence_label = str(profile.get("valence_label") or "neutral")
+        cue(
+            f"social:scene-profile:valence:{valence_label}",
+            base * (0.18 + 0.68 * abs(valence)),
+            104,
+        )
+        cue(
+            f"social:scene-profile:mode:{mode}",
+            base * 0.44,
+            96,
+        )
+        cue(
+            f"social:scene-profile:state:{dominant_state}",
+            base * (
+                0.22
+                + 0.14
+                * max(
+                    0,
+                    min(
+                        3,
+                        int(profile.get("dominant_state_bucket", 0) or 0),
+                    ),
+                )
+            ),
+            96,
+        )
+        cue(
+            f"social:scene-profile:humans:{human_count}",
+            base * min(0.95, 0.16 + 0.10 * human_count),
+            88,
+        )
+        cue(
+            f"social:scene-profile:intensity:{int(profile.get('intensity_bucket', 0) or 0)}",
+            base * (
+                0.18
+                + 0.15
+                * max(0, min(3, int(profile.get("intensity_bucket", 0) or 0)))
+            ),
+            88,
+        )
+        cue(
+            f"social:scene-profile:speech:{int(profile.get('speech_bucket', 0) or 0)}",
+            base * (
+                0.18
+                + 0.15
+                * max(0, min(3, int(profile.get("speech_bucket", 0) or 0)))
+            ),
+            88,
+        )
+
+        for row in list(profile.get("actions") or [])[:5]:
+            signal = max(
+                -1.0,
+                min(1.0, float(row.get("signal", 0.0))),
+            )
+            if abs(signal) < 0.03:
+                continue
+            action = str(row.get("action") or "unknown")
+            sign = "positive" if signal > 0.0 else "negative"
+            cue(
+                f"social:scene-history:action:{action}:{sign}",
+                base * (0.14 + 0.72 * abs(signal)),
+                104,
+            )
+
+        return {
+            "enabled": True,
+            "scene_key": scene_key,
+            "observations": observations,
+            "familiarity": familiarity,
+            "confidence": confidence,
+            "valence": valence,
+            "valence_label": valence_label,
+            "conversation_mode": mode,
+            "dominant_state": dominant_state,
+            "cue_count": len(cues),
+            "cues": cues[:24],
+            "direct_action_bias": False,
+        }
+
     def inject_text(self, text: str, author_id: int, mentioned: bool) -> None:
         stripped = text.strip()
         if not stripped:
