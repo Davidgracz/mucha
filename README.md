@@ -735,6 +735,62 @@ information_gain_min_delta = 0.01
 
 Stan jest widoczny w `/details` jako **Curiosity / Uncertainty**, razem z najbardziej nieznanymi kanałami, cue do attractora i ostatnim information gain.
 
+# Sleep / Offline Consolidation
+
+Mucha ma teraz osobny stan **SLEEP**, uruchamiany po dłuższym okresie realnej ciszy na Discordzie.
+
+Domyślnie:
+
+```toml
+sleep_enabled = true
+sleep_idle_seconds = 900
+sleep_cycle_interval_seconds = 15
+sleep_max_cycles = 8
+sleep_replay_batch_size = 4
+sleep_replay_magnitude_multiplier = 1.60
+sleep_reward_scale_multiplier = 1.50
+sleep_steps_multiplier = 2.00
+```
+
+Warunki wejścia w sen:
+
+```text
+brak nowych wiadomości / zmian voice
++ Mucha nie jest połączona z VC
++ brak aktywnego Chasera
++ istnieją epizody nadające się do replay
+→ SLEEP
+```
+
+Podczas snu zwykłe autonomiczne decyzje voice, spontaniczne pisanie, TTS i rare audio są wstrzymane. Każdy cykl:
+
+```text
+ważny epizod
+→ reaktywacja sensoryczna sceny
+→ action-guided sensory
+→ propagacja przez FAFB
+→ capture learning trace
+→ mały replay reward/punish
+→ neuronalna + synaptyczna plastyczność
+→ episodic consolidation
+→ semantic rehearsal
+```
+
+Semantic rehearsal nie udaje nowego doświadczenia: nie zwiększa licznika realnych obserwacji. Stabilizuje tylko istniejące uogólnienie wyprowadzone z prawdziwych epizodów.
+
+Każda nowa wiadomość lub zmiana voice natychmiast wybudza Muchę. Po zakończeniu pełnej sesji kolejny sen wymaga nowej aktywności i ponownego okresu ciszy.
+
+Stan snu jest widoczny na żywo w `/details` jako **Sleep / Offline Consolidation** razem z:
+
+- numerem cyklu i postępem,
+- liczbą replayowanych epizodów,
+- liczbą zmienionych neuronów i synaps,
+- semantic rehearsal,
+- zmianą siły wspomnień,
+- liczbą utrwalonych scen i synaps.
+
+---
+
 # Decision Trace — „Dlaczego zrobiła X?”
 
 Prywatny widok `/details` posiada teraz spójny **Decision Trace** zapisujący faktyczne dane użyte przez runtime przy decyzji.
@@ -796,9 +852,10 @@ Cięższe dane, takie jak logi systemd i status usług, pozostają na wolniejszy
 
 Dalsze kierunki:
 
-- **sleep / offline consolidation** — osobny stan ciszy, w którym replay utrwala istotne doświadczenia bez bieżących bodźców Discord,
 - bogatsze sensory voice i lepsze kodowanie dynamiki rozmowy,
-- historia Decision Trace, aby można było cofać się po kilku ostatnich decyzjach zamiast oglądać wyłącznie najnowszą.
+- historia Decision Trace, aby można było cofać się po kilku ostatnich decyzjach zamiast oglądać wyłącznie najnowszą,
+- dalsza redukcja ręcznie zakodowanych wyjątków na rzecz sygnałów sensorycznych i konkurencji readoutów connectomu,
+- bogatsza długoterminowa reprezentacja ludzi, kanałów i powtarzalnych sytuacji.
 
 ---
 
