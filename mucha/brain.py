@@ -27,6 +27,31 @@ class FlyBrain:
         "speak", "react", "voice_join", "voice_move", "voice_leave", "explore", "stay"
     )
 
+    INTERNAL_DRIVE_NAMES = (
+        "social_need",
+        "curiosity",
+        "exploration",
+        "caution",
+        "boredom",
+    )
+    INTERNAL_DRIVE_STATE_MAP = {
+        "social_need": (("social_need", 1.00),),
+        "curiosity": (("curiosity", 1.00),),
+        "exploration": (
+            ("curiosity", 0.55),
+            ("arousal", 0.45),
+        ),
+        "caution": (
+            ("stress", 0.78),
+            ("satiety", 0.22),
+        ),
+        "boredom": (
+            ("curiosity", 0.55),
+            ("arousal", 0.25),
+            ("social_need", 0.20),
+        ),
+    }
+
     # These are seed labels for actions that have a defensible broad
     # motor/behavioral analogue in the fly. "speak" is intentionally empty:
     # Discord communication has no literal FAFB output neuron and is learned
@@ -137,6 +162,20 @@ class FlyBrain:
             "before_bias": 0.0,
             "after_bias": 0.0,
             "delta": 0.0,
+        }
+        self._internal_drive_values: dict[str, float] = {
+            "social_need": 0.18,
+            "curiosity": 0.24,
+            "exploration": 0.14,
+            "caution": 0.08,
+            "boredom": 0.12,
+        }
+        self._internal_drive_last_tick = time.monotonic()
+        self._internal_drive_last_event: dict = {
+            "event": "startup",
+            "intensity": 0.0,
+            "time": time.time(),
+            "changes": {},
         }
         self._pool_cache: dict[tuple[str, int], np.ndarray] = {}
         self._sensory_lookup = set(int(i) for i in self.c.sensory.tolist())
@@ -1617,6 +1656,7 @@ class FlyBrain:
             "dominant": dominant,
             "dominant_level": dominant_level,
             "states": states,
+            "homeostatic_drives": self.internal_drive_diagnostics(),
             "method": (
                 "sensory entry pools → real FAFB paths → internal assemblies; "
                 "persistence amplifies only existing recurrent FAFB edges"
@@ -1723,6 +1763,307 @@ class FlyBrain:
                     if not self.cfg.internal_states_enabled
                     else "FAFB-recurrent-attractor",
                 )
+            ),
+        }
+
+
+    @staticmethod
+    def _clip_internal_drive(value: float) -> float:
+        return max(0.0, min(1.0, float(value)))
+
+    def _inject_internal_drive(
+        self,
+        drive: str,
+        value: float,
+        *,
+        scale: float = 1.0,
+    ) -> list[dict]:
+        if (
+            not self.cfg.internal_drives_enabled
+            or not self.cfg.internal_states_enabled
+        ):
+            return []
+        drive = str(drive)
+        value = self._clip_internal_drive(value)
+        gain = max(
+            0.0,
+            min(2.0, float(self.cfg.internal_drive_neural_gain)),
+        )
+        scale = max(0.0, min(2.0, float(scale)))
+        if value <= 0.0 or gain <= 0.0 or scale <= 0.0:
+            return []
+
+        rows: list[dict] = []
+        for state_name, weight in self.INTERNAL_DRIVE_STATE_MAP.get(
+            drive,
+            (),
+        ):
+            magnitude = gain * scale * value * max(
+                0.0,
+                float(weight),
+            )
+            if magnitude <= 0.0:
+                continue
+            rows.append(
+                self.inject_internal_state_cue(
+                    state_name,
+                    magnitude,
+                    key=f"internal-drive:{drive}:{state_name}",
+                )
+            )
+        return rows
+
+    def tick_internal_drives(
+        self,
+        elapsed_seconds: float | None = None,
+        *,
+        external_stimulation: bool = False,
+        social_contact: bool = False,
+    ) -> dict:
+        """Advance slow homeostatic needs and feed them into neural attractors."""
+        now = time.monotonic()
+        if elapsed_seconds is None:
+            elapsed = max(
+                0.0,
+                now - float(self._internal_drive_last_tick),
+            )
+        else:
+            elapsed = max(0.0, float(elapsed_seconds))
+        self._internal_drive_last_tick = now
+
+        if not self.cfg.internal_drives_enabled:
+            return self.internal_drive_diagnostics()
+
+        minutes = min(5.0, elapsed / 60.0)
+        if minutes <= 0.0:
+            return self.internal_drive_diagnostics()
+
+        values = self._internal_drive_values
+        boredom_before = float(values["boredom"])
+        curiosity_before = float(values["curiosity"])
+
+        values["social_need"] = self._clip_internal_drive(
+            values["social_need"]
+            + float(
+                self.cfg.internal_drive_social_need_per_minute
+            )
+            * minutes
+        )
+        values["boredom"] = self._clip_internal_drive(
+            values["boredom"]
+            + float(
+                self.cfg.internal_drive_boredom_per_minute
+            )
+            * minutes
+        )
+        values["curiosity"] = self._clip_internal_drive(
+            values["curiosity"]
+            + float(
+                self.cfg.internal_drive_curiosity_per_minute
+            )
+            * minutes
+            * (0.45 + 0.55 * boredom_before)
+        )
+        values["exploration"] = self._clip_internal_drive(
+            values["exploration"]
+            + float(
+                self.cfg.internal_drive_exploration_per_minute
+            )
+            * minutes
+            * (
+                0.35
+                + 0.65
+                * max(
+                    boredom_before,
+                    curiosity_before,
+                )
+            )
+        )
+        values["caution"] = self._clip_internal_drive(
+            values["caution"]
+            - float(
+                self.cfg.internal_drive_caution_decay_per_minute
+            )
+            * minutes
+        )
+
+        if external_stimulation:
+            values["boredom"] = self._clip_internal_drive(
+                values["boredom"] - 0.18 * minutes
+            )
+            values["curiosity"] = self._clip_internal_drive(
+                values["curiosity"] - 0.04 * minutes
+            )
+        if social_contact:
+            values["social_need"] = self._clip_internal_drive(
+                values["social_need"] - 0.18 * minutes
+            )
+            values["boredom"] = self._clip_internal_drive(
+                values["boredom"] - 0.10 * minutes
+            )
+
+        neural_scale = min(
+            1.0,
+            max(0.05, elapsed / 5.0),
+        )
+        injected: dict[str, list[dict]] = {}
+        for drive in self.INTERNAL_DRIVE_NAMES:
+            injected[drive] = self._inject_internal_drive(
+                drive,
+                values[drive],
+                scale=neural_scale,
+            )
+
+        result = self.internal_drive_diagnostics()
+        result["elapsed_seconds"] = float(elapsed)
+        result["external_stimulation"] = bool(external_stimulation)
+        result["social_contact"] = bool(social_contact)
+        result["injected"] = injected
+        return result
+
+    def register_internal_drive_event(
+        self,
+        event: str,
+        intensity: float = 1.0,
+        *,
+        inject: bool = True,
+    ) -> dict:
+        """Change homeostatic needs after meaningful experience."""
+        event = str(event or "").strip().lower()
+        intensity = max(0.0, min(2.0, float(intensity)))
+        effects: dict[str, dict[str, float]] = {
+            "social_contact": {
+                "social_need": -0.34,
+                "boredom": -0.22,
+                "caution": -0.05,
+            },
+            "novelty": {
+                "curiosity": -0.20,
+                "boredom": -0.32,
+                "exploration": 0.18,
+            },
+            "threat": {
+                "caution": 0.55,
+                "exploration": -0.28,
+                "curiosity": -0.08,
+            },
+            "positive_reward": {
+                "boredom": -0.16,
+                "caution": -0.10,
+                "curiosity": -0.04,
+            },
+            "negative_reward": {
+                "caution": 0.38,
+                "exploration": -0.18,
+                "curiosity": 0.05,
+            },
+            "exploration_complete": {
+                "exploration": -0.25,
+                "curiosity": -0.18,
+                "boredom": -0.25,
+            },
+            "social_success": {
+                "social_need": -0.28,
+                "boredom": -0.10,
+            },
+            "rest": {
+                "caution": -0.08,
+                "exploration": -0.06,
+            },
+        }
+        selected = effects.get(event, {})
+        changes: dict[str, dict[str, float]] = {}
+        positive_drives: list[str] = []
+        for drive, delta in selected.items():
+            before = float(self._internal_drive_values[drive])
+            after = self._clip_internal_drive(
+                before + float(delta) * intensity
+            )
+            self._internal_drive_values[drive] = after
+            changes[drive] = {
+                "before": before,
+                "after": after,
+                "delta": after - before,
+            }
+            if after > before:
+                positive_drives.append(drive)
+
+        if inject:
+            for drive in positive_drives:
+                self._inject_internal_drive(
+                    drive,
+                    self._internal_drive_values[drive],
+                    scale=min(0.65, 0.25 + 0.20 * intensity),
+                )
+
+        self._internal_drive_last_event = {
+            "event": event or "unknown",
+            "intensity": float(intensity),
+            "time": time.time(),
+            "changes": changes,
+        }
+        return {
+            "enabled": bool(self.cfg.internal_drives_enabled),
+            **dict(self._internal_drive_last_event),
+            "values": {
+                name: float(self._internal_drive_values[name])
+                for name in self.INTERNAL_DRIVE_NAMES
+            },
+        }
+
+    def internal_drive_diagnostics(self) -> dict:
+        neural_states = self._internal_state_levels()
+        rows: dict[str, dict] = {}
+        for drive in self.INTERNAL_DRIVE_NAMES:
+            mapped = self.INTERNAL_DRIVE_STATE_MAP.get(drive, ())
+            weighted = 0.0
+            weight_total = 0.0
+            mapped_rows = []
+            for state_name, weight in mapped:
+                level = float(
+                    neural_states.get(state_name, {}).get(
+                        "level",
+                        0.0,
+                    )
+                )
+                weight = max(0.0, float(weight))
+                weighted += level * weight
+                weight_total += weight
+                mapped_rows.append({
+                    "state": state_name,
+                    "weight": weight,
+                    "level": level,
+                })
+            rows[drive] = {
+                "value": float(self._internal_drive_values[drive]),
+                "neural_level": (
+                    weighted / weight_total
+                    if weight_total > 0.0
+                    else 0.0
+                ),
+                "mapped_states": mapped_rows,
+            }
+
+        dominant = max(
+            self.INTERNAL_DRIVE_NAMES,
+            key=lambda name: float(
+                self._internal_drive_values[name]
+            ),
+        )
+        return {
+            "enabled": bool(self.cfg.internal_drives_enabled),
+            "dominant": dominant,
+            "dominant_value": float(
+                self._internal_drive_values[dominant]
+            ),
+            "neural_gain": float(
+                self.cfg.internal_drive_neural_gain
+            ),
+            "drives": rows,
+            "last_event": dict(self._internal_drive_last_event),
+            "method": (
+                "slow homeostasis -> sensory entry pools -> "
+                "FAFB internal-state attractors -> action readouts"
             ),
         }
 
@@ -1957,6 +2298,19 @@ class FlyBrain:
                         0,
                         int(value),
                     )
+        if "internal_drive_values" in data:
+            values = np.asarray(
+                data["internal_drive_values"],
+                dtype=np.float32,
+            ).ravel()
+            if len(values) == len(self.INTERNAL_DRIVE_NAMES):
+                for drive, value in zip(
+                    self.INTERNAL_DRIVE_NAMES,
+                    values,
+                ):
+                    self._internal_drive_values[drive] = (
+                        self._clip_internal_drive(float(value))
+                    )
 
     def save(self) -> None:
         p = self.cfg.state_file
@@ -2050,6 +2404,13 @@ class FlyBrain:
                     for action in self.ACTIONS
                 ],
                 dtype=np.int64,
+            ),
+            internal_drive_values=np.asarray(
+                [
+                    self._internal_drive_values[drive]
+                    for drive in self.INTERNAL_DRIVE_NAMES
+                ],
+                dtype=np.float32,
             ),
         )
         tmp.replace(p)
@@ -5227,6 +5588,42 @@ class FlyBrain:
                     changed_indices,
                     changed_values,
                 )
+
+        drive_event = None
+        if amount > 0.0:
+            drive_event = self.register_internal_drive_event(
+                "positive_reward",
+                abs(amount),
+                inject=False,
+            )
+            if action in {"speak", "react", "voice_join"}:
+                self.register_internal_drive_event(
+                    "social_success",
+                    abs(amount),
+                    inject=False,
+                )
+            if action in {"explore", "voice_move"}:
+                self.register_internal_drive_event(
+                    "exploration_complete",
+                    abs(amount),
+                    inject=False,
+                )
+            elif action == "stay":
+                self.register_internal_drive_event(
+                    "rest",
+                    abs(amount),
+                    inject=False,
+                )
+        elif amount < 0.0:
+            drive_event = self.register_internal_drive_event(
+                "negative_reward",
+                abs(amount),
+                inject=False,
+            )
+        if drive_event is not None:
+            self.last_learning["internal_drives"] = (
+                self.internal_drive_diagnostics()
+            )
 
         return self.last_learning
 
