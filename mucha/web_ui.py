@@ -163,6 +163,9 @@ const groups=[
   ["person_model_enabled","Długoterminowe modele ludzi","bool",0,0,0,"Buduje trwały profil doświadczeń konkretnej osoby z pamięci semantycznej i reaktywuje go jako sensoryczny kontekst."],
   ["person_model_min_observations","Model osoby: min. obserwacji","number",1,1,100,"Ile zapisanych doświadczeń potrzeba, zanim profil osoby zacznie być podawany do connectomu."],
   ["person_model_sensory_magnitude","Model osoby: siła sensoryczna","number",0.05,0,1.5,"Siła reiniekcji profilu osoby. Nie jest bonusem do akcji; sygnał przechodzi przez zwykłe neurony sensoryczne."],
+  ["channel_model_enabled","Długoterminowe modele kanałów","bool",0,0,0,"Buduje trwały profil miejsc voice z wizyt, epizodów, ludzi i dynamiki rozmowy."],
+  ["channel_model_min_observations","Model kanału: min. obserwacji","number",1,1,1000,"Ile trwałych obserwacji potrzeba, zanim profil miejsca zacznie być podawany do connectomu."],
+  ["channel_model_sensory_magnitude","Model kanału: siła sensoryczna","number",0.05,0,1.5,"Siła sensorycznej reiniekcji pamięci miejsca. Nie daje bezpośredniego bonusu JOIN/MOVE/STAY."],
   ["social_window_seconds","Okno uczenia społecznego","number",10,30,86400,"Jak długo wcześniejsza akcja może dostać feedback."],
   ["word_reuse_reward","Reward za przejęte słowo","number",0.01,0,1,"Nagroda gdy użytkownik później użyje słowa Muchy."],
   ["phrase_reuse_reward","Reward za przejętą frazę","number",0.01,0,1,"Nagroda za ponowne użycie dłuższej frazy."],
@@ -2217,6 +2220,12 @@ main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template
       <div id="voice-debug"><div class="reason">Czekam na pierwszy cykl voice…</div></div>
     </div>
 
+    <div class="card span3 focus-card">
+      <h2>📍 Long-term Channel / Place Memory <span class="help-dot" data-help-key="channel-memory" tabindex="0">?</span></h2>
+      <div class="reason" id="channel-memory-summary">Czekam na trwałe doświadczenia z kanałami voice…</div>
+      <div class="people-grid" id="channel-memory-grid"><div class="trace-empty">Brak profili miejsc.</div></div>
+    </div>
+
     <div class="section-heading" id="learning-section"><div><span class="section-no">03 / UCZENIE</span><h2>Uczenie i pamięć</h2><p>Zmiany wynikające z rewardu, plastyczność, historia aktywności i to, co utrwaliło się od startu.</p></div></div>
 
     <div class="card span3 focus-card">
@@ -2493,6 +2502,7 @@ const HELP={
   "learning-startup":{title:"Learning Since Startup",body:"Liczniki uczenia od uruchomienia procesu: język, reward events i skumulowane zmiany.",read:"Te liczniki resetują się po restarcie, nawet jeśli trwały stan został zapisany."},
   "social-learning":{title:"Social Learning / Relacje",body:"Długoterminowe sygnały społeczne i affinity użytkowników.",read:"Nie myl z Attention: affinity opisuje relację, Attention opisuje to, co zajmuje Muchę teraz."},
   "person-memory":{title:"Long-term People Memory",body:"Profil osoby powstaje z trwałej pamięci semantycznej: kontaktów tekstowych i voice, wyników wcześniejszych akcji przy tej osobie, signed social events, kanałów i utrwalonych epizodów.",read:"Familiarity mówi ile doświadczenia zebrała Mucha. Valence opisuje typowy wynik zapisanych doświadczeń. To nie jest bezpośredni bonus do decyzji — profil wraca do sensorycznych neuronów connectomu."},
+  "channel-memory":{title:"Long-term Channel / Place Memory",body:"Trwały model kanału voice łączy wizyty, wyniki wcześniejszych decyzji, osoby spotykane w tym miejscu i statystyki dynamiki rozmowy zbierane przy prawdziwych transkrypcjach STT.",read:"Dominant mode i średnie metryki opisują charakter miejsca. Valence pochodzi z realnych rezultatów epizodów. Profil jest sensorycznym wejściem connectomu, nie ręcznym bonusem do wyboru kanału."},
   "reaction-debug":{title:"Reaction Debug",body:"Readout react, próg, cooldown, kandydaci emoji i wynik próby reakcji.",read:"Jeśli score jest wysoki, ale brak reakcji, sprawdź cooldown i Discord permissions."},
   "plasticity":{title:"Plasticity",body:"Trwałe zmiany bias neuronów i wag synaptycznych nałożone na bazowy FAFB.",read:"Bazowy connectome pozostaje nienaruszony; uczenie jest nakładką."},
   "reward-timeline":{title:"Reward timeline",body:"Historia reinforcement events wraz z bieżącym reward trace.",read:"Porównuj znaczniki nagród/kar z Action History i Learning Debug."},
@@ -3290,6 +3300,53 @@ function renderLearning(l){
     (Number(n.activation)>=0?"+":"")+Number(n.activation).toFixed(4)+'</td></tr>'
   ).join("");
 }
+function renderChannelProfiles(items){
+  const root=$("channel-memory-grid"),summary=$("channel-memory-summary");
+  items=Array.isArray(items)?items:[];
+  if(!items.length){
+    summary.innerHTML='<b>Brak dojrzałych profili miejsc.</b> Pojawią się po wizytach i doświadczeniach na voice.';
+    root.innerHTML='<div class="trace-empty">Brak profili miejsc.</div>';
+    return;
+  }
+  const mature=items.filter(x=>Number(x.observations||0)>=2);
+  const avgFam=mature.length
+    ? mature.reduce((a,x)=>a+Number(x.familiarity||0),0)/mature.length
+    : 0;
+  summary.innerHTML='<b>'+nfmt(items.length)+' profili miejsc</b> • '+nfmt(mature.length)+' dojrzałych • średnia familiarity '+(avgFam*100).toFixed(0)+'% • pamięć trwała';
+
+  root.innerHTML=items.slice(0,16).map(p=>{
+    const fam=Math.max(0,Math.min(1,Number(p.familiarity||0)));
+    const conf=Math.max(0,Math.min(1,Number(p.confidence||0)));
+    const val=Math.max(-1,Math.min(1,Number(p.valence||0)));
+    const label=String(p.valence_label||"neutral");
+    const preferred=p.preferred_action||null,avoided=p.avoided_action||null;
+    const people=(p.people||[]).slice(0,5);
+    const modes=(p.conversation_modes||[]).slice(0,4);
+    const recent=(p.recent_episodes||[])[0]||null;
+    const inj=p.last_injection||{},brain=inj.brain||{};
+    const tags=[];
+    modes.forEach(x=>tags.push('<span class="person-tag">'+esc(x.mode||"UNKNOWN")+' ×'+nfmt(x.observations||0)+'</span>'));
+    people.forEach(x=>tags.push('<span class="person-tag">👤 '+esc(x.display_name||x.user_id||"—")+' ×'+nfmt(x.observations||0)+'</span>'));
+    return '<div class="person-card">'+
+      '<div class="person-head"><div><div class="person-name">📍 '+esc(p.channel_name||p.channel_id||"—")+'</div><span class="person-id">'+esc(p.guild||"")+' • '+esc(p.channel_id||"")+'</span></div>'+
+      '<span class="person-valence '+esc(label)+'">'+esc(label.toUpperCase())+' '+(val>=0?"+":"")+val.toFixed(2)+'</span></div>'+
+      '<div class="person-kpis">'+
+        '<div class="person-kpi"><small>Familiarity</small><b>'+(fam*100).toFixed(0)+'%</b></div>'+
+        '<div class="person-kpi"><small>Confidence</small><b>'+(conf*100).toFixed(0)+'%</b></div>'+
+        '<div class="person-kpi"><small>Obserwacje</small><b>'+nfmt(p.observations||0)+'</b></div>'+
+        '<div class="person-kpi"><small>Visit / dynamics</small><b>'+nfmt(p.visit_observations||0)+' / '+nfmt(p.dynamics_observations||0)+'</b></div>'+
+      '</div>'+
+      '<div class="person-lines">'+
+        '<div><b>Typ miejsca:</b> '+esc(p.dominant_mode||"UNKNOWN")+' • intensity '+(Number(p.mean_intensity||0)*100).toFixed(0)+'% • speech '+(Number(p.mean_speech_ratio||0)*100).toFixed(0)+'% • avg humans '+Number(p.mean_human_density||0).toFixed(1)+'</div>'+
+        '<div><b>Dobra akcja:</b> '+(preferred?esc(preferred.action)+' '+(Number(preferred.signal||0)>=0?"+":"")+Number(preferred.signal||0).toFixed(2):'—')+'</div>'+
+        '<div><b>Zła akcja:</b> '+(avoided?esc(avoided.action)+' '+Number(avoided.signal||0).toFixed(2):'—')+'</div>'+
+        '<div><b>Ostatni epizod:</b> '+(recent?(esc(recent.action||"—")+' • '+nfmt(recent.human_count||0)+' ludzi • reward '+(Number(recent.actual_reward||0)>=0?"+":"")+Number(recent.actual_reward||0).toFixed(2)):'—')+'</div>'+
+        '<div><b>Ostatnie wejście do connectomu:</b> '+(inj.checked_at?(nfmt(brain.cue_count||0)+' cues • '+Math.max(0,Date.now()/1000-Number(inj.checked_at)).toFixed(0)+'s temu'):'jeszcze nie użyty w bieżącej sesji')+'</div>'+
+      '</div>'+
+      '<div class="person-tags">'+(tags.join('')||'<span class="person-tag">brak dodatkowych danych</span>')+'</div>'+
+    '</div>';
+  }).join("");
+}
 function renderPersonProfiles(items){
   const root=$("people-memory-grid"),summary=$("people-memory-summary");
   items=Array.isArray(items)?items:[];
@@ -3560,6 +3617,7 @@ async function update(){
     renderLearning(s.learning_debug||{});
     renderSleep(s.sleep||{});
     renderLearningSinceStart(s.learning_since_start||{});
+    renderChannelProfiles(s.channel_profiles||[]);
     renderPersonProfiles(s.person_profiles||[]);
     renderSocial(s);
     renderActionHistory(s.action_history||[]);
