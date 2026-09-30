@@ -321,6 +321,55 @@ def main():
             for row in restored.channel_profiles(8)
         )
 
+        social_scene_key = restored.make_social_scene_key(
+            channel_id=555,
+            user_ids=[11, 22],
+            context="in|need=0|fatigue=1|hab=0|explore=0|humans=2|alts=1",
+            conversation_mode="DIALOGUE",
+            intensity=0.72,
+            speech_ratio=0.64,
+            human_count=2,
+            dominant_state="social_need",
+            dominant_state_level=0.55,
+        )
+        restored.observe_social_scene_contact(
+            social_scene_key,
+            now=time.time(),
+        )
+        restored.observe_social_scene_contact(
+            social_scene_key,
+            now=time.time(),
+        )
+        restored.observe_social_scene_outcome(
+            social_scene_key,
+            "stay",
+            0.65,
+            now=time.time(),
+        )
+        restored.observe_social_scene_outcome(
+            social_scene_key,
+            "voice_leave",
+            -0.45,
+            now=time.time(),
+        )
+        social_scene = restored.social_scene_profile(
+            social_scene_key
+        )
+        assert social_scene["channel_id"] == 555
+        assert social_scene["user_ids"] == [11, 22]
+        assert social_scene["conversation_mode"] == "DIALOGUE"
+        assert social_scene["human_count"] == 2
+        assert social_scene["dominant_state"] == "social_need"
+        assert social_scene["seen_observations"] == 2
+        assert social_scene["outcome_observations"] == 2
+        assert social_scene["familiarity"] > 0.0
+        assert social_scene["preferred_action"]["action"] == "stay"
+        assert social_scene["avoided_action"]["action"] == "voice_leave"
+        assert any(
+            row["scene_key"] == social_scene_key
+            for row in restored.social_scene_profiles(8)
+        )
+
         replay_candidates = restored.replay_candidates(
             limit=4,
             max_age_seconds=86400,
@@ -906,6 +955,9 @@ def main():
         assert "channel_model_enabled" in CONFIG_HTML
         assert "channel_model_min_observations" in CONFIG_HTML
         assert "channel_model_sensory_magnitude" in CONFIG_HTML
+        assert "social_scene_model_enabled" in CONFIG_HTML
+        assert "social_scene_min_observations" in CONFIG_HTML
+        assert "social_scene_sensory_magnitude" in CONFIG_HTML
         assert "connectome_voice_control_enabled" in CONFIG_HTML
         assert "social_drive_enabled" in CONFIG_HTML
         assert "social_drive_max_magnitude" in CONFIG_HTML
@@ -970,6 +1022,10 @@ def main():
         assert "renderChannelProfiles" in HTML
         assert 'id="channel-memory-grid"' in HTML
         assert "channel-memory" in HTML
+        assert "Long-term Social Situations" in HTML
+        assert "renderSocialScenes" in HTML
+        assert 'id="social-scene-grid"' in HTML
+        assert "social-scene-memory" in HTML
         assert "Curiosity / Uncertainty" in HTML
         assert "Tryb rozmowy" in HTML
         assert "Speech ratio 60s" in HTML
@@ -1128,11 +1184,19 @@ def main():
         assert "observe_channel_visit" in episodic_source
         assert "observe_channel_dynamics" in episodic_source
         assert "channel_profile" in episodic_source
+        assert "make_social_scene_key" in episodic_source
+        assert "observe_social_scene_contact" in episodic_source
+        assert "observe_social_scene_outcome" in episodic_source
+        assert "social_scene_profile" in episodic_source
         assert '"channel_visit"' in episodic_source
         assert '"channel_people"' in episodic_source
         assert '"channel_mode"' in episodic_source
         assert "inject_person_profile" in bot_source
         assert "inject_channel_profile" in bot_source
+        assert "inject_social_scene_profile" in bot_source
+        assert "social_scene_key" in bot_source
+        assert "observe_social_scene_contact" in bot_source
+        assert "observe_social_scene_outcome" in bot_source
         assert "observe_person_contact" in bot_source
         assert "observe_person_social_event" in bot_source
         assert "observe_channel_visit" in bot_source
