@@ -1496,6 +1496,20 @@ def main():
         brain_source = (ROOT / "mucha" / "brain.py").read_text(
             encoding="utf-8"
         )
+        config_source = (ROOT / "mucha" / "config.py").read_text(
+            encoding="utf-8"
+        )
+        config_toml_source = (ROOT / "config.toml").read_text(
+            encoding="utf-8"
+        )
+        for key in (
+            "autonomous_loop_enabled",
+            "autonomous_predicted_reward_gain",
+            "autonomous_prediction_steps",
+            "autonomous_explore_cooldown_seconds",
+        ):
+            assert key in config_source
+            assert key in config_toml_source
         assert "def action_competition" in brain_source
         assert "def tick_internal_drives" in brain_source
         assert "def register_internal_drive_event" in brain_source
