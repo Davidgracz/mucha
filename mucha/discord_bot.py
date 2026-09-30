@@ -497,6 +497,7 @@ class MuchaClient(discord.Client):
             "attention_mention_boost",
             "speak_threshold",
             "reaction_threshold",
+            "connectome_behavior_competition_enabled",
             "reaction_cooldown_seconds",
             "social_learning_enabled",
             "neural_social_memory_enabled",
@@ -869,6 +870,9 @@ class MuchaClient(discord.Client):
             ("behavior", "attention_mention_boost"): (float, 0.0, 1.0),
             ("behavior", "speak_threshold"): (float, 0.0, 1.0),
             ("behavior", "reaction_threshold"): (float, 0.0, 1.0),
+            ("behavior", "connectome_behavior_competition_enabled"): (
+                bool, None, None
+            ),
             ("behavior", "reaction_cooldown_seconds"): (int, 0, 3600),
             ("behavior", "social_learning_enabled"): (bool, None, None),
             ("behavior", "neural_social_memory_enabled"): (
@@ -4660,6 +4664,58 @@ class MuchaClient(discord.Client):
         finally:
             await super().close()
 
+    def _behavior_gate(
+        self,
+        action: str,
+        raw_score: float,
+        legacy_threshold: float,
+        *,
+        alternatives: tuple[str, ...] = ("stay",),
+    ) -> dict:
+        """Use neural readout competition; keep thresholds only as legacy fallback."""
+        if not self.cfg.behavior.connectome_behavior_competition_enabled:
+            gate = self.brain.action_policy_gate(
+                action,
+                raw_score,
+                legacy_threshold,
+            )
+            gate["decision_mode"] = "legacy-threshold"
+            gate["competition"] = {}
+            return gate
+
+        competition = self.brain.action_competition(
+            (action, *alternatives)
+        )
+        policy = self.brain.action_policy_diagnostics()
+        action_row = dict(
+            policy.get("actions", {}).get(action, {})
+        )
+        candidates = dict(competition.get("candidates", {}))
+        return {
+            "action": str(action),
+            "enabled": bool(self.brain.cfg.action_policy_enabled),
+            "raw_score": float(raw_score),
+            "bias": float(action_row.get("bias", 0.0)),
+            "effective_score": float(
+                candidates.get(
+                    action,
+                    self.brain.action_policy_score(
+                        action,
+                        raw_score,
+                    ),
+                )
+            ),
+            "base_threshold": float(legacy_threshold),
+            "learned_raw_threshold": float(legacy_threshold),
+            "passed": bool(competition.get("action") == action),
+            "reward_ema": float(
+                action_row.get("reward_ema", 0.0)
+            ),
+            "updates": int(action_row.get("updates", 0)),
+            "decision_mode": "connectome-competition",
+            "competition": competition,
+        }
+
     async def on_message(self, message: discord.Message):
         if message.guild is None or message.author.id == self.user.id:
             return
@@ -4814,12 +4870,12 @@ class MuchaClient(discord.Client):
                 )
             self.brain.step(self.cfg.brain.steps_per_event)
             scores = self.brain.action_scores()
-            react_gate = self.brain.action_policy_gate(
+            react_gate = self._behavior_gate(
                 "react",
                 scores["react"],
                 self.cfg.behavior.reaction_threshold,
             )
-            speak_gate = self.brain.action_policy_gate(
+            speak_gate = self._behavior_gate(
                 "speak",
                 scores["speak"],
                 self.cfg.behavior.speak_threshold,
@@ -6369,7 +6425,7 @@ class MuchaClient(discord.Client):
             self.brain.inject("internal:time", 0.035, 32)
             self.brain.step(self.cfg.brain.idle_steps)
             scores = self.brain.action_scores()
-            spontaneous_gate = self.brain.action_policy_gate(
+            spontaneous_gate = self._behavior_gate(
                 "speak",
                 scores["speak"],
                 min(
@@ -6941,12 +6997,12 @@ class MuchaClient(discord.Client):
             attention_debug = self._attention_snapshot()
             action_policy_debug = self.brain.action_policy_diagnostics()
             action_policy_debug["gates"] = {
-                "speak": self.brain.action_policy_gate(
+                "speak": self._behavior_gate(
                     "speak",
                     scores["speak"],
                     self.cfg.behavior.speak_threshold,
                 ),
-                "spontaneous_speak": self.brain.action_policy_gate(
+                "spontaneous_speak": self._behavior_gate(
                     "speak",
                     scores["speak"],
                     min(
@@ -6954,7 +7010,7 @@ class MuchaClient(discord.Client):
                         self.cfg.behavior.speak_threshold + 0.08,
                     ),
                 ),
-                "react": self.brain.action_policy_gate(
+                "react": self._behavior_gate(
                     "react",
                     scores["react"],
                     self.cfg.behavior.reaction_threshold,
