@@ -2976,7 +2976,9 @@ function renderVoiceDebug(items){
 
     const channels=(v.channels||[]).map(ch=>{
       const aff=ch.affinity==null?"—":Number(ch.affinity).toFixed(3);
-      const explore=ch.exploration_score==null?"—":Number(ch.exploration_score).toFixed(3);
+      const targetScore=neural
+        ? (ch.neural_target_score==null?"—":Number(ch.neural_target_score).toFixed(3))
+        : (ch.exploration_score==null?"—":Number(ch.exploration_score).toFixed(3));
       const novelty=ch.novelty==null?"—":(Number(ch.novelty)*100).toFixed(0)+"%";
       const uncertainty=ch.semantic_uncertainty==null?"—":(Number(ch.semantic_uncertainty)*100).toFixed(0)+"%";
       const visitAge=ch.visit_age==null?"never":Number(ch.visit_age).toFixed(0)+"s";
@@ -2986,7 +2988,7 @@ function renderVoiceDebug(items){
         '<td>'+(ch.current?"▶ ":"")+esc(ch.name)+'</td>'+
         '<td>'+Number(ch.humans||0)+'</td>'+
         '<td>'+aff+'</td>'+
-        '<td>'+explore+'</td>'+
+        '<td>'+targetScore+'</td>'+
         '<td>'+novelty+'</td>'+
         '<td>'+uncertainty+'</td>'+
         '<td>'+visitAge+'</td>'+
@@ -3153,6 +3155,9 @@ function renderVoiceDebug(items){
           '<h3>🔬 Co faktycznie dochodzi do readoutów</h3>'+
           '<div class="voice-kpis">'+
             kpi("Propagation",Number(v.motivation_propagation_steps||0)+" tick")+
+            kpi("Action selection",neural?"NEURAL":"LEGACY",neural?"ok":"warn")+
+            kpi("Target selection",esc(v.target_selection_source||"—"),neural?"ok":"warn")+
+            kpi("Learning timing",v.learning_updates_do_not_override_current_decision?"NEXT TICK":"normal",v.learning_updates_do_not_override_current_decision?"ok":"")+
             kpi("Social guided",socialMode.startsWith("connectome-guided")?"OK":"—",socialMode.startsWith("connectome-guided")?"ok":"")+
             kpi("Reward guided",rewardMode.startsWith("connectome-guided")?"OK":"—",rewardMode.startsWith("connectome-guided")?"ok":"")+
             kpi("Tie evidence",tieSummary?"jest":"—",tieSummary?"ok":"")+
@@ -3197,7 +3202,7 @@ function renderVoiceDebug(items){
         '</div>'+
       '</details>'+
 
-      '<details class="voice-technical" data-detail-key="channels-'+esc(v.guild||"server")+'"><summary>▸ Kanały głosowe ('+Number((v.channels||[]).length)+')</summary><div class="voice-technical-body"><div class="voice-table-wrap"><table><thead><tr><th>Kanał</th><th>Ludzie</th><th>Affinity</th><th>Explore</th><th>Novelty</th><th>Uncertainty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table></div></div></details>'+
+      '<details class="voice-technical" data-detail-key="channels-'+esc(v.guild||"server")+'"><summary>▸ Kanały głosowe ('+Number((v.channels||[]).length)+')</summary><div class="voice-technical-body"><div class="voice-table-wrap"><table><thead><tr><th>Kanał</th><th>Ludzie</th><th>Affinity</th><th>Target score</th><th>Novelty</th><th>Uncertainty</th><th>Last visit</th><th>Status</th></tr></thead><tbody>'+channels+'</tbody></table></div></div></details>'+
     '</div>';
   }).join('<div class="voice-server-sep"></div>');
   root.querySelectorAll("details[data-detail-key]").forEach(el=>{
