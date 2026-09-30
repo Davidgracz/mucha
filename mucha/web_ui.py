@@ -169,6 +169,10 @@ const groups=[
   ["social_scene_model_enabled","Długoterminowe sytuacje społeczne","bool",0,0,0,"Łączy ludzi, kanał, dynamikę rozmowy i stan Muchy w trwałe powtarzalne sceny."],
   ["social_scene_min_observations","Sytuacja społeczna: min. obserwacji","number",1,1,1000,"Ile obserwacji sytuacji potrzeba, zanim jej profil zacznie wracać do connectomu."],
   ["social_scene_sensory_magnitude","Sytuacja społeczna: siła sensoryczna","number",0.05,0,1.5,"Siła reiniekcji znanej sytuacji jako zwykłego sensorycznego kontekstu connectomu."],
+  ["voice_dynamics_learning_enabled","Uczenie dynamiki rozmowy z rewardu","bool",0,0,0,"Uczy wyniki SPEAK/STAY/JOIN/MOVE/LEAVE dla powtarzalnych wzorców rozmowy niezależnie od konkretnej osoby i kanału."],
+  ["voice_dynamics_min_observations","Dynamika rozmowy: min. obserwacji","number",1,1,1000,"Od ilu obserwacji znany wzorzec dynamiki wraca do connectomu."],
+  ["voice_dynamics_sensory_magnitude","Dynamika rozmowy: siła sensoryczna","number",0.05,0,1.5,"Siła reiniekcji wyuczonej historii dynamiki rozmowy. Nie modyfikuje action score bezpośrednio."],
+  ["voice_dynamics_seen_cooldown_seconds","Dynamika rozmowy: cooldown familiarity","number",5,5,3600,"Minimalny odstęp między neutralnymi obserwacjami tego samego wzorca, aby polling nie pompował familiarity."],
   ["social_window_seconds","Okno uczenia społecznego","number",10,30,86400,"Jak długo wcześniejsza akcja może dostać feedback."],
   ["word_reuse_reward","Reward za przejęte słowo","number",0.01,0,1,"Nagroda gdy użytkownik później użyje słowa Muchy."],
   ["phrase_reuse_reward","Reward za przejętą frazę","number",0.01,0,1,"Nagroda za ponowne użycie dłuższej frazy."],
@@ -2229,6 +2233,12 @@ main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template
       <div class="people-grid" id="channel-memory-grid"><div class="trace-empty">Brak profili miejsc.</div></div>
     </div>
 
+    <div class="card span3 focus-card">
+      <h2>🎚 Reward-learned Conversation Dynamics <span class="help-dot" data-help-key="voice-dynamics-memory" tabindex="0">?</span></h2>
+      <div class="reason" id="voice-dynamics-summary">Czekam na reward/punish przypisany do dynamiki rozmowy…</div>
+      <div class="people-grid" id="voice-dynamics-grid"><div class="trace-empty">Brak wyuczonych wzorców dynamiki.</div></div>
+    </div>
+
     <div class="section-heading" id="learning-section"><div><span class="section-no">03 / UCZENIE</span><h2>Uczenie i pamięć</h2><p>Zmiany wynikające z rewardu, plastyczność, historia aktywności i to, co utrwaliło się od startu.</p></div></div>
 
     <div class="card span3 focus-card">
@@ -2512,6 +2522,7 @@ const HELP={
   "social-learning":{title:"Social Learning / Relacje",body:"Długoterminowe sygnały społeczne i affinity użytkowników.",read:"Nie myl z Attention: affinity opisuje relację, Attention opisuje to, co zajmuje Muchę teraz."},
   "person-memory":{title:"Long-term People Memory",body:"Profil osoby powstaje z trwałej pamięci semantycznej: kontaktów tekstowych i voice, wyników wcześniejszych akcji przy tej osobie, signed social events, kanałów i utrwalonych epizodów.",read:"Familiarity mówi ile doświadczenia zebrała Mucha. Valence opisuje typowy wynik zapisanych doświadczeń. To nie jest bezpośredni bonus do decyzji — profil wraca do sensorycznych neuronów connectomu."},
   "channel-memory":{title:"Long-term Channel / Place Memory",body:"Trwały model kanału voice łączy wizyty, wyniki wcześniejszych decyzji, osoby spotykane w tym miejscu i statystyki dynamiki rozmowy zbierane przy prawdziwych transkrypcjach STT.",read:"Dominant mode i średnie metryki opisują charakter miejsca. Valence pochodzi z realnych rezultatów epizodów. Profil jest sensorycznym wejściem connectomu, nie ręcznym bonusem do wyboru kanału."},
+  "voice-dynamics-memory":{title:"Reward-learned Conversation Dynamics",body:"Ten model generalizuje ponad ludźmi i kanałami. Rozpoznaje wzorce typu DIALOGUE/CROSSTALK, tempo zmian mówców, overlap, handoff, długość tur, dominację, ciszę i tempo mowy, a realny reward/punish uczy wyników akcji w takich warunkach.",read:"Seen zwiększa tylko familiarity. Historyczne wyniki SPEAK/STAY/JOIN/MOVE/LEAVE wracają jako sensory connectomu, nie jako bezpośredni bonus do action score."},
   "social-scene-memory":{title:"Long-term Social Situations",body:"Scena łączy KTO + GDZIE + dynamikę rozmowy + dominujący stan wewnętrzny Muchy. Neutralne widzenie sceny zwiększa familiarity, a reward/punish zapisuje wynik konkretnych akcji.",read:"Klikalnego wyboru akcji tu nie ma: znana scena wraca jako sensory do connectomu. Dobra/zła akcja opisuje pamięć historyczną, a nie ręcznie ustawiony bonus."},
   "reaction-debug":{title:"Reaction Debug",body:"Readout react, próg, cooldown, kandydaci emoji i wynik próby reakcji.",read:"Jeśli score jest wysoki, ale brak reakcji, sprawdź cooldown i Discord permissions."},
   "plasticity":{title:"Plasticity",body:"Trwałe zmiany bias neuronów i wag synaptycznych nałożone na bazowy FAFB.",read:"Bazowy connectome pozostaje nienaruszony; uczenie jest nakładką."},
@@ -3352,6 +3363,47 @@ function renderSocialScenes(items){
     '</div>';
   }).join("");
 }
+function renderVoiceDynamicsProfiles(items){
+  const root=$("voice-dynamics-grid"),summary=$("voice-dynamics-summary");
+  items=Array.isArray(items)?items:[];
+  if(!items.length){
+    summary.innerHTML='<b>Brak wyuczonych wzorców.</b> Potrzebny jest realny reward/punish po decyzjach voice lub TTS.';
+    root.innerHTML='<div class="trace-empty">Brak profili dynamiki rozmowy.</div>';
+    return;
+  }
+  const learned=items.filter(x=>Number(x.outcome_observations||0)>0);
+  summary.innerHTML='<b>'+nfmt(items.length)+' wzorców</b> • '+nfmt(learned.length)+' z realnym outcome • generalizacja niezależna od osoby i kanału';
+
+  root.innerHTML=items.slice(0,16).map(p=>{
+    const fam=Math.max(0,Math.min(1,Number(p.familiarity||0)));
+    const conf=Math.max(0,Math.min(1,Number(p.confidence||0)));
+    const val=Math.max(-1,Math.min(1,Number(p.valence||0)));
+    const label=String(p.valence_label||"neutral");
+    const preferred=p.preferred_action||null,avoided=p.avoided_action||null;
+    const inj=p.last_injection||{},brain=inj.brain||{};
+    const actions=(p.actions||[]).slice(0,6).map(x=>
+      '<span class="person-tag">'+esc(x.action||"—")+' '+(Number(x.signal||0)>=0?"+":"")+Number(x.signal||0).toFixed(2)+' ×'+nfmt(x.observations||0)+'</span>'
+    ).join('');
+    return '<div class="person-card">'+
+      '<div class="person-head"><div><div class="person-name">🎚 '+esc(p.conversation_mode||"UNKNOWN")+'</div><span class="person-id">'+
+        'int '+nfmt(p.intensity_bucket||0)+'/3 • speech '+nfmt(p.speech_bucket||0)+'/3 • switches '+nfmt(p.switch_bucket||0)+'/3 • overlap '+nfmt(p.overlap_bucket||0)+'/3</span></div>'+
+      '<span class="person-valence '+esc(label)+'">'+esc(label.toUpperCase())+' '+(val>=0?"+":"")+val.toFixed(2)+'</span></div>'+
+      '<div class="person-kpis">'+
+        '<div class="person-kpi"><small>Familiarity</small><b>'+(fam*100).toFixed(0)+'%</b></div>'+
+        '<div class="person-kpi"><small>Confidence</small><b>'+(conf*100).toFixed(0)+'%</b></div>'+
+        '<div class="person-kpi"><small>Seen / outcome</small><b>'+nfmt(p.seen_observations||0)+' / '+nfmt(p.outcome_observations||0)+'</b></div>'+
+        '<div class="person-kpi"><small>Handoff / turn</small><b>'+esc(p.handoff_bucket||"none")+' / '+esc(p.turn_bucket||"none")+'</b></div>'+
+      '</div>'+
+      '<div class="person-lines">'+
+        '<div><b>Dominacja:</b> '+nfmt(p.dominance_bucket||0)+'/3 • <b>cisza:</b> '+esc(p.silence_bucket||"—")+' • <b>speech rate:</b> '+esc(p.speech_rate_bucket||"—")+'</div>'+
+        '<div><b>Najlepszy historyczny wynik:</b> '+(preferred?esc(preferred.action)+' '+(Number(preferred.signal||0)>=0?"+":"")+Number(preferred.signal||0).toFixed(2):'—')+'</div>'+
+        '<div><b>Najgorszy historyczny wynik:</b> '+(avoided?esc(avoided.action)+' '+Number(avoided.signal||0).toFixed(2):'—')+'</div>'+
+        '<div><b>Ostatnie wejście do connectomu:</b> '+(inj.checked_at?(nfmt(brain.cue_count||0)+' cues • '+Math.max(0,Date.now()/1000-Number(inj.checked_at)).toFixed(0)+'s temu'):'jeszcze nie użyty w bieżącej sesji')+'</div>'+
+      '</div>'+
+      '<div class="person-tags">'+(actions||'<span class="person-tag">brak wyników akcji</span>')+'</div>'+
+    '</div>';
+  }).join("");
+}
 function renderChannelProfiles(items){
   const root=$("channel-memory-grid"),summary=$("channel-memory-summary");
   items=Array.isArray(items)?items:[];
@@ -3670,6 +3722,7 @@ async function update(){
     renderSleep(s.sleep||{});
     renderLearningSinceStart(s.learning_since_start||{});
     renderSocialScenes(s.social_scene_profiles||[]);
+    renderVoiceDynamicsProfiles(s.voice_dynamics_profiles||[]);
     renderChannelProfiles(s.channel_profiles||[]);
     renderPersonProfiles(s.person_profiles||[]);
     renderSocial(s);
