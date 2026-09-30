@@ -4754,7 +4754,7 @@ class MuchaClient(discord.Client):
         }
 
         if will_speak:
-            await self._send_learned(
+            sent_ok = await self._send_learned(
                 message.channel,
                 message.content,
                 scores["explore"],
@@ -4764,7 +4764,27 @@ class MuchaClient(discord.Client):
                     else None
                 ),
             )
-            self.last_reply[message.guild.id] = now
+            if sent_ok:
+                self.last_reply[message.guild.id] = now
+                self._text_decision_debug["actual_action"] = (
+                    " + ".join(actual_actions)
+                )
+            else:
+                self._text_decision_debug["actual_action"] = (
+                    " + ".join(
+                        action
+                        for action in actual_actions
+                        if not action.startswith("SPEAK")
+                    )
+                    or "BRAK AKCJI"
+                )
+                self._text_decision_debug["decision"] = (
+                    "SPEAK WYBRANE, GENERATOR NIE WYSŁAŁ"
+                )
+                self._text_decision_debug["reason"] = (
+                    "gate przeszedł, ale generator nie zwrócił tekstu "
+                    "albo Discord odrzucił wysyłkę"
+                )
 
     def _brain_word_feedback(
         self,
@@ -4788,9 +4808,9 @@ class MuchaClient(discord.Client):
         context: str,
         arousal: float,
         target_member: discord.Member | None = None,
-    ):
+    ) -> bool:
         if self._is_text_channel_blocked(channel):
-            return
+            return False
         async with self._brain_lock:
             internal = self.brain.internal_state_diagnostics()
             neural_arousal = float(
@@ -4818,7 +4838,7 @@ class MuchaClient(discord.Client):
             else:
                 learning_trace = None
         if not text or learning_trace is None:
-            return
+            return False
         try:
             sent = await channel.send(text, allowed_mentions=discord.AllowedMentions.none())
             guild = getattr(channel, "guild", None)
@@ -4916,8 +4936,10 @@ class MuchaClient(discord.Client):
                 oldest = sorted(self.sent.items(), key=lambda kv: kv[1].created)[:100]
                 for mid, _ in oldest:
                     self.sent.pop(mid, None)
+            return True
         except (discord.Forbidden, discord.HTTPException):
             log.exception("Nie udało się wysłać wiadomości")
+            return False
 
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         if self.user and payload.user_id == self.user.id:
