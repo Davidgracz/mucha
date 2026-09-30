@@ -4580,6 +4580,37 @@ class WebDashboard:
             except Exception:
                 pass
 
+        # psutil is optional in the local Windows launcher. If it is missing
+        # or Process() initialization failed, keep the live Mucha RAM tile
+        # working through the native Win32 working-set counter.
+        if process_rss <= 0 and os.name == "nt":
+            try:
+                class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
+                    _fields_ = [
+                        ("cb", ctypes.c_ulong),
+                        ("PageFaultCount", ctypes.c_ulong),
+                        ("PeakWorkingSetSize", ctypes.c_size_t),
+                        ("WorkingSetSize", ctypes.c_size_t),
+                        ("QuotaPeakPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaPeakNonPagedPoolUsage", ctypes.c_size_t),
+                        ("QuotaNonPagedPoolUsage", ctypes.c_size_t),
+                        ("PagefileUsage", ctypes.c_size_t),
+                        ("PeakPagefileUsage", ctypes.c_size_t),
+                    ]
+
+                counters = PROCESS_MEMORY_COUNTERS()
+                counters.cb = ctypes.sizeof(counters)
+                process_handle = ctypes.windll.kernel32.GetCurrentProcess()
+                if ctypes.windll.psapi.GetProcessMemoryInfo(
+                    process_handle,
+                    ctypes.byref(counters),
+                    counters.cb,
+                ):
+                    process_rss = int(counters.WorkingSetSize)
+            except Exception:
+                process_rss = 0
+
         if total <= 0:
             if os.name == "nt":
                 try:
