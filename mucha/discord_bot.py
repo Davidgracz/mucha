@@ -289,6 +289,12 @@ class MuchaClient(discord.Client):
         self._decision_trace_history = deque(maxlen=48)
         self._decision_trace_seq = 0
         self._decision_trace_last_key: tuple | None = None
+        self._autonomous_candidate_debug: dict = {
+            "stage": "24B",
+            "updated_at": 0.0,
+            "guilds": [],
+            "executed": False,
+        }
         self._reaction_debug: dict = {
             "score": 0.0,
             "effective_score": 0.0,
@@ -6493,6 +6499,130 @@ class MuchaClient(discord.Client):
             )
         return replayed
 
+
+    def _autonomous_candidate_contexts(self) -> list[dict]:
+        """Collect only technical feasibility for 24B candidate generation."""
+        now = time.monotonic()
+        contexts: list[dict] = []
+        language_ready = bool(
+            self.cfg.language.spontaneous_text
+            and self.language.ready()
+        )
+
+        for guild in self.guilds:
+            if self._is_voice_guild_blocked(guild):
+                voice_enabled = False
+            else:
+                voice_enabled = bool(self.cfg.voice.enabled)
+
+            cid = self.last_text_channel.get(guild.id)
+            text_channel = guild.get_channel(cid) if cid else None
+            can_speak = bool(
+                language_ready
+                and isinstance(text_channel, discord.TextChannel)
+                and not self._is_text_channel_blocked(text_channel)
+            )
+
+            vc = guild.voice_client
+            current = (
+                vc.channel
+                if vc is not None
+                and vc.is_connected()
+                and getattr(vc, "channel", None) is not None
+                else None
+            )
+            connected = current is not None
+            me = guild.me
+            chaser_id = self._chaser_confirmed.get(guild.id)
+            chaser_active = (
+                self._chaser_panic_remaining(guild.id, now) > 0.0
+            )
+            targets: list[dict] = []
+
+            if voice_enabled and me is not None:
+                for channel in guild.voice_channels:
+                    if current is not None and channel.id == current.id:
+                        continue
+                    if self._is_voice_channel_blocked(channel):
+                        continue
+                    if (
+                        self.cfg.voice.exclude_afk_channel
+                        and guild.afk_channel is not None
+                        and channel.id == guild.afk_channel.id
+                    ):
+                        continue
+                    if (
+                        self._deadly_voice_remaining(
+                            guild.id,
+                            channel.id,
+                            now,
+                        )
+                        > 0.0
+                    ):
+                        continue
+                    permissions = channel.permissions_for(me)
+                    if (
+                        not permissions.view_channel
+                        or not permissions.connect
+                    ):
+                        continue
+                    humans = [
+                        member
+                        for member in channel.members
+                        if not member.bot
+                    ]
+                    if (
+                        not humans
+                        and not self.cfg.voice.include_empty_channels
+                    ):
+                        continue
+                    if (
+                        chaser_active
+                        and chaser_id is not None
+                        and any(
+                            int(member.id) == int(chaser_id)
+                            for member in channel.members
+                        )
+                    ):
+                        continue
+                    targets.append({
+                        "id": int(channel.id),
+                        "name": str(channel.name),
+                        "humans": int(len(humans)),
+                    })
+
+            contexts.append({
+                "guild_id": int(guild.id),
+                "guild": str(guild.name),
+                "can_speak": can_speak,
+                "text_channel_id": (
+                    int(text_channel.id)
+                    if can_speak
+                    else None
+                ),
+                "text_channel": (
+                    str(text_channel.name)
+                    if can_speak
+                    else None
+                ),
+                "connected_voice": connected,
+                "current_voice_id": (
+                    int(current.id)
+                    if current is not None
+                    else None
+                ),
+                "current_voice": (
+                    str(current.name)
+                    if current is not None
+                    else None
+                ),
+                "voice_target_count": int(len(targets)),
+                "voice_targets": targets[:12],
+                "can_explore": True,
+            })
+
+        return contexts
+
     @tasks.loop(seconds=5)
     async def idle_loop(self):
         await self.wait_until_ready()
@@ -6520,6 +6650,7 @@ class MuchaClient(discord.Client):
             )
             for vc in self.voice_clients
         )
+        autonomous_contexts = self._autonomous_candidate_contexts()
         async with self._brain_lock:
             self.brain.consolidate_and_forget(now=wall_now)
             for guild in self.guilds:
@@ -6531,6 +6662,31 @@ class MuchaClient(discord.Client):
             )
             self.brain.inject("internal:time", 0.035, 32)
             self.brain.step(self.cfg.brain.idle_steps)
+            autonomous_rows = []
+            for context in autonomous_contexts:
+                candidate_set = self.brain.autonomous_action_candidates(
+                    can_speak=bool(context["can_speak"]),
+                    connected_voice=bool(
+                        context["connected_voice"]
+                    ),
+                    voice_target_count=int(
+                        context["voice_target_count"]
+                    ),
+                    can_explore=bool(context["can_explore"]),
+                )
+                autonomous_rows.append({
+                    **context,
+                    "candidate_set": candidate_set,
+                })
+            self._autonomous_candidate_debug = {
+                "stage": "24B",
+                "updated_at": wall_now,
+                "guilds": autonomous_rows,
+                "executed": False,
+                "note": (
+                    "candidate generation only; execution arrives in 24D"
+                ),
+            }
             scores = self.brain.action_scores()
             spontaneous_gate = self._behavior_gate(
                 "speak",
@@ -7467,6 +7623,9 @@ class MuchaClient(discord.Client):
             "voice_sensory_debug": voice_sensory_rows,
             "attention": attention_debug,
             "action_policy": action_policy_debug,
+            "autonomous_candidates": deepcopy(
+                self._autonomous_candidate_debug
+            ),
             "episodic_memory": self.voice_episodes.diagnostics(),
             "memory_replay": dict(self._memory_replay_debug),
             "sleep": dict(self._sleep_debug),
