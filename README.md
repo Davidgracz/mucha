@@ -1339,3 +1339,60 @@ To celowo oddziela:
 24D: pozwól autonomicznej pętli wykonać zwycięzcę
 ```
 
+---
+
+# Stage 24C — Predicted Reward
+
+Każdy autonomiczny kandydat z 24B ma teraz przewidywany reward przed wykonaniem akcji.
+
+Predykcja nie jest ręcznym bonusem przypisanym do typu zachowania. Jest uczona z rzeczywistych wyników:
+
+```text
+global action history:
+reward_ema + liczba reward update'ów
+
+voice context:
+episodic prediction dla konkretnej sceny / ludzi / kanału
+```
+
+Brak wcześniejszych doświadczeń daje neutralny prior:
+
+```text
+predicted_reward = 0
+confidence = 0
+```
+
+Wraz z kolejnymi doświadczeniami rośnie `prediction_confidence`. Jeżeli istnieje zarówno ogólna historia akcji, jak i kontekstowa pamięć voice, oba przewidywania są łączone proporcjonalnie do confidence wynikającego z liczby obserwacji.
+
+Każdy kandydat zawiera teraz m.in.:
+
+```text
+predicted_reward
+prediction_confidence
+prediction_source
+global_reward
+global_observations
+contextual_reward
+contextual_observations
+```
+
+24C tworzy też:
+
+```text
+predicted_reward_order
+predicted_reward_winner
+```
+
+To nadal wyłącznie preview. `prediction_executed = false` i `executed = false`.
+
+Rozdział odpowiedzialności pozostaje świadomy:
+
+```text
+24A — wewnętrzne potrzeby
+24B — jakie akcje są możliwe
+24C — czego Mucha spodziewa się po każdej akcji
+24D — autonomicznie wybierz i wykonaj akcję
+```
+
+Dla voice 24C wykorzystuje istniejącą trwałą pamięć epizodyczną i jej prediction error / temporal credit zamiast budować drugi niezależny model.
+
