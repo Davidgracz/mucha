@@ -1859,6 +1859,7 @@ main{max-width:1500px;margin:auto;padding:22px}
 .help-tooltip{position:fixed;z-index:9999;width:min(360px,calc(100vw - 24px));background:#071019;border:1px solid #355168;border-radius:13px;padding:12px 13px;box-shadow:0 18px 55px rgba(0,0,0,.55);pointer-events:none;opacity:0;transform:translateY(4px);transition:opacity .12s ease,transform .12s ease}
 .help-tooltip.show{opacity:1;transform:none}.help-tooltip .tt-title{font-weight:800;color:#eaf5fc;font-size:12px;margin-bottom:5px}.help-tooltip .tt-body{color:#a9b9c7;font-size:10px;line-height:1.5}.help-tooltip .tt-read{margin-top:7px;padding-top:7px;border-top:1px solid #1d2d3a;color:#77daca;font-size:10px;line-height:1.45}
 .metric>span:first-child,.kpi small,.voice-kpi small,.voice-box h3,.attention-panel h3,th{display:flex;align-items:center;gap:5px}
+.system-strip{display:grid;grid-template-columns:repeat(6,minmax(120px,1fr));gap:8px;margin:0 0 12px}.system-live-card{background:#0b1219;border:1px solid #203142;border-radius:12px;padding:9px 10px;min-width:0}.system-live-card small{display:block;color:#758697;font-size:8px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:4px}.system-live-card strong{font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;display:block}.system-live-bar{height:4px;border-radius:99px;background:#071019;overflow:hidden;margin-top:6px}.system-live-bar i{display:block;height:100%;width:0;background:linear-gradient(90deg,var(--accent),var(--accent2));transition:width .18s linear}
 .detail-nav{position:sticky;top:8px;z-index:30;display:flex;align-items:center;gap:7px;overflow-x:auto;margin:0 0 18px;padding:8px;background:rgba(10,15,21,.88);border:1px solid var(--line);border-radius:14px;backdrop-filter:blur(14px);box-shadow:0 10px 30px rgba(0,0,0,.18)}
 .detail-nav a{flex:0 0 auto;color:#aebdcb;text-decoration:none;font-size:11px;font-weight:700;padding:8px 10px;border-radius:9px;border:1px solid transparent}
 .detail-nav a:hover{color:var(--text);background:#111b25;border-color:#26384a}.detail-nav a:first-child{color:#07110e;background:var(--accent)}
@@ -1949,8 +1950,10 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .legend .reward-line::before{background:var(--warn)}.legend .trace-line::before{background:var(--accent)}
 @media(max-width:1180px){.decision-flow{grid-template-columns:1fr 20px 1fr 20px 1fr}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:none}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:span 2}}
 @media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.span3{grid-column:span 2}.voice-hero{grid-template-columns:1fr 1fr}.voice-hero-main{grid-column:span 2}.voice-groups{grid-template-columns:1fr 1fr}.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:span 2}}
+@media(max-width:1100px){.system-strip{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.voice-summary,.learning-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.voice-tech-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.attention-shell{grid-template-columns:1fr 1fr}.attention-shell>.attention-panel:last-child{grid-column:span 2}}
-@media(max-width:700px){main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg);height:14px}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:grid}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:auto}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
+@media(max-width:700px){.system-strip{grid-template-columns:1fr 1fr}
+main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg);height:14px}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:grid}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:auto}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
 </style>
 </head>
 <body>
@@ -1969,6 +1972,15 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
       <div class="badge" id="clock">—</div>
       </div>
     </div>
+  </div>
+
+  <div class="system-strip" aria-label="Live system telemetry">
+    <div class="system-live-card"><small>CPU system</small><strong id="detail-cpu">—</strong><div class="system-live-bar"><i id="detail-cpu-bar"></i></div></div>
+    <div class="system-live-card"><small>CPU Mucha</small><strong id="detail-proc-cpu">—</strong><div class="system-live-bar"><i id="detail-proc-cpu-bar"></i></div></div>
+    <div class="system-live-card"><small>RAM system</small><strong id="detail-ram">—</strong><div class="system-live-bar"><i id="detail-ram-bar"></i></div></div>
+    <div class="system-live-card"><small>RAM Mucha</small><strong id="detail-proc-ram">—</strong></div>
+    <div class="system-live-card"><small>Dysk</small><strong id="detail-disk">—</strong><div class="system-live-bar"><i id="detail-disk-bar"></i></div></div>
+    <div class="system-live-card"><small>GPU / VRAM</small><strong id="detail-gpu">—</strong><div class="system-live-bar"><i id="detail-gpu-bar"></i></div></div>
   </div>
 
   <nav class="detail-nav" aria-label="Sekcje szczegółów">
@@ -2248,6 +2260,23 @@ const maxHistory=180;
 const $=id=>document.getElementById(id);
 function fmt(n,d=3){return Number(n).toFixed(d)}
 function nfmt(n){return Number(n).toLocaleString("pl-PL")}
+function fmtBytes(n){n=Number(n||0);if(!n)return "0 B";const u=["B","KB","MB","GB","TB"];let i=0;while(n>=1024&&i<u.length-1){n/=1024;i++}return n.toFixed(i>1?2:1)+" "+u[i]}
+function renderSystemLive(sys){
+  sys=sys||{};const proc=sys.process||{},gpu=((sys.gpu||{}).gpus||[])[0]||null;
+  const cpu=Math.max(0,Number(sys.cpu_percent||0)),pcpu=Math.max(0,Number(proc.cpu_percent||0));
+  const ram=Math.max(0,Number(sys.mem_percent||0)),disk=Math.max(0,Number(sys.disk_percent||0));
+  $("detail-cpu").textContent=cpu.toFixed(1)+"% • "+Number(sys.cpu_count||0)+" CPU";
+  $("detail-proc-cpu").textContent=pcpu.toFixed(1)+"%";
+  $("detail-ram").textContent=ram.toFixed(1)+"% • "+fmtBytes(sys.mem_used)+" / "+fmtBytes(sys.mem_total);
+  $("detail-proc-ram").textContent=fmtBytes(proc.memory_bytes)+" • "+Number(proc.threads||0)+" th";
+  $("detail-disk").textContent=disk.toFixed(1)+"% • "+fmtBytes(sys.disk_free)+" wolne";
+  $("detail-gpu").textContent=gpu?(String(gpu.name||"GPU")+" • "+Number(gpu.utilization_percent||0).toFixed(0)+"% • "+Number(gpu.memory_percent||0).toFixed(0)+"% VRAM"):"brak danych GPU";
+  $("detail-cpu-bar").style.width=Math.min(100,cpu)+"%";
+  $("detail-proc-cpu-bar").style.width=Math.min(100,pcpu)+"%";
+  $("detail-ram-bar").style.width=Math.min(100,ram)+"%";
+  $("detail-disk-bar").style.width=Math.min(100,disk)+"%";
+  $("detail-gpu-bar").style.width=Math.min(100,gpu?Number(gpu.utilization_percent||0):0)+"%";
+}
 function renderActions(scores){
   const dom=Object.entries(scores||{}).sort((a,b)=>Number(b[1])-Number(a[1]))[0]?.[0];
   $("actions").innerHTML=actionOrder.map(k=>{
@@ -3033,10 +3062,20 @@ function initDetailsLayout(){
 }
 initDetailsLayout();
 initGuide();
+let detailsBusy=false;
 async function update(){
+  if(detailsBusy)return;
+  detailsBusy=true;
   try{
-    const r=await fetch("/api/state",{cache:"no-store"});if(!r.ok)throw new Error("HTTP "+r.status);
-    const s=await r.json(),d=s.diag;
+    const [r,sysr]=await Promise.all([
+      fetch("/api/state",{cache:"no-store"}),
+      fetch("/api/system",{cache:"no-store"})
+    ]);
+    if(r.status===401||sysr.status===401){location="/login";return}
+    if(!r.ok)throw new Error("state HTTP "+r.status);
+    if(!sysr.ok)throw new Error("system HTTP "+sysr.status);
+    const [s,sys]=await Promise.all([r.json(),sysr.json()]),d=s.diag;
+    renderSystemLive(sys);
     $("source").textContent=s.source||"unknown";
     $("backend").textContent="backend: "+(d.backend||"cpu").toUpperCase();
     $("device").textContent="device: "+(d.device||"CPU");
@@ -3101,6 +3140,7 @@ async function update(){
     history.push({mean:Number(d.mean_abs),max:Number(d.max_abs)});while(history.length>maxHistory)history.shift();draw();
     $("live").textContent="LIVE";
   }catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}
+  finally{detailsBusy=false}
 }
 setInterval(update,500);update();
 window.addEventListener("resize",draw);
