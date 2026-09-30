@@ -2074,6 +2074,218 @@ class FlyBrain:
             ),
         }
 
+
+    def autonomous_action_candidates(
+        self,
+        *,
+        can_speak: bool,
+        connected_voice: bool,
+        voice_target_count: int,
+        can_explore: bool = True,
+    ) -> dict:
+        """Build an autonomous action set without executing any action.
+
+        Technical feasibility decides what can enter the set. Internal drives
+        and live neural attractors explain why each feasible action is
+        interesting, while action_competition remains the only neural winner
+        selection mechanism. Existing `stay` is exposed as NOOP externally.
+        """
+        drives = self.internal_drive_diagnostics()
+        states = self._internal_state_levels()
+        raw_scores = self.action_scores()
+        effective_scores = self.action_policy_scores(raw_scores)
+
+        feasible: dict[str, bool] = {
+            "stay": True,
+            "speak": bool(can_speak),
+            "explore": bool(can_explore),
+            "voice_join": bool(
+                not connected_voice
+                and int(voice_target_count) > 0
+            ),
+            "voice_move": bool(
+                connected_voice
+                and int(voice_target_count) > 0
+            ),
+        }
+        technical_reason = {
+            "stay": "always-available-noop",
+            "speak": (
+                "text-target-and-language-ready"
+                if feasible["speak"]
+                else "no-usable-text-target-or-language-not-ready"
+            ),
+            "explore": (
+                "internal-exploration-available"
+                if feasible["explore"]
+                else "exploration-disabled"
+            ),
+            "voice_join": (
+                "voice-target-available-and-disconnected"
+                if feasible["voice_join"]
+                else (
+                    "already-connected"
+                    if connected_voice
+                    else "no-voice-target"
+                )
+            ),
+            "voice_move": (
+                "alternative-voice-target-available"
+                if feasible["voice_move"]
+                else (
+                    "not-connected"
+                    if not connected_voice
+                    else "no-alternative-voice-target"
+                )
+            ),
+        }
+
+        rows: dict[str, dict] = {}
+        for action in (
+            "stay",
+            "speak",
+            "voice_join",
+            "voice_move",
+            "explore",
+        ):
+            supporting_drives: list[dict] = []
+            drive_support = 0.0
+            for drive_name, drive_row in drives.get(
+                "drives",
+                {},
+            ).items():
+                drive_value = float(
+                    drive_row.get("value", 0.0)
+                )
+                action_weight = 0.0
+                paths: list[dict] = []
+                for state_name, state_weight in (
+                    self.INTERNAL_DRIVE_STATE_MAP.get(
+                        drive_name,
+                        (),
+                    )
+                ):
+                    if action not in self.INTERNAL_STATE_TARGET_ACTIONS.get(
+                        state_name,
+                        (),
+                    ):
+                        continue
+                    state_weight = max(
+                        0.0,
+                        float(state_weight),
+                    )
+                    action_weight += state_weight
+                    paths.append({
+                        "state": state_name,
+                        "weight": state_weight,
+                    })
+                if action_weight <= 0.0:
+                    continue
+                contribution = drive_value * action_weight
+                drive_support += contribution
+                supporting_drives.append({
+                    "drive": drive_name,
+                    "value": drive_value,
+                    "weight": action_weight,
+                    "contribution": contribution,
+                    "paths": paths,
+                })
+
+            supporting_states: list[dict] = []
+            state_support = 0.0
+            for state_name, target_actions in (
+                self.INTERNAL_STATE_TARGET_ACTIONS.items()
+            ):
+                if action not in target_actions:
+                    continue
+                level = float(
+                    states.get(state_name, {}).get(
+                        "level",
+                        0.0,
+                    )
+                )
+                state_support += level
+                supporting_states.append({
+                    "state": state_name,
+                    "level": level,
+                })
+
+            rows[action] = {
+                "action": action,
+                "display_action": (
+                    "noop"
+                    if action == "stay"
+                    else action
+                ),
+                "feasible": bool(feasible[action]),
+                "technical_reason": technical_reason[action],
+                "raw_score": float(raw_scores[action]),
+                "effective_score": float(
+                    effective_scores[action]
+                ),
+                "drive_support": float(drive_support),
+                "state_support": float(state_support),
+                "supporting_drives": supporting_drives,
+                "supporting_states": supporting_states,
+            }
+
+        candidates = [
+            action
+            for action in (
+                "stay",
+                "speak",
+                "voice_join",
+                "voice_move",
+                "explore",
+            )
+            if feasible[action]
+        ]
+        # STAY/NOOP is deliberately never removed. This prevents autonomy from
+        # becoming an obligation to act.
+        if "stay" not in candidates:
+            candidates.insert(0, "stay")
+
+        competition = self.action_competition(candidates)
+        ranked = sorted(
+            candidates,
+            key=lambda action: (
+                float(rows[action]["drive_support"])
+                + float(rows[action]["state_support"]),
+                float(rows[action]["effective_score"]),
+            ),
+            reverse=True,
+        )
+        return {
+            "candidate_actions": candidates,
+            "display_candidates": [
+                "noop" if action == "stay" else action
+                for action in candidates
+            ],
+            "motivation_order": ranked,
+            "rows": rows,
+            "competition_preview": competition,
+            "winner_preview": str(
+                competition.get("action", "stay")
+            ),
+            "winner_display": (
+                "noop"
+                if competition.get("action") == "stay"
+                else str(competition.get("action", "stay"))
+            ),
+            "connected_voice": bool(connected_voice),
+            "voice_target_count": max(
+                0,
+                int(voice_target_count),
+            ),
+            "can_speak": bool(can_speak),
+            "can_explore": bool(can_explore),
+            "executed": False,
+            "source": (
+                "technical-feasibility + homeostatic-drives + "
+                "FAFB internal-state attractors + neural competition preview"
+            ),
+        }
+
     def action_pool_diagnostics(self) -> dict[str, dict]:
         result: dict[str, dict] = {}
         for action, info in self._action_output_info.items():
