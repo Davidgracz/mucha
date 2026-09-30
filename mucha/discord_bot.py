@@ -11,6 +11,8 @@ import threading
 import time
 import tomllib
 import wave
+from collections import deque
+from copy import deepcopy
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -283,6 +285,9 @@ class MuchaClient(discord.Client):
         self._last_brain_action = "brak"
         self._voice_debug: dict[int, dict] = {}
         self._text_decision_debug: dict = {}
+        self._decision_trace_history = deque(maxlen=48)
+        self._decision_trace_seq = 0
+        self._decision_trace_last_key: tuple | None = None
         self._reaction_debug: dict = {
             "score": 0.0,
             "effective_score": 0.0,
@@ -4848,6 +4853,10 @@ class MuchaClient(discord.Client):
                     "albo Discord odrzucił wysyłkę"
                 )
 
+        self._remember_decision_trace(
+            self._text_decision_debug,
+        )
+
     def _brain_word_feedback(
         self,
         token: str,
@@ -6296,6 +6305,36 @@ class MuchaClient(discord.Client):
             "source": self.connectome.metadata.get("source", "unknown"),
         }
 
+    def _remember_decision_trace(
+        self,
+        trace: dict | None,
+    ) -> None:
+        """Freeze one factual decision trace in the in-memory timeline."""
+        if not trace or not trace.get("checked_at"):
+            return
+
+        key = (
+            str(trace.get("kind") or ""),
+            int(trace.get("guild_id") or 0),
+            float(trace.get("checked_at") or 0.0),
+            str(trace.get("decision") or ""),
+            str(trace.get("actual_action") or ""),
+        )
+        if key == self._decision_trace_last_key:
+            return
+
+        frozen = deepcopy(dict(trace))
+        self._decision_trace_seq += 1
+        frozen["history_id"] = int(self._decision_trace_seq)
+        self._decision_trace_history.append(frozen)
+        self._decision_trace_last_key = key
+
+    def _decision_trace_history_snapshot(self) -> list[dict]:
+        return [
+            deepcopy(row)
+            for row in list(self._decision_trace_history)[-40:]
+        ]
+
     def _decision_trace_snapshot(
         self,
         voice_debug_rows: list[dict],
@@ -6698,6 +6737,10 @@ class MuchaClient(discord.Client):
         decision_trace = self._decision_trace_snapshot(
             voice_debug_rows,
         )
+        self._remember_decision_trace(decision_trace)
+        decision_trace_history = (
+            self._decision_trace_history_snapshot()
+        )
 
         return {
             "source": self.connectome.metadata.get("source", "unknown"),
@@ -6712,6 +6755,7 @@ class MuchaClient(discord.Client):
             "last_event": self._last_brain_event,
             "last_action": self._last_brain_action,
             "decision_trace": decision_trace,
+            "decision_trace_history": decision_trace_history,
             "paused": self.paused,
             "voice_debug": voice_debug_rows,
             "voice_sensory_debug": voice_sensory_rows,
