@@ -848,6 +848,30 @@ voice sensory / context
 
 To jest telemetryczny zapis działania algorytmu, a nie deklaracja ukrytego „toku myślenia”.
 
+## Decision Trace History
+
+Runtime przechowuje w RAM do **48 pełnych, zamrożonych trace'ów**. Prywatny `/details` pokazuje ostatnie 40 jako klikalną oś czasu.
+
+Każdy wpis zachowuje stan z chwili decyzji:
+
+```text
+timestamp
++ źródło TEXT / VOICE
++ bodziec
++ attention
++ internal states
++ neuromodulatory
++ memory / uncertainty
++ raw + effective readout
++ policy bias
++ ograniczenia
++ faktyczna akcja
+```
+
+Kliknięcie wpisu przełącza panel **„Dlaczego zrobiła X?”** w tryb zamrożony. Przycisk **LIVE** wraca do najnowszej decyzji. Dostępne są filtry `VOICE` i `TEXT`.
+
+Historia jest celowo pamięcią diagnostyczną RAM i zeruje się po restarcie procesu. Nie jest publikowana przez `/api/public/state`.
+
 ---
 
 # Live System Telemetry
@@ -876,10 +900,10 @@ Cięższe dane, takie jak logi systemd i status usług, pozostają na wolniejszy
 
 Dalsze kierunki:
 
-- historia Decision Trace, aby można było cofać się po kilku ostatnich decyzjach zamiast oglądać wyłącznie najnowszą,
 - bogatsza długoterminowa reprezentacja ludzi, kanałów i powtarzalnych sytuacji,
+- uczenie reakcji na dynamikę rozmowy z rewardu zamiast ręcznego mapowania scen na decyzje,
 - dalsza redukcja ręcznie zakodowanych wyjątków na rzecz sygnałów sensorycznych i konkurencji readoutów connectomu,
-- uczenie reakcji na dynamikę rozmowy z rewardu zamiast ręcznego mapowania scen na decyzje.
+- coraz większa integracja tekstu, voice, pamięci i zachowania społecznego w jeden współdzielony stan neuronalny.
 
 ---
 
