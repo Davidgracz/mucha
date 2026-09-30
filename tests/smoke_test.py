@@ -266,6 +266,61 @@ def main():
             for row in restored.person_profiles(8)
         )
 
+        restored.observe_channel_visit(
+            555,
+            "ASG",
+            [11, 22],
+            source="voice_visit",
+            now=time.time(),
+        )
+        restored.observe_channel_visit(
+            555,
+            "ASG",
+            [11],
+            source="voice_visit",
+            now=time.time(),
+        )
+        restored.observe_channel_dynamics(
+            555,
+            "ASG",
+            conversation_mode="DIALOGUE",
+            intensity=0.72,
+            speech_ratio=0.64,
+            human_count=2,
+            speaker_user_id=11,
+            now=time.time(),
+        )
+        restored.observe_channel_dynamics(
+            555,
+            "ASG",
+            conversation_mode="DIALOGUE",
+            intensity=0.58,
+            speech_ratio=0.50,
+            human_count=3,
+            speaker_user_id=22,
+            now=time.time(),
+        )
+        place = restored.channel_profile(555)
+        assert place["channel_id"] == 555
+        assert place["channel_name"] == "ASG"
+        assert place["observations"] >= 4
+        assert place["visit_observations"] >= 2
+        assert place["dynamics_observations"] == 2
+        assert place["familiarity"] > 0.0
+        assert place["dominant_mode"] == "DIALOGUE"
+        assert place["mean_intensity"] > 0.0
+        assert place["mean_speech_ratio"] > 0.0
+        assert place["mean_human_density"] > 0.0
+        assert any(
+            row["user_id"] == 11
+            for row in place["people"]
+        )
+        assert place["recent_episodes"]
+        assert any(
+            row["channel_id"] == 555
+            for row in restored.channel_profiles(8)
+        )
+
         replay_candidates = restored.replay_candidates(
             limit=4,
             max_age_seconds=86400,
@@ -848,6 +903,9 @@ def main():
         assert "person_model_enabled" in CONFIG_HTML
         assert "person_model_min_observations" in CONFIG_HTML
         assert "person_model_sensory_magnitude" in CONFIG_HTML
+        assert "channel_model_enabled" in CONFIG_HTML
+        assert "channel_model_min_observations" in CONFIG_HTML
+        assert "channel_model_sensory_magnitude" in CONFIG_HTML
         assert "connectome_voice_control_enabled" in CONFIG_HTML
         assert "social_drive_enabled" in CONFIG_HTML
         assert "social_drive_max_magnitude" in CONFIG_HTML
@@ -908,6 +966,10 @@ def main():
         assert "renderPersonProfiles" in HTML
         assert 'id="people-memory-grid"' in HTML
         assert "person-memory" in HTML
+        assert "Long-term Channel / Place Memory" in HTML
+        assert "renderChannelProfiles" in HTML
+        assert 'id="channel-memory-grid"' in HTML
+        assert "channel-memory" in HTML
         assert "Curiosity / Uncertainty" in HTML
         assert "Tryb rozmowy" in HTML
         assert "Speech ratio 60s" in HTML
@@ -1063,9 +1125,19 @@ def main():
         assert "observe_person_social_event" in episodic_source
         assert '"person_contact"' in episodic_source
         assert '"person_social"' in episodic_source
+        assert "observe_channel_visit" in episodic_source
+        assert "observe_channel_dynamics" in episodic_source
+        assert "channel_profile" in episodic_source
+        assert '"channel_visit"' in episodic_source
+        assert '"channel_people"' in episodic_source
+        assert '"channel_mode"' in episodic_source
         assert "inject_person_profile" in bot_source
+        assert "inject_channel_profile" in bot_source
         assert "observe_person_contact" in bot_source
         assert "observe_person_social_event" in bot_source
+        assert "observe_channel_visit" in bot_source
+        assert "observe_channel_dynamics" in bot_source
+        assert "_channel_model_debug" in bot_source
         assert "_attention_observe_text" in bot_source
         assert "_inject_attention_context" in bot_source
         assert "_attention_language_context" in bot_source
