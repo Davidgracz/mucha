@@ -1914,6 +1914,12 @@ main{max-width:1500px;margin:auto;padding:22px}
 .guide-mode button{border:0;background:transparent;color:#8fa0b0;border-radius:7px;padding:6px 9px;font-size:10px;font-weight:800;cursor:pointer}
 .guide-mode button.active{background:#18303a;color:#8ff2e4}
 .decision-flow{display:grid;grid-template-columns:1.25fr 24px 1.1fr 24px 1.05fr 24px 1.05fr 24px 1.2fr;gap:6px;align-items:stretch}
+.decision-trace-card{background:linear-gradient(135deg,rgba(85,211,195,.055),rgba(110,168,254,.035));border-color:#294153}
+.trace-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;margin-bottom:11px}.trace-head h2{margin:0}.trace-meta{color:var(--muted);font-size:10px;text-align:right;line-height:1.45}
+.trace-verdict{display:grid;grid-template-columns:minmax(0,1.35fr) minmax(220px,.65fr);gap:9px;margin-bottom:10px}.trace-verdict>div{background:#0a1118;border:1px solid #1d2936;border-radius:12px;padding:11px}.trace-verdict small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:4px}.trace-verdict strong{font-size:14px;line-height:1.35;word-break:break-word}.trace-reason{margin-top:5px;color:#9fb0c0;font-size:10px;line-height:1.45}
+.trace-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:7px}.trace-stage{background:#081018;border:1px solid #192735;border-radius:11px;padding:9px;min-width:0}.trace-stage small{display:block;color:#7890a5;font-size:8px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:5px}.trace-stage b{display:block;font-size:11px;line-height:1.35;word-break:break-word}.trace-stage em{display:block;color:#7f93a5;font-size:9px;font-style:normal;line-height:1.45;margin-top:5px}
+.trace-chips{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}.trace-chip{border:1px solid #213548;background:#09121a;border-radius:999px;padding:5px 7px;font-size:9px;color:#a9bac9}.trace-chip.good{border-color:#285747;color:#74e8ac}.trace-chip.warn{border-color:#5b4a29;color:#ffd277}.trace-chip.bad{border-color:#63363d;color:#ff9099}
+.trace-empty{color:var(--muted);font-size:11px;padding:10px 0}
 .flow-step{min-width:0;background:#091119;border:1px solid #1d2d3b;border-radius:13px;padding:11px}
 .flow-step small{display:flex;align-items:center;gap:6px;color:#758697;font-size:9px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:6px}
 .flow-step strong{display:block;font-size:13px;line-height:1.35;word-break:break-word}.flow-step em{display:block;margin-top:5px;color:#7f91a2;font-size:9px;font-style:normal;line-height:1.4}
@@ -2019,11 +2025,11 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .legend span::before{content:"";display:inline-block;width:10px;height:3px;margin-right:5px;vertical-align:middle;border-radius:2px}
 .legend .reward-line::before{background:var(--warn)}.legend .trace-line::before{background:var(--accent)}
 @media(max-width:1180px){.decision-flow{grid-template-columns:1fr 20px 1fr 20px 1fr}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:none}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:span 2}}
-@media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.span3{grid-column:span 2}.voice-hero{grid-template-columns:1fr 1fr}.voice-hero-main{grid-column:span 2}.voice-groups{grid-template-columns:1fr 1fr}.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:span 2}}
+@media(max-width:1050px){.grid{grid-template-columns:1fr 1fr}.span3{grid-column:span 2}.voice-hero{grid-template-columns:1fr 1fr}.voice-hero-main{grid-column:span 2}.voice-groups{grid-template-columns:1fr 1fr}.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:span 2}.trace-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.trace-verdict{grid-template-columns:1fr}}
 @media(max-width:1100px){.system-strip{grid-template-columns:repeat(3,minmax(0,1fr))}}
 @media(max-width:900px){.voice-summary,.learning-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.voice-tech-grid{grid-template-columns:repeat(2,minmax(0,1fr))}.attention-shell{grid-template-columns:1fr 1fr}.attention-shell>.attention-panel:last-child{grid-column:span 2}}
 @media(max-width:700px){.system-strip{grid-template-columns:1fr 1fr}
-main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template-columns:1fr}.flow-arrow{transform:rotate(90deg);height:14px}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:grid}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:auto}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
+main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template-columns:1fr}.trace-grid{grid-template-columns:1fr}.trace-head{flex-direction:column}.trace-meta{text-align:left}.flow-arrow{transform:rotate(90deg);height:14px}.decision-flow .flow-arrow:nth-of-type(6),.decision-flow .flow-arrow:nth-of-type(8){display:grid}.decision-flow .flow-step:nth-of-type(7),.decision-flow .flow-step:nth-of-type(9){grid-column:auto}.top{align-items:flex-start;flex-direction:column}.badges{justify-content:flex-start}.detail-nav{top:4px;margin-bottom:14px}.grid{grid-template-columns:1fr}.span2,.span3{grid-column:auto}.section-heading{grid-column:auto}.section-heading p{max-width:46ch}.events{grid-template-columns:1fr}.attention-shell,.voice-summary,.learning-grid,.voice-groups,.voice-hero,.voice-tech-grid{grid-template-columns:1fr}.attention-shell>.attention-panel:last-child{grid-column:auto}.voice-hero-main,.voice-groups>.voice-box:nth-child(4),.voice-groups>.voice-box:nth-child(7){grid-column:auto}.log-item{grid-template-columns:62px 72px 1fr}}
 </style>
 </head>
 <body>
@@ -2084,6 +2090,14 @@ main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template
         <div class="flow-arrow">→</div>
         <div class="flow-step action"><small>5 • AKCJA <span class="help-dot" data-help-key="last-action" tabindex="0">?</span></small><strong id="flow-action">—</strong><em>Co faktycznie wykonała.</em></div>
       </div>
+    </div>
+
+    <div class="card span3 decision-trace-card">
+      <div class="trace-head">
+        <div><h2>🔎 Dlaczego zrobiła X? <span class="help-dot" data-help-key="decision-trace" tabindex="0">?</span></h2><div class="footer">Faktyczny trace algorytmu z chwili decyzji: sensory → stan → readout/policy → ograniczenia → akcja.</div></div>
+        <div class="trace-meta" id="decision-trace-meta">czekam na pierwszy cykl decyzyjny…</div>
+      </div>
+      <div id="decision-trace"><div class="trace-empty">Brak trace. Pojawi się po pierwszej decyzji tekstowej albo voice.</div></div>
     </div>
 
     <div class="panel-explainer"><span class="help-dot" data-help-key="simple-mode" tabindex="0">?</span><div><b>Tryb PROSTY</b> ukrywa część surowej telemetrii. Niczego nie wyłącza w Musze — zmienia tylko sposób wyświetlania. Tryb PEŁNY pokazuje cały debug.</div></div>
@@ -2363,6 +2377,7 @@ function esc(v){
 
 const HELP={
   "decision-flow":{title:"Jak czytać ścieżkę decyzji?",body:"To skrót jednego cyklu: bodziec → uwaga/pamięć → stan connectomu → readout zachowania → faktyczna akcja.",read:"Czytaj od lewej do prawej. Jeśli readout i akcja się różnią, niżej szukaj cooldownu, blokady albo ograniczenia operacyjnego."},
+  "decision-trace":{title:"Decision Trace",body:"To telemetryczny zapis danych faktycznie użytych przez kod przy ostatnim cyklu decyzyjnym. Nie jest opisem ukrytego toku rozumowania ani interpretacją zachowania.",read:"Porównaj raw score z effective score, następnie sprawdź pamięć/sygnały i listę ograniczeń. Pole AKCJA mówi co runtime faktycznie zdecydował wykonać."},
   "simple-mode":{title:"PROSTY vs PEŁNY",body:"PROSTY pokazuje tylko elementy potrzebne do zrozumienia bieżącego zachowania. PEŁNY odsłania telemetrię techniczną.",read:"To zmienia wyłącznie interfejs. Nie zmienia configu ani zachowania Muchy."},
   "last-event":{title:"Ostatni bodziec",body:"Ostatnie zdarzenie zapisane jako wejście dla runtime'u, np. tekst, STT, reward, voice albo threat.",read:"To punkt startowy, gdy chcesz sprawdzić co poprzedziło zmianę zachowania."},
   "attention":{title:"Attention / Working Memory",body:"Krótkotrwały kontekst osób, kanałów i tematów. Ślad zanika, a aktywny focus jest ponownie podawany do connectomu.",read:"Attention jest chwilowe. Affinity jest relacją długoterminową. Working memory pokazuje ostatnie sceny nadal dostępne jako kontekst."},
@@ -2563,6 +2578,67 @@ function renderActionPolicy(p){
     '<div class="policy-wrap"><table class="policy-table"><thead><tr><th>Akcja</th><th>Raw connectome</th><th>Learned bias</th><th>Effective</th><th>Reward EMA</th><th>Updates</th></tr></thead><tbody>'+rows+'</tbody></table></div>';
 }
 
+function renderDecisionTrace(t){
+  const root=$("decision-trace"),meta=$("decision-trace-meta");
+  t=t||{};
+  if(!t.checked_at){
+    meta.textContent="czekam na pierwszy cykl decyzyjny…";
+    root.innerHTML='<div class="trace-empty">Brak trace. Pojawi się po pierwszej decyzji tekstowej albo voice.</div>';
+    return;
+  }
+  const age=Math.max(0,Date.now()/1000-Number(t.checked_at||0));
+  meta.textContent=String(t.source_label||t.kind||"decision")+" • "+String(t.guild||"—")+" • "+age.toFixed(age<10?1:0)+" s temu";
+  const focus=t.attention_focus||{};
+  const states=t.internal_states||{},stateMap=states.states||{};
+  const dominant=states.dominant||"—",dominantLevel=Number(states.dominant_level||0);
+  const nm=t.neuromodulators||{};
+  const read=t.readout||{},mem=t.memory||{},sig=t.signals||{};
+  const raw=read.raw_score==null?"—":Number(read.raw_score).toFixed(3);
+  const effective=read.effective_score==null?"—":Number(read.effective_score).toFixed(3);
+  const threshold=read.threshold==null?"—":Number(read.threshold).toFixed(3);
+  const learned=read.learned_raw_threshold==null?"—":Number(read.learned_raw_threshold).toFixed(3);
+  const policyBias=Number(read.policy_bias||0);
+  const readExtra=read.threshold==null
+    ? "runner-up "+esc(read.runner_up||"—")+" "+(read.runner_up_score==null?"":Number(read.runner_up_score).toFixed(3))+(read.margin==null?"":" • margin "+Number(read.margin).toFixed(3))
+    : "threshold "+threshold+" • learned raw "+learned+" • bias "+(policyBias>=0?"+":"")+policyBias.toFixed(3);
+  const focusText=focus.label||focus.key
+    ? esc(focus.label||focus.key)+" • "+Number(focus.score||0).toFixed(3)
+    : "brak zapisanego focusu";
+  const neuralText=dominant!=="—"
+    ? esc(dominant)+" • "+(dominantLevel*100).toFixed(0)+"%"
+    : "brak dominującego attractora";
+  const modParts=["dopamine","serotonin","octopamine"].filter(k=>nm[k]).map(k=>k+" "+Number((nm[k]||{}).level||0).toFixed(2));
+  const memoryParts=[];
+  if(mem.predicted_reward!=null) memoryParts.push("pred reward "+Number(mem.predicted_reward||0).toFixed(3));
+  if(Number(mem.semantic_signal||0)!==0) memoryParts.push("semantic "+(Number(mem.semantic_signal)>=0?"+":"")+Number(mem.semantic_signal).toFixed(3));
+  if(mem.uncertainty!=null) memoryParts.push("uncertainty "+Number(mem.uncertainty||0).toFixed(3));
+  if(mem.affinity!=null) memoryParts.push("affinity "+(Number(mem.affinity)>=0?"+":"")+Number(mem.affinity).toFixed(2));
+  if(Number(mem.information_gain||0)!==0) memoryParts.push("info gain "+Number(mem.information_gain).toFixed(3));
+  const constraints=(t.constraints||[]);
+  const chips=[];
+  chips.push('<span class="trace-chip '+(read.passed===false?'bad':'good')+'">readout '+esc(read.action||"—")+' raw '+raw+' → effective '+effective+'</span>');
+  if(modParts.length) chips.push('<span class="trace-chip">neuromod: '+esc(modParts.join(" • "))+'</span>');
+  if(memoryParts.length) chips.push('<span class="trace-chip">memory: '+esc(memoryParts.join(" • "))+'</span>');
+  Object.entries(sig).slice(0,7).forEach(([k,v])=>{
+    if(v==null||typeof v==="object")return;
+    chips.push('<span class="trace-chip">'+esc(k)+' '+esc(typeof v==="number"?Number(v).toFixed(3):v)+'</span>');
+  });
+  constraints.forEach(x=>chips.push('<span class="trace-chip bad">'+esc(x)+'</span>'));
+  if(!constraints.length)chips.push('<span class="trace-chip good">brak blokad wykonania</span>');
+  root.innerHTML=
+    '<div class="trace-verdict">'+
+      '<div><small>Decyzja runtime</small><strong>'+esc(t.decision||"—")+'</strong><div class="trace-reason">'+esc(t.reason||"—")+'</div></div>'+
+      '<div><small>Faktyczna akcja</small><strong class="'+(String(t.actual_action||"").includes("BRAK")?"warn":"ok")+'">'+esc(t.actual_action||"—")+'</strong><div class="trace-reason">'+esc(t.source_label||t.kind||"—")+'</div></div>'+
+    '</div>'+
+    '<div class="trace-grid">'+
+      '<div class="trace-stage"><small>1 • BODZIEC</small><b>'+esc(t.stimulus||"—")+'</b><em>Wejście, które rozpoczęło ten trace.</em></div>'+
+      '<div class="trace-stage"><small>2 • UWAGA</small><b>'+focusText+'</b><em>Najsilniejszy zapis working memory przy decyzji.</em></div>'+
+      '<div class="trace-stage"><small>3 • STAN NEURALNY</small><b>'+neuralText+'</b><em>'+esc(modParts.length?modParts.join(" • "):"connectome state po propagacji")+'</em></div>'+
+      '<div class="trace-stage"><small>4 • READOUT / POLICY</small><b>'+esc(read.action||"—")+' • '+raw+' → '+effective+'</b><em>'+esc(readExtra)+'</em></div>'+
+      '<div class="trace-stage"><small>5 • PAMIĘĆ / BLOKADY</small><b>'+esc(memoryParts.length?memoryParts.join(" • "):"brak silnego dodatkowego sygnału")+'</b><em>'+esc(constraints.length?constraints.join(" • "):"brak blokad")+'</em></div>'+
+    '</div>'+
+    '<div class="trace-chips">'+chips.join("")+'</div>';
+}
 function renderAttention(a){
   const root=$("attention-debug");
   a=a||{};
@@ -3203,15 +3279,22 @@ async function update(){
     const focus=attGuild.focus||null;
     const firstVoice=(s.voice_debug||[])[0]||{};
     const internal=firstVoice.internal_states||{};
-    $("flow-event").textContent=s.last_event||"—";
-    $("flow-attention").textContent=focus
-      ? String(focus.label||focus.key||"—")+" • "+Number(focus.score||0).toFixed(2)
+    const trace=s.decision_trace||{};
+    const traceFocus=trace.attention_focus||focus;
+    const traceInternal=trace.internal_states||internal;
+    const traceRead=trace.readout||{};
+    $("flow-event").textContent=trace.stimulus||s.last_event||"—";
+    $("flow-attention").textContent=traceFocus
+      ? String(traceFocus.label||traceFocus.key||"—")+" • "+Number(traceFocus.score||0).toFixed(2)
       : "brak aktywnego focusu";
-    $("flow-brain").textContent=internal.dominant
-      ? String(internal.dominant)+" • "+(Number(internal.dominant_level||0)*100).toFixed(0)+"%"
+    $("flow-brain").textContent=traceInternal.dominant
+      ? String(traceInternal.dominant)+" • "+(Number(traceInternal.dominant_level||0)*100).toFixed(0)+"%"
       : "mean |a| "+Number(d.mean_abs||0).toFixed(4);
-    $("flow-readout").textContent=String(dominantAction[0])+" • "+Number(dominantAction[1]||0).toFixed(3);
-    $("flow-action").textContent=s.last_action||"brak wykonanej akcji";
+    $("flow-readout").textContent=traceRead.action
+      ? String(traceRead.action)+" • "+Number(traceRead.raw_score||0).toFixed(3)+(traceRead.effective_score==null?"":" → "+Number(traceRead.effective_score).toFixed(3))
+      : String(dominantAction[0])+" • "+Number(dominantAction[1]||0).toFixed(3);
+    $("flow-action").textContent=trace.actual_action||s.last_action||"brak wykonanej akcji";
+    renderDecisionTrace(trace);
     renderActions(scores);
     renderReaction(s.reaction_debug||{});
     renderLearning(s.learning_debug||{});
