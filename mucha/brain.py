@@ -3684,6 +3684,138 @@ class FlyBrain:
             "direct_action_bias": False,
         }
 
+    def inject_voice_dynamics_profile(
+        self,
+        profile: dict,
+        *,
+        magnitude: float = 0.38,
+    ) -> dict:
+        """Inject reward-learned conversation dynamics as sensory context."""
+        dynamics_key = str(profile.get("dynamics_key") or "")
+        observations = max(
+            0,
+            int(profile.get("observations", 0) or 0),
+        )
+        if not dynamics_key or observations <= 0:
+            return {
+                "enabled": False,
+                "dynamics_key": dynamics_key,
+                "cue_count": 0,
+                "cues": [],
+            }
+
+        base = max(0.02, min(1.5, float(magnitude)))
+        familiarity = max(
+            0.0,
+            min(1.0, float(profile.get("familiarity", 0.0))),
+        )
+        confidence = max(
+            0.0,
+            min(1.0, float(profile.get("confidence", 0.0))),
+        )
+        valence = max(
+            -1.0,
+            min(1.0, float(profile.get("valence", 0.0))),
+        )
+        valence_label = str(
+            profile.get("valence_label") or "neutral"
+        )
+        key_hash = hashlib.sha1(
+            dynamics_key.encode("utf-8", errors="ignore")
+        ).hexdigest()[:12]
+        cues: list[dict] = []
+
+        def cue(key: str, value: float, width: int = 96) -> None:
+            amount = max(0.0, min(2.0, float(value)))
+            if amount <= 1e-6:
+                return
+            self.inject(key, amount, width)
+            cues.append({
+                "key": key,
+                "magnitude": amount,
+                "width": int(width),
+            })
+
+        cue(
+            f"voice:dynamics-memory:{key_hash}",
+            base * (0.20 + 0.70 * familiarity),
+            112,
+        )
+        cue(
+            f"voice:dynamics-memory:familiarity:{min(5, max(0, int(round(familiarity * 5.0))))}",
+            base * (0.18 + 0.68 * familiarity),
+            96,
+        )
+        cue(
+            f"voice:dynamics-memory:confidence:{min(5, max(0, int(round(confidence * 5.0))))}",
+            base * (0.16 + 0.62 * confidence),
+            88,
+        )
+        cue(
+            f"voice:dynamics-memory:valence:{valence_label}",
+            base * (0.18 + 0.66 * abs(valence)),
+            104,
+        )
+
+        for field, prefix in (
+            ("conversation_mode", "mode"),
+            ("handoff_bucket", "handoff"),
+            ("turn_bucket", "turn"),
+            ("silence_bucket", "silence"),
+            ("speech_rate_bucket", "speech-rate"),
+        ):
+            value = str(profile.get(field) or "unknown").lower()
+            cue(
+                f"voice:dynamics-memory:{prefix}:{value}",
+                base * 0.42,
+                88,
+            )
+
+        for field, prefix in (
+            ("intensity_bucket", "intensity"),
+            ("speech_bucket", "speech"),
+            ("switch_bucket", "switches"),
+            ("overlap_bucket", "overlap"),
+            ("dominance_bucket", "dominance"),
+        ):
+            value = max(
+                0,
+                min(3, int(profile.get(field, 0) or 0)),
+            )
+            cue(
+                f"voice:dynamics-memory:{prefix}:{value}",
+                base * (0.18 + 0.14 * value),
+                88,
+            )
+
+        for row in list(profile.get("actions") or [])[:6]:
+            signal = max(
+                -1.0,
+                min(1.0, float(row.get("signal", 0.0))),
+            )
+            if abs(signal) < 0.03:
+                continue
+            action = str(row.get("action") or "unknown")
+            sign = "positive" if signal > 0.0 else "negative"
+            cue(
+                f"voice:dynamics-history:action:{action}:{sign}",
+                base * (0.14 + 0.74 * abs(signal)),
+                104,
+            )
+
+        return {
+            "enabled": True,
+            "dynamics_key": dynamics_key,
+            "observations": observations,
+            "familiarity": familiarity,
+            "confidence": confidence,
+            "valence": valence,
+            "valence_label": valence_label,
+            "cue_count": len(cues),
+            "cues": cues[:28],
+            "direct_action_bias": False,
+        }
+
     def inject_text(self, text: str, author_id: int, mentioned: bool) -> None:
         stripped = text.strip()
         if not stripped:
