@@ -1200,6 +1200,90 @@ class VoiceEpisodicMemory:
         )
         return result
 
+    def rehearse_semantic_replay(
+        self,
+        episode: dict,
+        *,
+        now: float | None = None,
+    ) -> list[dict]:
+        """Rehearse existing semantic memories without inventing observations.
+
+        Sleep/replay may stabilize the expected value learned from real
+        episodes, but it must not increase the observation count as if a new
+        Discord event had happened.
+        """
+        if not self.semantic_memory_enabled:
+            return []
+
+        now_value = float(time.time() if now is None else now)
+        actual = max(
+            -1.0,
+            min(1.0, float(episode.get("actual_reward", 0.0))),
+        )
+        error = max(
+            -1.0,
+            min(1.0, float(episode.get("prediction_error", 0.0))),
+        )
+        target = max(
+            -1.0,
+            min(1.0, 0.65 * actual + 0.35 * error),
+        )
+        evidence = min(
+            1.0,
+            0.60 * abs(actual) + 0.40 * abs(error),
+        )
+        alpha = max(
+            0.0,
+            min(
+                0.20,
+                self.consolidation_gain
+                * (0.15 + 0.45 * evidence),
+            ),
+        )
+        if alpha <= 1e-9:
+            return []
+
+        updates: list[dict] = []
+        action = str(episode.get("action") or "stay")
+        for concept_type, concept_key in self.semantic_concepts(
+            str(episode.get("context") or ""),
+            episode.get("channel_id"),
+            episode.get("user_ids") or (),
+        ):
+            key = (concept_type, concept_key, action)
+            entry = self._semantic.get(key)
+            if entry is None:
+                continue
+            before = float(entry.get("expected_reward", 0.0))
+            after = max(
+                -1.0,
+                min(1.0, before + alpha * (target - before)),
+            )
+            entry["expected_reward"] = after
+            entry["updated_at"] = now_value
+            self._persist_semantic_entry(
+                concept_type,
+                concept_key,
+                action,
+                entry,
+            )
+            updates.append({
+                "concept_type": concept_type,
+                "concept_key": concept_key,
+                "action": action,
+                "before": before,
+                "after": after,
+                "delta": after - before,
+                "observations": int(
+                    entry.get("observations", 0)
+                ),
+                "confidence": self._semantic_confidence(entry),
+            })
+
+        if self.db is not None and updates:
+            self.db.commit()
+        return updates
+
     def apply_forgetting(
         self,
         *,
