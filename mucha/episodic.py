@@ -79,6 +79,7 @@ class VoiceEpisodicMemory:
             tuple[str, str, str],
             dict,
         ] = {}
+        self._person_profile_cache: dict[int, dict] = {}
         self._last_forgetting_at = time.time()
         self._last_forgetting_diag: dict = {
             "ran": False,
@@ -165,6 +166,13 @@ class VoiceEpisodicMemory:
                     (
                         "user_channel",
                         f"{user_key}@{channel_key}",
+                    )
+                )
+            if context:
+                concepts.append(
+                    (
+                        "user_state",
+                        f"{user_key}@{context}",
                     )
                 )
         return concepts
@@ -314,6 +322,7 @@ class VoiceEpisodicMemory:
         )
         entry["last_reward"] = actual
         entry["updated_at"] = float(now)
+        self._person_profile_cache.clear()
         if persist:
             self._persist_semantic_entry(
                 key[0],
@@ -391,6 +400,44 @@ class VoiceEpisodicMemory:
         if rows:
             self.db.commit()
 
+    def _backfill_person_semantics_from_db(self) -> None:
+        """Create user+state concepts for older episode databases once."""
+        if self.db is None or not self.semantic_memory_enabled:
+            return
+        if any(
+            concept_type == "user_state"
+            for concept_type, _, _ in self._semantic.keys()
+        ):
+            return
+
+        rows = self.db.execute(
+            """
+            SELECT created_at, guild_id, channel_id, channel_name,
+                   user_ids_json, user_names_json, context,
+                   scene_key, action, predicted_reward,
+                   actual_reward, prediction_error, source
+            FROM voice_episodes
+            ORDER BY id DESC
+            LIMIT 5000
+            """
+        ).fetchall()
+        for row in reversed(rows):
+            episode = self._episode_from_row(row)
+            context = str(episode.context or "").strip()
+            if not context:
+                continue
+            for user_id in sorted(set(episode.user_ids)):
+                self._update_semantic_entry(
+                    concept_type="user_state",
+                    concept_key=f"{int(user_id)}@{context}",
+                    action=episode.action,
+                    actual_reward=episode.actual_reward,
+                    now=episode.time,
+                    persist=True,
+                )
+        if rows:
+            self.db.commit()
+
     def semantic_recall(
         self,
         context: str,
@@ -421,6 +468,7 @@ class VoiceEpisodicMemory:
             "channel": 0.90,
             "user": 1.00,
             "user_channel": 1.20,
+            "user_state": 1.15,
         }
         result: dict[str, dict] = {}
         for action in actions:
@@ -538,6 +586,7 @@ class VoiceEpisodicMemory:
             "channel": 0.90,
             "user": 1.00,
             "user_channel": 1.15,
+            "user_state": 1.10,
         }
         rows: list[dict] = []
         weighted_uncertainty = 0.0
@@ -647,6 +696,298 @@ class VoiceEpisodicMemory:
             ),
             "concepts": rows,
         }
+
+    @staticmethod
+    def _aggregate_person_entries(
+        rows: list[tuple[str, dict]],
+    ) -> dict:
+        observations = sum(
+            max(0, int(entry.get("observations", 0)))
+            for _, entry in rows
+        )
+        positive = sum(
+            max(0, int(entry.get("positive_count", 0)))
+            for _, entry in rows
+        )
+        negative = sum(
+            max(0, int(entry.get("negative_count", 0)))
+            for _, entry in rows
+        )
+        if observations <= 0:
+            return {
+                "observations": 0,
+                "expected_reward": 0.0,
+                "confidence": 0.0,
+                "positive_count": positive,
+                "negative_count": negative,
+                "updated_at": 0.0,
+            }
+        expected = sum(
+            float(entry.get("expected_reward", 0.0))
+            * max(0, int(entry.get("observations", 0)))
+            for _, entry in rows
+        ) / observations
+        confidence = sum(
+            VoiceEpisodicMemory._semantic_confidence(entry)
+            * max(0, int(entry.get("observations", 0)))
+            for _, entry in rows
+        ) / observations
+        updated_at = max(
+            (
+                float(entry.get("updated_at", 0.0))
+                for _, entry in rows
+            ),
+            default=0.0,
+        )
+        return {
+            "observations": observations,
+            "expected_reward": max(-1.0, min(1.0, expected)),
+            "confidence": max(0.0, min(1.0, confidence)),
+            "positive_count": positive,
+            "negative_count": negative,
+            "updated_at": updated_at,
+        }
+
+    def person_profile(self, user_id: int) -> dict:
+        """Derive one durable person model from persistent semantic memory."""
+        user_id = int(user_id)
+        cached = self._person_profile_cache.get(user_id)
+        if cached is not None:
+            return dict(cached)
+
+        user_key = str(user_id)
+        action_rows: list[dict] = []
+        direct_rows: list[tuple[str, dict]] = []
+        channel_groups: dict[str, list[tuple[str, dict]]] = {}
+        context_groups: dict[str, list[tuple[str, dict]]] = {}
+
+        for (
+            concept_type,
+            concept_key,
+            action,
+        ), entry in self._semantic.items():
+            if concept_type == "user" and concept_key == user_key:
+                direct_rows.append((action, entry))
+                confidence = self._semantic_confidence(entry)
+                expected = float(
+                    entry.get("expected_reward", 0.0)
+                )
+                action_rows.append({
+                    "action": str(action),
+                    "expected_reward": expected,
+                    "confidence": confidence,
+                    "signal": expected * confidence,
+                    "observations": int(
+                        entry.get("observations", 0)
+                    ),
+                    "positive_count": int(
+                        entry.get("positive_count", 0)
+                    ),
+                    "negative_count": int(
+                        entry.get("negative_count", 0)
+                    ),
+                    "updated_at": float(
+                        entry.get("updated_at", 0.0)
+                    ),
+                })
+            elif (
+                concept_type == "user_channel"
+                and concept_key.startswith(user_key + "@")
+            ):
+                channel_key = concept_key.split("@", 1)[1]
+                channel_groups.setdefault(
+                    channel_key,
+                    [],
+                ).append((str(action), entry))
+            elif (
+                concept_type == "user_state"
+                and concept_key.startswith(user_key + "@")
+            ):
+                context_key = concept_key.split("@", 1)[1]
+                context_groups.setdefault(
+                    context_key,
+                    [],
+                ).append((str(action), entry))
+
+        direct = self._aggregate_person_entries(direct_rows)
+        observations = int(direct["observations"])
+        familiarity = (
+            1.0 - math.exp(-observations / 8.0)
+            if observations > 0
+            else 0.0
+        )
+        profile_confidence = max(
+            0.0,
+            min(
+                1.0,
+                0.55 * float(direct["confidence"])
+                + 0.45 * familiarity,
+            ),
+        )
+        valence = float(direct["expected_reward"])
+        positive = int(direct["positive_count"])
+        negative = int(direct["negative_count"])
+        signed_total = positive + negative
+        if (
+            signed_total >= 4
+            and positive >= 1
+            and negative >= 1
+            and min(positive, negative) / signed_total >= 0.25
+        ):
+            valence_label = "mixed"
+        elif valence >= 0.08:
+            valence_label = "positive"
+        elif valence <= -0.08:
+            valence_label = "negative"
+        else:
+            valence_label = "neutral"
+
+        action_rows.sort(
+            key=lambda row: (
+                abs(float(row["signal"])),
+                int(row["observations"]),
+            ),
+            reverse=True,
+        )
+        preferred = max(
+            action_rows,
+            key=lambda row: float(row["signal"]),
+            default=None,
+        )
+        avoided = min(
+            action_rows,
+            key=lambda row: float(row["signal"]),
+            default=None,
+        )
+        if (
+            preferred is not None
+            and float(preferred["signal"]) <= 0.0
+        ):
+            preferred = None
+        if (
+            avoided is not None
+            and float(avoided["signal"]) >= 0.0
+        ):
+            avoided = None
+
+        channel_names: dict[str, str] = {}
+        display_name = ""
+        last_seen = 0.0
+        for episode in reversed(self._episodes):
+            if user_id not in episode.user_ids:
+                continue
+            if last_seen <= 0.0:
+                last_seen = float(episode.time)
+            try:
+                pos = list(episode.user_ids).index(user_id)
+                if pos < len(episode.user_names):
+                    display_name = str(
+                        episode.user_names[pos]
+                    )
+            except ValueError:
+                pass
+            if episode.channel_id is not None:
+                channel_names[str(int(episode.channel_id))] = str(
+                    episode.channel_name or episode.channel_id
+                )
+            if display_name and len(channel_names) >= 8:
+                break
+
+        channel_rows: list[dict] = []
+        for channel_key, rows in channel_groups.items():
+            agg = self._aggregate_person_entries(rows)
+            channel_rows.append({
+                "channel_id": int(channel_key)
+                if channel_key.isdigit()
+                else channel_key,
+                "channel_name": channel_names.get(
+                    channel_key,
+                    channel_key,
+                ),
+                **agg,
+            })
+        channel_rows.sort(
+            key=lambda row: (
+                int(row["observations"]),
+                float(row["confidence"]),
+                float(row["updated_at"]),
+            ),
+            reverse=True,
+        )
+
+        context_rows: list[dict] = []
+        for context_key, rows in context_groups.items():
+            agg = self._aggregate_person_entries(rows)
+            context_rows.append({
+                "context": context_key,
+                **agg,
+            })
+        context_rows.sort(
+            key=lambda row: (
+                int(row["observations"]),
+                float(row["confidence"]),
+                float(row["updated_at"]),
+            ),
+            reverse=True,
+        )
+
+        profile = {
+            "user_id": user_id,
+            "display_name": display_name,
+            "observations": observations,
+            "familiarity": max(0.0, min(1.0, familiarity)),
+            "confidence": profile_confidence,
+            "expected_reward": valence,
+            "valence": valence,
+            "valence_label": valence_label,
+            "positive_count": positive,
+            "negative_count": negative,
+            "neutral_count": max(
+                0,
+                observations - positive - negative,
+            ),
+            "updated_at": float(direct["updated_at"]),
+            "last_seen": last_seen,
+            "preferred_action": (
+                dict(preferred)
+                if preferred is not None
+                else None
+            ),
+            "avoided_action": (
+                dict(avoided)
+                if avoided is not None
+                else None
+            ),
+            "actions": action_rows[:10],
+            "channels": channel_rows[:8],
+            "contexts": context_rows[:8],
+        }
+        self._person_profile_cache[user_id] = dict(profile)
+        return dict(profile)
+
+    def person_profiles(
+        self,
+        limit: int = 30,
+    ) -> list[dict]:
+        limit = max(1, min(100, int(limit)))
+        user_ids = sorted({
+            int(concept_key)
+            for concept_type, concept_key, _ in self._semantic.keys()
+            if concept_type == "user" and str(concept_key).isdigit()
+        })
+        rows = [
+            self.person_profile(user_id)
+            for user_id in user_ids
+        ]
+        rows.sort(
+            key=lambda row: (
+                int(row.get("observations", 0)),
+                float(row.get("confidence", 0.0)),
+                float(row.get("updated_at", 0.0)),
+            ),
+            reverse=True,
+        )
+        return rows[:limit]
 
     def semantic_summary(
         self,
@@ -880,6 +1221,8 @@ class VoiceEpisodicMemory:
             and not self._semantic
         ):
             self._bootstrap_semantics_from_db()
+        if self.semantic_memory_enabled:
+            self._backfill_person_semantics_from_db()
 
     @staticmethod
     def _episode_from_row(row) -> VoiceEpisode:
