@@ -2879,17 +2879,29 @@ function renderVoiceDebug(items){
           '<div class="voice-kpis">'+
             kpi("Status",esc(vs.status||"—"),vs.status==="SPEAKING"?"ok":vs.status==="SILENCE"?"warn":"")+
             kpi("PCM capture",vs.pcm_capture?"LIVE":"brak / poza VC",vs.pcm_capture?"ok":"warn")+
+            kpi("Tryb rozmowy",esc(vs.conversation_mode||"—"),vs.conversation_mode==="CROSSTALK"?"warn":vs.conversation_mode==="DIALOGUE"?"ok":"")+
+            kpi("Intensywność",(Number(vs.conversation_intensity||0)*100).toFixed(0)+"%")+
             kpi("Mówi teraz",String(Number(vs.speaker_count||0)))+
-            kpi("Overlap",String(Number(vs.overlap_count||0)),Number(vs.overlap_count||0)>0?"warn":"")+
+            kpi("Overlap teraz",String(Number(vs.overlap_count||0)),Number(vs.overlap_count||0)>0?"warn":"")+
+            kpi("Speech ratio 60s",(Number(vs.speech_ratio_60s||0)*100).toFixed(0)+"%")+
+            kpi("Unikalni mówcy 60s",String(Number(vs.unique_speakers_60s||0)))+
+            kpi("Zmiany mówcy 60s",String(Number(vs.speaker_switches_60s||0)))+
+            kpi("Overlap events 60s",String(Number(vs.overlap_events_60s||0)),Number(vs.overlap_events_60s||0)>1?"warn":"")+
+            kpi("Śr. handoff",vs.mean_handoff_seconds==null?"—":Number(vs.mean_handoff_seconds).toFixed(2)+" s")+
+            kpi("Śr. tura",Number(vs.mean_turn_seconds||0).toFixed(2)+" s")+
+            kpi("Najdłuższa tura",Number(vs.longest_turn_seconds||0).toFixed(2)+" s",Number(vs.longest_turn_seconds||0)>=8?"warn":"")+
+            kpi("Dominacja mówcy",(Number(vs.speaker_dominance||0)*100).toFixed(0)+"%")+
             kpi("Cisza",Number(vs.silence_seconds||0).toFixed(1)+" s")+
             kpi("Tempo",Number(vs.turns_per_minute||0)+" turn/min")+
             kpi("Ludzie tutaj",String(Number(vs.human_count||0)))+
             kpi("Znajomi gdzie indziej",Number(vs.other_familiar_humans||0)+" / "+Number(vs.other_voice_humans||0))+
-            kpi("Reply po TTS",vs.reply_after_tts?(esc(vs.reply_user_name||vs.reply_user_id||"tak")+" • "+Number(vs.reply_age_seconds||0).toFixed(1)+" s"):"nie",vs.reply_after_tts?"ok":"")+
+            kpi("Reply po TTS",vs.reply_after_tts?(esc(vs.reply_user_name||vs.reply_user_id||"tak")+" • "+Number(vs.reply_tts_age_seconds||vs.reply_age_seconds||0).toFixed(1)+" s"):(vs.tts_pending_reply?("czeka • "+Number(vs.tts_age_seconds||0).toFixed(1)+" s"):"nie"),vs.reply_after_tts?"ok":vs.tts_pending_reply?"warn":"")+
             kpi("Raw cues",String(Number(vsBrain.cue_count||0)),vsBrain.mode==="raw-sensory-only"?"ok":"")+
           '</div>'+
           '<div class="voice-note"><b>Mówcy:</b> '+((vs.speakers||[]).length?(vs.speakers||[]).map(x=>esc(x.name||x.id)+" "+Number(x.speaking_for||0).toFixed(1)+"s • aff "+(Number(x.affinity||0)>=0?"+":"")+Number(x.affinity||0).toFixed(2)).join(" | "):"nikt")+'</div>'+
-          '<div class="voice-note"><b>Wejścia neuronalne:</b> '+((vsBrain.cues||[]).length?(vsBrain.cues||[]).slice(0,8).map(x=>esc(x.key)+" "+Number(x.magnitude||0).toFixed(2)).join(" • "):"—")+'</div>'+
+          '<div class="voice-note"><b>Dynamika 60s:</b> top '+esc(vs.top_speaker_name||"—")+" • "+(Number(vs.speaker_dominance||0)*100).toFixed(0)+"% speaker-time • speech "+Number(vs.speech_seconds_60s||0).toFixed(1)+"s • handoffów "+Number(vs.handoff_count_60s||0)+(vs.mean_handoff_seconds==null?"":" • avg "+Number(vs.mean_handoff_seconds).toFixed(2)+"s")+'</div>'+
+          '<div class="voice-note"><b>Ostatni transcript:</b> '+(vs.last_transcript?(esc(vs.last_transcript.user_name||vs.last_transcript.user_id||"—")+" • "+Number(vs.last_transcript.word_count||0)+" słów • "+Number(vs.last_transcript.words_per_second||0).toFixed(2)+" sł/s • "+Number(vs.last_transcript.age_seconds||0).toFixed(1)+"s temu"):"—")+'</div>'+
+          '<div class="voice-note"><b>Wejścia neuronalne:</b> '+((vsBrain.cues||[]).length?(vsBrain.cues||[]).slice(0,14).map(x=>esc(x.key)+" "+Number(x.magnitude||0).toFixed(2)).join(" • "):"—")+'</div>'+
           '<div class="voice-note"><b>Tryb:</b> '+esc(vsBrain.mode||"—")+' • action-guided: '+(vsBrain.action_guided?"TAK":"NIE")+' • direct action bias: '+(vsBrain.direct_action_bias?"TAK":"NIE")+'. Surowe sensory trafiają do connectomu; nie są ręcznym JOIN/MOVE/LEAVE score.</div>'+
         '</div>'+
 
