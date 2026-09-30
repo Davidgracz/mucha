@@ -6952,6 +6952,54 @@ class MuchaClient(discord.Client):
                 profile.get("recent_episodes") or []
             )[:6]
 
+        channel_profiles = (
+            self.voice_episodes.channel_profiles(30)
+            if self.cfg.behavior.channel_model_enabled
+            else []
+        )
+        channel_lookup = {}
+        for guild in self.guilds:
+            for channel in guild.voice_channels:
+                channel_lookup[int(channel.id)] = {
+                    "name": str(channel.name),
+                    "guild": str(guild.name),
+                }
+        for profile in channel_profiles:
+            cid = int(profile["channel_id"])
+            live_channel = channel_lookup.get(cid)
+            if live_channel is not None:
+                profile["channel_name"] = live_channel["name"]
+                profile["guild"] = live_channel["guild"]
+            else:
+                profile["guild"] = ""
+            people = []
+            for person in list(profile.get("people") or [])[:12]:
+                row = dict(person)
+                cached_user = self.get_user(
+                    int(row.get("user_id", 0) or 0)
+                )
+                row["display_name"] = (
+                    getattr(
+                        cached_user,
+                        "display_name",
+                        getattr(
+                            cached_user,
+                            "name",
+                            str(row.get("user_id", "")),
+                        ),
+                    )
+                    if cached_user is not None
+                    else str(row.get("user_id", ""))
+                )
+                people.append(row)
+            profile["people"] = people
+            profile["recent_episodes"] = list(
+                profile.get("recent_episodes") or []
+            )[:6]
+            profile["last_injection"] = dict(
+                self._channel_model_debug.get(cid, {})
+            )
+
         voice_parts = []
         for guild in self.guilds:
             vc = guild.voice_client
@@ -7016,6 +7064,7 @@ class MuchaClient(discord.Client):
             "social_debug": dict(self._social_debug),
             "user_affinities": user_affinities,
             "person_profiles": person_profiles,
+            "channel_profiles": channel_profiles,
             "word_feedback": self.language.top_word_feedback(30),
             "social_settings": {
                 "user_avoid_threshold": self.cfg.behavior.user_avoid_threshold,
@@ -7028,6 +7077,9 @@ class MuchaClient(discord.Client):
                 "person_model_enabled": self.cfg.behavior.person_model_enabled,
                 "person_model_min_observations": self.cfg.behavior.person_model_min_observations,
                 "person_model_sensory_magnitude": self.cfg.behavior.person_model_sensory_magnitude,
+                "channel_model_enabled": self.cfg.behavior.channel_model_enabled,
+                "channel_model_min_observations": self.cfg.behavior.channel_model_min_observations,
+                "channel_model_sensory_magnitude": self.cfg.behavior.channel_model_sensory_magnitude,
             },
             "action_history": self._action_history[-40:],
             "reward_history": self._reward_history[-80:],
