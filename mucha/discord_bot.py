@@ -6803,6 +6803,472 @@ class MuchaClient(discord.Client):
 
         return contexts
 
+
+    def _autonomous_voice_candidates(
+        self,
+        guild: discord.Guild,
+        context: dict,
+    ) -> list[tuple[discord.VoiceChannel, list[discord.Member]]]:
+        """Revalidate voice targets immediately before a 24D action."""
+        valid_ids = {
+            int(row["id"])
+            for row in context.get("voice_targets", [])
+            if row.get("id") is not None
+        }
+        if not valid_ids or guild.me is None:
+            return []
+
+        now = time.monotonic()
+        current = self._current_voice_channel(guild)
+        chaser_id = self._chaser_confirmed.get(guild.id)
+        chaser_active = self._chaser_panic_remaining(guild.id, now) > 0.0
+        candidates: list[
+            tuple[discord.VoiceChannel, list[discord.Member]]
+        ] = []
+        for channel in guild.voice_channels:
+            if int(channel.id) not in valid_ids:
+                continue
+            if current is not None and channel.id == current.id:
+                continue
+            if self._is_voice_channel_blocked(channel):
+                continue
+            if (
+                self.cfg.voice.exclude_afk_channel
+                and guild.afk_channel is not None
+                and channel.id == guild.afk_channel.id
+            ):
+                continue
+            if (
+                self._deadly_voice_remaining(
+                    guild.id,
+                    channel.id,
+                    now,
+                )
+                > 0.0
+            ):
+                continue
+            permissions = channel.permissions_for(guild.me)
+            if not permissions.view_channel or not permissions.connect:
+                continue
+            humans = [
+                member for member in channel.members if not member.bot
+            ]
+            if not humans and not self.cfg.voice.include_empty_channels:
+                continue
+            if (
+                chaser_active
+                and chaser_id is not None
+                and any(
+                    int(member.id) == int(chaser_id)
+                    for member in channel.members
+                )
+            ):
+                continue
+            candidates.append((channel, humans))
+        return candidates
+
+    async def _autonomous_voice_target(
+        self,
+        guild: discord.Guild,
+        context: dict,
+    ) -> discord.VoiceChannel | None:
+        candidates = self._autonomous_voice_candidates(
+            guild,
+            context,
+        )
+        if not candidates:
+            return None
+        async with self._brain_lock:
+            affinities = {
+                channel.id: self.brain.channel_affinity(
+                    guild.id,
+                    channel.id,
+                )
+                for channel, _humans in candidates
+            }
+            target, _debug = self._choose_voice_target(
+                guild,
+                candidates,
+                affinities,
+                time.monotonic(),
+                current_id=context.get("current_voice_id"),
+            )
+        return target
+
+    def _queue_autonomous_voice_prediction(
+        self,
+        guild: discord.Guild,
+        context: dict,
+        action: str,
+        predicted_reward: float,
+        learning_trace: tuple | None,
+    ) -> None:
+        if (
+            not self.cfg.voice.episodic_prediction_enabled
+            or learning_trace is None
+        ):
+            return
+        user_ids = [
+            int(user_id)
+            for user_id in context.get("prediction_user_ids", [])
+        ]
+        names = []
+        for user_id in user_ids:
+            member = guild.get_member(user_id)
+            names.append(
+                member.display_name
+                if member is not None
+                else str(user_id)
+            )
+        self._queue_voice_prediction(guild.id, {
+            "time": time.monotonic(),
+            "context": str(
+                context.get("reward_prediction_context") or ""
+            ),
+            "scene_key": str(
+                context.get("reward_prediction_scene_key") or ""
+            ),
+            "social_scene_key": "",
+            "voice_dynamics_key": "",
+            "action": str(action),
+            "predicted_reward": float(predicted_reward),
+            "trace": learning_trace,
+            "channel_id": context.get("current_voice_id"),
+            "channel_name": str(
+                context.get("current_voice") or ""
+            ),
+            "user_ids": user_ids,
+            "user_names": names,
+        })
+
+    async def _execute_autonomous_action(
+        self,
+        context: dict,
+        decision: dict,
+        learning_trace: tuple | None,
+    ) -> dict:
+        """Execute exactly one winner selected by the 24D neural loop."""
+        action = str(decision.get("action", "stay"))
+        guild = self.get_guild(int(context.get("guild_id", 0)))
+        result = {
+            "action": action,
+            "display_action": "noop" if action == "stay" else action,
+            "guild_id": context.get("guild_id"),
+            "guild": context.get("guild"),
+            "executed": False,
+            "external_effect": False,
+            "success": False,
+            "detail": "",
+            "predicted_reward": float(
+                decision.get("predicted_reward", 0.0)
+            ),
+            "prediction_confidence": float(
+                decision.get("prediction_confidence", 0.0)
+            ),
+            "time": time.time(),
+        }
+        if guild is None:
+            result["detail"] = "guild unavailable"
+            return result
+
+        if action == "stay":
+            result.update({
+                "executed": True,
+                "success": True,
+                "detail": "NOOP / STAY",
+            })
+            return result
+
+        if action == "speak":
+            channel_id = context.get("text_channel_id")
+            channel = (
+                guild.get_channel(int(channel_id))
+                if channel_id is not None
+                else None
+            )
+            if (
+                not isinstance(channel, discord.TextChannel)
+                or self._is_text_channel_blocked(channel)
+                or not self.language.ready()
+            ):
+                result["detail"] = "text target became unavailable"
+                return result
+            now = time.monotonic()
+            if (
+                now - self.last_spontaneous.get(guild.id, 0.0)
+                < float(self.cfg.language.spontaneous_cooldown_seconds)
+            ):
+                result["detail"] = "spontaneous text cooldown"
+                return result
+            sent = await self._send_learned(
+                channel,
+                self._attention_language_context(guild.id),
+                float(
+                    decision.get("competition", {})
+                    .get("scores", {})
+                    .get("speak", 0.5)
+                ),
+            )
+            if sent:
+                self.last_spontaneous[guild.id] = now
+                self._last_brain_event = (
+                    f"AUTONOMY • SPEAK • #{channel.name}"
+                )
+                result.update({
+                    "executed": True,
+                    "external_effect": True,
+                    "success": True,
+                    "detail": f"sent to #{channel.name}",
+                })
+            else:
+                result["detail"] = "language generation/send failed"
+            return result
+
+        if action == "explore":
+            async with self._brain_lock:
+                for row in context.get("voice_targets", [])[:4]:
+                    self.brain.inject(
+                        (
+                            f"autonomous:explore:voice:"
+                            f"{guild.id}:{int(row['id'])}"
+                        ),
+                        0.18,
+                        48,
+                    )
+                text_channel_id = context.get("text_channel_id")
+                if text_channel_id is not None:
+                    self.brain.inject(
+                        (
+                            f"autonomous:explore:text:"
+                            f"{guild.id}:{int(text_channel_id)}"
+                        ),
+                        0.14,
+                        48,
+                    )
+                self.brain.inject_internal_state_cue(
+                    "curiosity",
+                    0.30,
+                    key=f"autonomous:explore:{guild.id}",
+                )
+                self.brain.step(1)
+            self._last_autonomous_explore[guild.id] = time.monotonic()
+            if learning_trace is not None:
+                self._set_reinforceable(
+                    guild,
+                    "explore",
+                    learning_trace,
+                    "autonomous internal exploration",
+                )
+            self._last_brain_event = (
+                f"AUTONOMY • EXPLORE • {guild.name}"
+            )
+            self._last_brain_action = "AUTONOMOUS EXPLORE"
+            self._record_action(
+                "explore",
+                "autonomous internal environment scan",
+                guild,
+            )
+            result.update({
+                "executed": True,
+                "success": True,
+                "detail": "internal environment scan",
+            })
+            return result
+
+        if action not in {"voice_join", "voice_move"}:
+            result["detail"] = f"unsupported autonomous action: {action}"
+            return result
+
+        if self._is_voice_guild_blocked(guild):
+            result["detail"] = "voice guild blocked"
+            return result
+        if self._chaser_panic_remaining(guild.id) > 0.0:
+            result["detail"] = "chaser emergency owns voice movement"
+            return result
+
+        vc = guild.voice_client
+        connected = bool(vc is not None and vc.is_connected())
+        if action == "voice_join" and connected:
+            result["detail"] = "already connected"
+            return result
+        if action == "voice_move":
+            if not connected or vc is None:
+                result["detail"] = "not connected"
+                return result
+            dwell = max(
+                0.0,
+                time.monotonic()
+                - self.voice_arrived.get(guild.id, time.monotonic()),
+            )
+            if dwell < float(self.cfg.voice.minimum_dwell_seconds):
+                result["detail"] = "motor refractory"
+                return result
+
+        target = await self._autonomous_voice_target(
+            guild,
+            context,
+        )
+        if target is None:
+            result["detail"] = "no valid voice target"
+            return result
+
+        try:
+            if action == "voice_join":
+                connect_kwargs = {
+                    "self_deaf": not bool(self.cfg.voice.stt_enabled),
+                }
+                if (
+                    self.cfg.voice.stt_enabled
+                    and voice_recv is not None
+                ):
+                    connect_kwargs["cls"] = voice_recv.VoiceRecvClient
+                vc = await target.connect(**connect_kwargs)
+                self._ensure_voice_listener(vc)
+            else:
+                assert vc is not None
+                await vc.move_to(target)
+
+            self._queue_autonomous_voice_prediction(
+                guild,
+                context,
+                action,
+                float(decision.get("predicted_reward", 0.0)),
+                learning_trace,
+            )
+            self._update_pending_voice_scene(
+                guild.id,
+                target,
+            )
+            now = time.monotonic()
+            self.voice_arrived[guild.id] = now
+            self._mark_voice_visit(guild.id, target.id, now)
+            await self._mark_social_voice_arrival(
+                guild,
+                target,
+                action,
+                now,
+            )
+            self._last_overstay_punish.pop(guild.id, None)
+
+            if learning_trace is not None:
+                self._set_reinforceable(
+                    guild,
+                    action,
+                    learning_trace,
+                    f"autonomous → {target.name}",
+                )
+
+            if action == "voice_join":
+                reward_opportunity = context.get("reward_opportunity")
+                if (
+                    reward_opportunity is not None
+                    and int(reward_opportunity.get("channel_id", 0))
+                    == int(target.id)
+                    and learning_trace is not None
+                ):
+                    success = (
+                        self.random.random()
+                        < max(
+                            0.0,
+                            min(
+                                1.0,
+                                float(
+                                    self.cfg.voice
+                                    .reward_opportunity_success_chance
+                                ),
+                            ),
+                        )
+                    )
+                    if success:
+                        amount = max(
+                            0.0,
+                            min(
+                                1.0,
+                                float(
+                                    self.cfg.voice
+                                    .reward_opportunity_reward
+                                ),
+                            ),
+                        )
+                        if amount > 0.0:
+                            async with self._brain_lock:
+                                self.brain.reward(
+                                    amount,
+                                    action="voice_join",
+                                    trace=learning_trace,
+                                )
+                                self.brain.step(1)
+                            self._record_reward(
+                                amount,
+                                "voice_join",
+                                "autonomous reward opportunity",
+                                guild,
+                            )
+                    self._voice_reward_opportunity.pop(
+                        guild.id,
+                        None,
+                    )
+
+                social_drive = max(
+                    0.0,
+                    min(
+                        1.0,
+                        float(context.get("social_drive_level", 0.0)),
+                    ),
+                )
+                if social_drive > 0.0 and learning_trace is not None:
+                    join_reward = max(
+                        0.0,
+                        min(
+                            1.0,
+                            float(self.cfg.voice.social_join_reward)
+                            * (0.50 + 0.50 * social_drive),
+                        ),
+                    )
+                    if join_reward > 0.0:
+                        async with self._brain_lock:
+                            self.brain.reward(
+                                join_reward,
+                                action="voice_join",
+                                trace=learning_trace,
+                            )
+                            self.brain.step(1)
+                        self._record_reward(
+                            join_reward,
+                            "voice_join",
+                            "autonomous social drive join",
+                            guild,
+                        )
+
+            self._last_brain_event = (
+                f"AUTONOMY • {action.upper()} • {target.name}"
+            )
+            self._last_brain_action = (
+                f"AUTONOMOUS {action.upper()} → {target.name}"
+            )
+            self._record_action(
+                action,
+                f"AUTONOMOUS → {target.name}",
+                guild,
+            )
+            result.update({
+                "executed": True,
+                "external_effect": True,
+                "success": True,
+                "detail": f"→ {target.name}",
+                "target_channel_id": int(target.id),
+                "target_channel": str(target.name),
+            })
+            return result
+        except (
+            discord.ClientException,
+            discord.Forbidden,
+            discord.HTTPException,
+            asyncio.TimeoutError,
+        ) as exc:
+            result["detail"] = f"{type(exc).__name__}: {exc}"
+            return result
+
     @tasks.loop(seconds=5)
     async def idle_loop(self):
         await self.wait_until_ready()
