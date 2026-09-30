@@ -10278,28 +10278,83 @@ class MuchaClient(discord.Client):
                 64,
             )
             self.brain.step(1)
-            tts_decision = self.brain.action_competition(
-                ("speak", "stay")
-            )
-            scores = dict(tts_decision["scores"])
+            if self.cfg.behavior.one_brain_enabled:
+                tts_candidate_set = self.brain.one_brain_candidate_set(
+                    {
+                        "stay": True,
+                        "speak": True,
+                    },
+                    technical_reasons={
+                        "stay": "always-available-noop",
+                        "speak": "voice-tts-opportunity-ready",
+                    },
+                )
+                tts_one_brain = self.brain.one_brain_action_decision(
+                    tts_candidate_set,
+                    decision_context=(
+                        f"voice-tts:{guild.id}:{vc.channel.id}"
+                    ),
+                    predicted_reward_gain=float(
+                        self.cfg.behavior
+                        .one_brain_predicted_reward_gain
+                    ),
+                    propagation_steps=int(
+                        self.cfg.behavior
+                        .one_brain_prediction_steps
+                    ),
+                )
+                tts_competition = dict(
+                    tts_one_brain["competition"]
+                )
+                tts_action = str(tts_one_brain["action"])
+                tts_source = str(tts_one_brain["source"])
+            else:
+                tts_candidate_set = None
+                tts_one_brain = None
+                tts_competition = self.brain.action_competition(
+                    ("speak", "stay")
+                )
+                tts_action = str(tts_competition["action"])
+                tts_source = str(tts_competition["source"])
+
+            scores = dict(tts_competition["scores"])
             self._audio_debug["tts_decision"] = {
-                "action": str(tts_decision["action"]),
-                "score": float(tts_decision["score"]),
-                "runner_up": str(tts_decision["runner_up"]),
+                "action": tts_action,
+                "score": float(tts_competition["score"]),
+                "runner_up": str(tts_competition["runner_up"]),
                 "runner_up_score": float(
-                    tts_decision["runner_up_score"]
+                    tts_competition["runner_up_score"]
                 ),
-                "margin": float(tts_decision["margin"]),
+                "margin": float(tts_competition["margin"]),
                 "candidates": dict(
-                    tts_decision["candidates"]
+                    tts_competition["candidates"]
                 ),
-                "source": str(tts_decision["source"]),
-                "tie_break": tts_decision.get("tie_break"),
+                "source": tts_source,
+                "tie_break": tts_competition.get("tie_break"),
+                "decision_mode": (
+                    "one-brain"
+                    if self.cfg.behavior.one_brain_enabled
+                    else "legacy-connectome-competition"
+                ),
+                "predicted_reward": (
+                    float(tts_one_brain["predicted_reward"])
+                    if tts_one_brain is not None
+                    else 0.0
+                ),
+                "prediction_confidence": (
+                    float(tts_one_brain["prediction_confidence"])
+                    if tts_one_brain is not None
+                    else 0.0
+                ),
             }
-            if tts_decision["action"] != "speak":
+            if tts_action != "speak":
                 self._audio_debug.update({
                     "status": "SKIP",
-                    "stage": "neural-speak-vs-stay",
+                    "stage": (
+                        "one-brain-speak-vs-stay"
+                        if self.cfg.behavior.one_brain_enabled
+                        else "neural-speak-vs-stay"
+                    ),
                     "guild": guild.name,
                     "channel": channel_name,
                     "updated_at": time.time(),
