@@ -160,6 +160,9 @@ const groups=[
   ["neural_social_memory_enabled","Neuralna pamięć użytkowników","bool",0,0,0,"Każdy użytkownik dostaje stabilną reprezentację neuronalną i trwałe zmiany synaps w connectomie."],
   ["neural_affinity_weight","Udział neural affinity","number",0.05,0,1,"Maksymalny udział pamięci connectomu w relacji. Reszta pochodzi z legacy affinity podczas migracji."],
   ["neural_social_learning_scale","Siła neural social learning","number",0.05,0,3,"Mnożnik zapisu pozytywnych i negatywnych zdarzeń do neuronalnej pamięci użytkownika."],
+  ["person_model_enabled","Długoterminowe modele ludzi","bool",0,0,0,"Buduje trwały profil doświadczeń konkretnej osoby z pamięci semantycznej i reaktywuje go jako sensoryczny kontekst."],
+  ["person_model_min_observations","Model osoby: min. obserwacji","number",1,1,100,"Ile zapisanych doświadczeń potrzeba, zanim profil osoby zacznie być podawany do connectomu."],
+  ["person_model_sensory_magnitude","Model osoby: siła sensoryczna","number",0.05,0,1.5,"Siła reiniekcji profilu osoby. Nie jest bonusem do akcji; sygnał przechodzi przez zwykłe neurony sensoryczne."],
   ["social_window_seconds","Okno uczenia społecznego","number",10,30,86400,"Jak długo wcześniejsza akcja może dostać feedback."],
   ["word_reuse_reward","Reward za przejęte słowo","number",0.01,0,1,"Nagroda gdy użytkownik później użyje słowa Muchy."],
   ["phrase_reuse_reward","Reward za przejętą frazę","number",0.01,0,1,"Nagroda za ponowne użycie dłuższej frazy."],
@@ -430,6 +433,8 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
 .reason{padding:10px 12px;background:var(--panel2);border:1px solid #1d2a39;border-radius:11px;color:#b9c6d3;font-size:12px;line-height:1.5}
 .phrases{display:grid;grid-template-columns:repeat(3,1fr);gap:7px}.phrase{display:grid;grid-template-columns:1fr auto auto;gap:8px;align-items:center;background:var(--panel2);border:1px solid #1d2a39;border-radius:9px;padding:8px;font-size:12px}
 .memory-note{margin-bottom:10px}.memory-bar{height:7px;background:#071019;border:1px solid #1d2a39;border-radius:999px;overflow:hidden;min-width:86px}.memory-bar>i{display:block;height:100%;background:linear-gradient(90deg,#6da8ff,var(--a))}.path{font:10px/1.45 ui-monospace,SFMono-Regular,Consolas,monospace;color:#8298aa;max-width:360px;word-break:break-all}.neural{color:#6da8ff;font-weight:800}.effective{color:var(--a);font-weight:850}
+.person-list{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.person-card{background:linear-gradient(145deg,rgba(88,218,196,.055),rgba(11,18,25,.98));border:1px solid #22384a;border-radius:14px;padding:12px;min-width:0}.person-head{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}.person-name{font-size:15px;font-weight:850}.person-id{display:block;color:var(--muted);font:9px/1.4 ui-monospace,Consolas,monospace;margin-top:3px}.person-state{border:1px solid #2d475c;border-radius:999px;padding:4px 7px;font-size:9px;font-weight:850;text-transform:uppercase}.person-state.positive{color:var(--good);border-color:#2e654c}.person-state.negative{color:var(--bad);border-color:#66373d}.person-state.mixed{color:var(--warn);border-color:#66572e}.person-grid{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:6px;margin-top:10px}.person-k{background:#081018;border:1px solid #192a38;border-radius:9px;padding:8px;min-width:0}.person-k small{display:block;color:var(--muted);font-size:8px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:4px}.person-k b{font-size:11px;word-break:break-word}.person-bars{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:8px}.person-sub{margin-top:8px;padding-top:8px;border-top:1px solid #1a2a37;color:#96a8b7;font-size:10px;line-height:1.5}.person-tags{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.person-tag{border:1px solid #274056;background:#08121a;border-radius:999px;padding:4px 6px;font-size:8px;color:#a7b8c7}.person-tag.good{border-color:#2e614b;color:#79dba4}.person-tag.bad{border-color:#60363b;color:#ec9198}.person-empty{padding:12px;border:1px dashed #263a4a;border-radius:11px;color:var(--muted);font-size:11px}
+@media(max-width:1100px){.person-list{grid-template-columns:1fr}}
 @media(max-width:900px){.grid{grid-template-columns:1fr}.span2{grid-column:auto}.kpis{grid-template-columns:1fr 1fr}.phrases{grid-template-columns:1fr}.top{align-items:flex-start;flex-direction:column}}
 </style></head><body><main>
 <div class="top"><div><h1>🤝 Affinity / Zasady relacji</h1><div class="sub">Live podgląd tego, co zwiększa i obniża stosunek Muchy do użytkowników.</div></div>
@@ -472,6 +477,12 @@ table{width:100%;border-collapse:collapse;font-size:13px}th,td{text-align:left;p
     <h2>🧠 Social Neural Memory</h2>
     <div class="reason memory-note" id="neural-memory-note">Ładowanie pamięci connectomu…</div>
     <table><thead><tr><th>Użytkownik</th><th>Neural</th><th>Legacy</th><th>Używane</th><th>Dojrzałość</th><th>Assembly</th><th>Uczone synapsy</th><th>Aktywność</th><th>Najsilniejsza ścieżka Δ</th></tr></thead><tbody id="neural-users"></tbody></table>
+  </div>
+
+  <div class="card span2">
+    <h2>🧬 Long-term Person Models</h2>
+    <div class="reason memory-note" id="person-model-note">Ładowanie profili ludzi…</div>
+    <div class="person-list" id="person-models"></div>
   </div>
 
   <div class="card span2">
@@ -533,6 +544,37 @@ function render(d){
       '<td class="path">'+path+'</td>'+
     '</tr>';
   }).join("")||'<tr><td colspan="9">Pamięć neuronalna nie ma jeszcze użytkowników do pokazania.</td></tr>';
+
+  const profiles=d.person_profiles||[];
+  $("person-model-note").innerHTML=settings.person_model_enabled
+    ? '<b>AKTYWNE.</b> Profil osoby powstaje z trwałej pamięci semantycznej: osoba + akcja, osoba + kanał i osoba + stan sytuacji. Od <b>'+Math.round(num(settings.person_model_min_observations||2))+' obserwacji</b> wraca do connectomu jako raw sensory context o bazowej sile <b>'+num(settings.person_model_sensory_magnitude||0.35).toFixed(2)+'</b>. Nie dodaje punktów bezpośrednio do JOIN/MOVE/STAY/SPEAK.'
+    : '<b>WYŁĄCZONE.</b> Profile są nadal zapisane w pamięci, ale nie są reiniektowane do connectomu.';
+  $("person-models").innerHTML=profiles.slice(0,20).map(p=>{
+    const fam=Math.max(0,Math.min(1,num(p.familiarity))),conf=Math.max(0,Math.min(1,num(p.confidence))),val=num(p.valence);
+    const state=String(p.valence_label||"neutral"),preferred=p.preferred_action||null,avoided=p.avoided_action||null;
+    const channels=(p.channels||[]).slice(0,3),contexts=(p.contexts||[]).slice(0,2),inj=p.last_injection||{},brain=inj.brain||{};
+    const last=p.last_seen?new Date(Number(p.last_seen)*1000).toLocaleString("pl-PL"):"—";
+    const channelTags=channels.map(x=>'<span class="person-tag">'+esc(x.channel_name||x.channel_id)+' • n='+num(x.observations)+' • '+signed(x.expected_reward)+'</span>').join("");
+    const contextTags=contexts.map(x=>'<span class="person-tag">'+esc(String(x.context||"").slice(0,72))+' • n='+num(x.observations)+'</span>').join("");
+    const actionTags=(p.actions||[]).slice(0,4).map(x=>'<span class="person-tag '+(num(x.signal)>0.03?"good":num(x.signal)<-0.03?"bad":"")+'">'+esc(x.action)+' '+signed(x.signal)+'</span>').join("");
+    return '<div class="person-card">'+
+      '<div class="person-head"><div><div class="person-name">'+esc(p.display_name||p.user_id)+'</div><span class="person-id">'+esc(p.user_id)+' • ostatnio '+esc(last)+'</span></div><span class="person-state '+esc(state)+'">'+esc(state)+'</span></div>'+
+      '<div class="person-grid">'+
+        '<div class="person-k"><small>obserwacje</small><b>'+num(p.observations)+'</b></div>'+
+        '<div class="person-k"><small>familiarity</small><b>'+(fam*100).toFixed(0)+'%</b></div>'+
+        '<div class="person-k"><small>confidence</small><b>'+(conf*100).toFixed(0)+'%</b></div>'+
+        '<div class="person-k"><small>history valence</small><b class="'+(val>0.05?"plus":val<-0.05?"minus":"")+'">'+signed(val)+'</b></div>'+
+        '<div class="person-k"><small>reward + / -</small><b>'+num(p.positive_count)+' / '+num(p.negative_count)+'</b></div>'+
+        '<div class="person-k"><small>preferred</small><b>'+(preferred?esc(preferred.action)+' '+signed(preferred.signal):'—')+'</b></div>'+
+        '<div class="person-k"><small>avoided</small><b>'+(avoided?esc(avoided.action)+' '+signed(avoided.signal):'—')+'</b></div>'+
+        '<div class="person-k"><small>ostatni sensory cue</small><b>'+num(brain.cue_count)+' cue</b></div>'+
+      '</div>'+
+      '<div class="person-bars"><div><small>familiarity</small><div class="memory-bar"><i style="width:'+(fam*100).toFixed(1)+'%"></i></div></div><div><small>confidence</small><div class="memory-bar"><i style="width:'+(conf*100).toFixed(1)+'%"></i></div></div></div>'+
+      '<div class="person-sub"><b>Akcje:</b><div class="person-tags">'+(actionTags||'<span class="person-tag">brak dojrzałych skojarzeń</span>')+'</div></div>'+
+      '<div class="person-sub"><b>Kanały:</b><div class="person-tags">'+(channelTags||'<span class="person-tag">brak</span>')+'</div></div>'+
+      '<div class="person-sub"><b>Konteksty:</b><div class="person-tags">'+(contextTags||'<span class="person-tag">brak</span>')+'</div></div>'+
+    '</div>';
+  }).join("")||'<div class="person-empty">Brak dojrzałych profili. Powstaną z kolejnych zapisanych doświadczeń voice.</div>';
 
   const s=d.social_debug||{};
   $("last-social").innerHTML='<b>'+esc(s.event||"—")+'</b> • '+esc(s.user_name||"—")+' • '+esc(s.detail||"—")+' • Δ '+signed(s.amount||0)+' • używane '+signed(s.affinity||0)+' • neural '+signed(s.neural_affinity||0)+' • legacy '+signed(s.legacy_affinity||0)+' • maturity '+(num(s.neural_maturity)*100).toFixed(1)+'%';
