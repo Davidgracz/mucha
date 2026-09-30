@@ -1683,13 +1683,13 @@ AUTONOMY_HTML = r"""<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Mucha — Autonomia 24E</title>
+<title>Mucha — One Brain / Autonomia 24E</title>
 <style>
 :root{--bg:#070b10;--panel:#0f161f;--panel2:#0a1118;--line:#213043;--txt:#edf5fd;--muted:#8190a1;--a:#58dac4;--blue:#6ea8fe;--good:#57db91;--warn:#f0c45b;--bad:#ff7272;--purple:#b995ff}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 12% 0%,rgba(88,218,196,.10),transparent 30%),radial-gradient(circle at 88% 0%,rgba(110,168,254,.10),transparent 32%),linear-gradient(180deg,#070b10,#0a1017 60%,#080c11);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}.brand{display:flex;gap:13px;align-items:center}.logo{font-size:37px}h1{margin:0;font-size:24px}.sub{margin-top:4px;color:var(--muted);font-size:12px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#b9c8d7;text-decoration:none;background:#0e1720;border:1px solid var(--line);padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{color:#07110e;background:var(--a);border-color:var(--a);font-weight:800}
-.hero{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}.card,.hero-card{background:rgba(15,22,31,.94);border:1px solid var(--line);border-radius:16px}.hero-card{padding:14px}.hero-card small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}.hero-card strong{font-size:17px;word-break:break-word}
-.pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}.stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px}.stage:not(:last-child):after{content:"→";position:absolute;right:-9px;top:50%;transform:translateY(-50%);z-index:3;color:var(--a);font-size:20px;font-weight:900}.stage b{display:block;font-size:12px;margin-bottom:5px}.stage span{color:var(--muted);font-size:11px;line-height:1.45}
+.hero{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}.card,.hero-card{background:rgba(15,22,31,.94);border:1px solid var(--line);border-radius:16px}.hero-card{padding:14px}.hero-card small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}.hero-card strong{font-size:17px;word-break:break-word}
+.pipeline{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}.stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px}.stage:not(:last-child):after{content:"→";position:absolute;right:-9px;top:50%;transform:translateY(-50%);z-index:3;color:var(--a);font-size:20px;font-weight:900}.stage b{display:block;font-size:12px;margin-bottom:5px}.stage span{color:var(--muted);font-size:11px;line-height:1.45}
 .grid{display:grid;grid-template-columns:1.35fr .65fr;gap:12px}.card{padding:15px;min-width:0}.card h2{margin:0 0 12px;font-size:12px;color:#aebdcb;text-transform:uppercase;letter-spacing:.1em}.span2{grid-column:1/-1}
 .guild-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.guild-tab{border:1px solid var(--line);background:#0a121a;color:#aebdcb;border-radius:999px;padding:7px 10px;cursor:pointer;font-size:11px}.guild-tab.active{background:rgba(88,218,196,.15);border-color:var(--a);color:#dffff8}
 .candidates{display:flex;flex-direction:column;gap:8px}.candidate{display:grid;grid-template-columns:128px 70px minmax(100px,1fr) 110px 110px 126px 110px;gap:8px;align-items:center;padding:10px;background:var(--panel2);border:1px solid #1e2c3b;border-radius:12px;font-size:11px}.candidate.winner{border-color:var(--a);box-shadow:0 0 0 1px rgba(88,218,196,.15),0 0 24px rgba(88,218,196,.08)}.candidate.disabled{opacity:.52}.action-name{font-weight:850;font-size:12px}.pill{display:inline-flex;align-items:center;justify-content:center;border:1px solid #2b4054;border-radius:999px;padding:4px 7px;font-size:9px;white-space:nowrap}.pill.ok{color:var(--good);border-color:rgba(87,219,145,.45)}.pill.no{color:var(--bad);border-color:rgba(255,114,114,.45)}.pill.win{color:#06110e;background:var(--a);border-color:var(--a);font-weight:900}
@@ -1704,11 +1704,12 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
 </head>
 <body><main>
 <div class="top">
- <div class="brand"><div class="logo">🪰</div><div><h1>Autonomia 24E</h1><div class="sub">Live: potrzeby → kandydaci → predicted reward → connectome → wykonanie</div></div></div>
+ <div class="brand"><div class="logo">🪰</div><div><h1>One Brain 25 / Autonomia 24E</h1><div class="sub">Jeden arbiter dla TEXT • REACT • TTS • JOIN • MOVE • EXPLORE • NOOP</div></div></div>
  <div class="nav"><a href="/">🏠 Przegląd</a><a class="active" href="/autonomy">🧭 Autonomia</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a href="/neuromap">🧠 Neuro-map</a><a href="/associations">🗣 Mowa</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
 </div>
 
 <section class="hero">
+ <div class="hero-card"><small>One Brain <span class="help" data-tip="Stage 25: TEXT, REACT, TTS i autonomia korzystają ze wspólnego predicted-reward + connectome arbitration.">?</span></small><strong id="one-brain-enabled">—</strong></div>
  <div class="hero-card"><small>24D loop <span class="help" data-tip="Czy zunifikowana pętla autonomii jest aktywna. Przy OFF działa ścieżka legacy.">?</span></small><strong id="enabled">—</strong></div>
  <div class="hero-card"><small>Final winner <span class="help" data-tip="Akcja wybrana przez końcowe action_competition po propagacji bodźców predicted reward przez connectome.">?</span></small><strong id="winner">—</strong></div>
  <div class="hero-card"><small>Wykonanie <span class="help" data-tip="Czy zwycięska akcja została technicznie wykonana. NOOP jest poprawnym wykonaniem bez efektu na Discordzie.">?</span></small><strong id="execution">—</strong></div>
@@ -1721,6 +1722,7 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
  <div class="stage"><b>24B • Candidates</b><span>Do konkurencji trafiają tylko akcje technicznie możliwe. NOOP/STAY pozostaje zawsze.</span></div>
  <div class="stage"><b>24C • Reward model</b><span>Reward EMA + episodic context przewidują wynik i confidence bez ręcznego bonusu akcji.</span></div>
  <div class="stage"><b>24D • Neural winner</b><span>Signed prediction → sensory neurons → FAFB propagation → action_competition → executor.</span></div>
+ <div class="stage"><b>25 • One Brain</b><span>TEXT, REACT, TTS i autonomia używają tego samego arbitra oraz wspólnej historii decyzji.</span></div>
 </section>
 
 <div class="guild-tabs" id="guild-tabs"></div>
@@ -1744,11 +1746,15 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
  </div>
 
  <div class="card span2">
+  <h2>One Brain timeline <span class="help" data-tip="Wspólna historia decyzji z różnych modalności. kind pokazuje, czy bodziec pochodził z TEXT, VOICE_TTS czy AUTONOMY.">?</span></h2>
+  <div class="history" id="one-brain-history"><div class="muted">Brak historii Stage 25.</div></div>
+ </div>
+ <div class="card span2">
   <h2>Historia autonomii <span class="help" data-tip="Kompaktowy zapis ostatnich decyzji 24D. Powtarzające się NOOP-y są scalane i pokazują licznik ×N.">?</span></h2>
   <div class="history" id="history"><div class="muted">Brak historii.</div></div>
  </div>
 </section>
-<div class="foot">24E • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
+<div class="foot">Stage 25 One Brain + 24E • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
 
 <script>
 const LIVE_REFRESH_MS=250;
@@ -1802,6 +1808,22 @@ function renderCues(decision){
    '<div class="cue"><b>'+esc(displayAction(action))+'</b><span>'+esc(x.mode||"sensory")+' • '+Number(x.neurons||0)+' neuronów • reach '+fmt(x.reach_max)+'</span><strong>'+fmt(x.magnitude)+'</strong></div>'
  ).join("");
 }
+function renderOneBrainHistory(items){
+ const root=$("one-brain-history"),rows=Array.isArray(items)?items.slice().reverse():[];
+ if(!rows.length){root.innerHTML='<div class="muted">Brak decyzji One Brain — timeline pojawi się po TEXT, TTS albo ticku autonomii.</div>';return}
+ root.innerHTML=rows.map(x=>{
+   const t=new Date(Number(x.time||0)*1000).toLocaleTimeString("pl-PL");
+   const pred=Number(x.predicted_reward||0);
+   return '<div class="hist '+(x.external_effect?"external":"")+'">'+
+     '<span class="time">'+esc(t)+'</span>'+
+     '<span class="act '+(x.success?"good":"")+'">'+esc(displayAction(x.action))+'</span>'+
+     '<span class="detail" title="'+esc(x.detail||"")+'"><b>'+esc(String(x.kind||"—").toUpperCase())+'</b> • '+esc(x.guild||"—")+' • '+esc(x.detail||"—")+'</span>'+
+     '<span class="pred '+(pred>0?"good":pred<0?"bad":"")+'">'+(pred>=0?"+":"")+fmt(pred,2)+'</span>'+
+     '<span class="rep">'+(x.executed?"EXEC":"SKIP")+'</span>'+
+   '</div>';
+ }).join("");
+}
+
 function renderHistory(items){
  const root=$("history"),rows=Array.isArray(items)?items.slice().reverse():[];
  if(!rows.length){root.innerHTML='<div class="muted">Brak historii — pojawi się po pierwszej decyzji 24D.</div>';return}
@@ -1820,9 +1842,12 @@ function renderHistory(items){
 function render(payload){
  lastPayload=payload||{};
  const auto=payload?.autonomous_candidates||{},decision=auto.decision||{},exec=auto.last_execution||{},row=guildRow(auto);
+ const ob=payload?.one_brain||{};
  const rowSelected=!!row&&Number(row.guild_id)===Number(auto.selected_guild_id);
  const rowDecision=rowSelected?(row?.candidate_set?.autonomous_decision||decision):{};
  renderTabs(auto);
+ $("one-brain-enabled").textContent=ob.enabled?"ON • STAGE 25":"OFF • LEGACY";
+ $("one-brain-enabled").className=ob.enabled?"good":"warn";
  $("enabled").textContent=auto.enabled?"ON • 24D":"OFF • legacy";
  $("enabled").className=auto.enabled?"good":"warn";
  $("winner").textContent=displayAction(decision.action);
@@ -1843,6 +1868,7 @@ function render(payload){
  $("external").textContent=rowSelected?(exec.external_effect?"TAK":"NIE"):"—";
  renderCandidates(row,rowDecision);
  renderCues(rowDecision);
+ renderOneBrainHistory(payload?.one_brain_history||[]);
  renderHistory(payload?.autonomous_history||[]);
 }
 async function update(){
