@@ -3257,6 +3257,42 @@ class FlyBrain:
                 96,
             )
 
+        for row in list(profile.get("contact_sources") or [])[:4]:
+            source = str(row.get("source") or "unknown")
+            source_obs = max(
+                0,
+                int(row.get("observations", 0)),
+            )
+            if source_obs <= 0:
+                continue
+            source_bucket = min(
+                6,
+                max(1, int(math.log2(source_obs)) + 1),
+            )
+            cue(
+                f"social:person-contact:{source}:{source_bucket}",
+                base * min(
+                    1.05,
+                    0.14 + 0.12 * math.log1p(source_obs),
+                ),
+                88,
+            )
+
+        for row in list(profile.get("social_events") or [])[:4]:
+            signal = max(
+                -1.0,
+                min(1.0, float(row.get("signal", 0.0))),
+            )
+            if abs(signal) < 0.02:
+                continue
+            event = str(row.get("event") or "social")
+            sign = "positive" if signal > 0.0 else "negative"
+            cue(
+                f"social:person-event:{event}:{sign}",
+                base * (0.16 + 0.70 * abs(signal)),
+                96,
+            )
+
         if current_channel_id is not None:
             current_channel_id = int(current_channel_id)
             channel_match = next(
@@ -3298,8 +3334,14 @@ class FlyBrain:
             "confidence": confidence,
             "valence": valence,
             "valence_label": valence_label,
+            "contact_observations": int(
+                profile.get("contact_observations", 0)
+            ),
+            "social_observations": int(
+                profile.get("social_observations", 0)
+            ),
             "cue_count": len(cues),
-            "cues": cues[:16],
+            "cues": cues[:24],
             "direct_action_bias": False,
         }
 
