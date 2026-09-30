@@ -4440,6 +4440,9 @@ class MuchaClient(discord.Client):
     ) -> tuple[discord.VoiceChannel | None, dict[int, dict]]:
         scored: list[tuple[discord.VoiceChannel, float]] = []
         debug_scores: dict[int, dict] = {}
+        connectome_targeting = bool(
+            self.cfg.voice.connectome_voice_control_enabled
+        )
 
         for ch, _ in candidates:
             if current_id is not None and ch.id == current_id:
@@ -4466,31 +4469,65 @@ class MuchaClient(discord.Client):
                 if self.cfg.voice.uncertainty_exploration_enabled
                 else 0.0
             )
-            score += uncertainty_bonus
-            scored.append((ch, score))
+            legacy_score = score + uncertainty_bonus
+            scored.append((ch, legacy_score))
             debug_scores[ch.id] = {
-                "exploration_score": score,
+                "exploration_score": legacy_score,
                 "visit_age": age,
                 "novelty": novelty,
                 "recent_penalty_factor": recent,
                 "semantic_uncertainty": uncertainty,
-                "uncertainty_target_bonus": uncertainty_bonus,
+                "uncertainty_target_bonus": (
+                    0.0
+                    if connectome_targeting
+                    else uncertainty_bonus
+                ),
+                "selection_source": (
+                    "neural-channel-readout"
+                    if connectome_targeting
+                    else "legacy-affinity-exploration"
+                ),
             }
+            if (
+                preferred_channel_id is not None
+                and int(ch.id) == int(preferred_channel_id)
+            ):
+                debug_scores[ch.id]["reward_opportunity"] = True
 
         if not scored:
+            return None, debug_scores
+
+        if connectome_targeting:
+            neural = self.brain.voice_channel_target_decision(
+                guild.id,
+                [channel.id for channel, _ in scored],
+            )
+            target_id = neural.get("channel_id")
+            for channel, _score in scored:
+                debug_scores[channel.id]["neural_target_score"] = float(
+                    neural.get("candidates", {}).get(
+                        str(channel.id),
+                        affinities.get(channel.id, 0.5),
+                    )
+                )
+                debug_scores[channel.id]["neural_target_margin"] = float(
+                    neural.get("margin", 0.0)
+                )
+                debug_scores[channel.id]["neural_target_tie_break"] = (
+                    neural.get("tie_break")
+                )
+            for channel, _score in scored:
+                if int(channel.id) == int(target_id):
+                    return channel, debug_scores
             return None, debug_scores
 
         if preferred_channel_id is not None:
             preferred_channel_id = int(preferred_channel_id)
             for channel, _score in scored:
                 if int(channel.id) == preferred_channel_id:
-                    debug_scores[channel.id][
-                        "reward_opportunity"
-                    ] = True
                     return channel, debug_scores
 
-        # Softmax-like sampling: affinity still matters, but fresh/rarely visited
-        # channels can win instead of repeatedly selecting the same deterministic max.
+        # Legacy fallback keeps the former manually weighted exploration.
         temperature = max(
             0.03,
             float(self.cfg.voice.exploration_temperature),
@@ -4500,9 +4537,6 @@ class MuchaClient(discord.Client):
             math.exp(max(-20.0, min(20.0, (score - best) / temperature)))
             for _, score in scored
         ]
-
-        # If there are many options, guarantee that several candidates retain a
-        # meaningful chance instead of collapsing onto one or two channels.
         min_candidates = max(1, int(self.cfg.voice.exploration_min_candidates))
         if len(scored) >= min_candidates:
             floor = max(weights) * 0.08
@@ -8736,8 +8770,32 @@ class MuchaClient(discord.Client):
                 64,
             )
             self.brain.step(1)
-            scores = self.brain.action_scores()
-            if scores["speak"] < self.cfg.behavior.speak_threshold:
+            tts_decision = self.brain.action_competition(
+                ("speak", "stay")
+            )
+            scores = dict(tts_decision["scores"])
+            self._audio_debug["tts_decision"] = {
+                "action": str(tts_decision["action"]),
+                "score": float(tts_decision["score"]),
+                "runner_up": str(tts_decision["runner_up"]),
+                "runner_up_score": float(
+                    tts_decision["runner_up_score"]
+                ),
+                "margin": float(tts_decision["margin"]),
+                "candidates": dict(
+                    tts_decision["candidates"]
+                ),
+                "source": str(tts_decision["source"]),
+                "tie_break": tts_decision.get("tie_break"),
+            }
+            if tts_decision["action"] != "speak":
+                self._audio_debug.update({
+                    "status": "SKIP",
+                    "stage": "neural-speak-vs-stay",
+                    "guild": guild.name,
+                    "channel": channel_name,
+                    "updated_at": time.time(),
+                })
                 return
 
             internal = self.brain.internal_state_diagnostics()
@@ -9935,6 +9993,54 @@ class MuchaClient(discord.Client):
                     [m.id for m in humans],
                     sensory_scale=sensory_scale,
                 )
+                if connectome_voice_control:
+                    _, visit_age, novelty, recent = (
+                        self._voice_exploration_score(
+                            guild.id,
+                            ch.id,
+                            0.5,
+                            now,
+                        )
+                    )
+                    target_context = (
+                        self.brain.inject_voice_target_context(
+                            guild.id,
+                            ch.id,
+                            novelty=novelty,
+                            recent=recent,
+                            uncertainty=float(
+                                channel_uncertainties.get(
+                                    int(ch.id),
+                                    0.0,
+                                )
+                            ),
+                            reward_opportunity_strength=(
+                                opportunity_effective_strength
+                                if (
+                                    reward_opportunity is not None
+                                    and int(ch.id)
+                                    == int(
+                                        reward_opportunity[
+                                            "channel_id"
+                                        ]
+                                    )
+                                )
+                                else 0.0
+                            ),
+                            is_current=bool(
+                                current is not None
+                                and ch.id == current.id
+                            ),
+                        )
+                    )
+                    for debug_row in debug["channels"]:
+                        if int(debug_row["id"]) == int(ch.id):
+                            debug_row["target_context"] = (
+                                target_context
+                            )
+                            debug_row["visit_age"] = visit_age
+                            debug_row["novelty"] = novelty
+                            break
                 if self.cfg.behavior.channel_model_enabled:
                     channel_profile = (
                         channel_profiles_by_id.get(int(ch.id))
@@ -10814,25 +10920,9 @@ class MuchaClient(discord.Client):
                             trace=decision_trace,
                         )
                         self.brain.step(1)
-                        brain_decision = (
-                            self.brain.voice_action_decision(
-                                connected=False,
-                                can_join=bool(channels),
-                            )
-                        )
-                        scores = dict(
-                            brain_decision["scores"]
-                        )
-                        decision_trace = (
-                            self.brain.capture_learning_trace()
-                        )
-                        affinities = {
-                            ch.id: self.brain.channel_affinity(
-                                guild.id,
-                                ch.id,
-                            )
-                            for ch, _ in channels
-                        }
+                    debug[
+                        "learning_updates_do_not_override_current_decision"
+                    ] = True
                     self._last_social_drive_punish[
                         guild.id
                     ] = now
@@ -10900,25 +10990,9 @@ class MuchaClient(discord.Client):
                             trace=decision_trace,
                         )
                         self.brain.step(1)
-                        brain_decision = (
-                            self.brain.voice_action_decision(
-                                connected=False,
-                                can_join=bool(channels),
-                            )
-                        )
-                        scores = dict(
-                            brain_decision["scores"]
-                        )
-                        decision_trace = (
-                            self.brain.capture_learning_trace()
-                        )
-                        affinities = {
-                            ch.id: self.brain.channel_affinity(
-                                guild.id,
-                                ch.id,
-                            )
-                            for ch, _ in channels
-                        }
+                    debug[
+                        "learning_updates_do_not_override_current_decision"
+                    ] = True
                     self._last_reward_opportunity_stay_punish[
                         guild.id
                     ] = now
@@ -11043,15 +11117,14 @@ class MuchaClient(discord.Client):
                 now,
                 current_id=None,
                 preferred_channel_id=(
-                    int(
-                        reward_opportunity["channel_id"]
-                    )
+                    int(reward_opportunity["channel_id"])
                     if (
-                        connectome_voice_control
+                        not connectome_voice_control
                         and reward_opportunity is not None
                     )
                     else None
                 ),
+                uncertainties=channel_uncertainties,
             )
             if target is None:
                 debug["decision"] = "NIE WCHODZĘ"
@@ -11476,51 +11549,14 @@ class MuchaClient(discord.Client):
                         trace=threat_trace,
                     )
                     self.brain.step(1)
-                    brain_decision = (
-                        self.brain.voice_action_decision(
-                            connected=True,
-                            can_move=bool(
-                                alternatives_count > 0
-                            ),
-                            can_leave=True,
-                        )
-                    )
-                    scores = dict(
-                        brain_decision["scores"]
-                    )
-                    decision_trace = (
-                        self.brain.capture_learning_trace()
-                    )
-                    affinities = {
-                        ch.id: self.brain.channel_affinity(
-                            guild.id,
-                            ch.id,
-                        )
-                        for ch, _ in channels
-                    }
+                debug[
+                    "learning_updates_do_not_override_current_decision"
+                ] = True
                 self._last_overstay_punish[guild.id] = now
                 debug["overstay_punished"] = True
                 debug["overstay_punish_amount"] = (
                     -punish_amount
                 )
-                debug["brain_decision"] = {
-                    "action": brain_decision["action"],
-                    "score": brain_decision["score"],
-                    "runner_up": brain_decision["runner_up"],
-                    "runner_up_score": brain_decision[
-                        "runner_up_score"
-                    ],
-                    "margin": brain_decision["margin"],
-                    "candidates": dict(
-                        brain_decision["candidates"]
-                    ),
-                }
-                debug["scores"].update({
-                    "voice_join": scores["voice_join"],
-                    "voice_move": scores["voice_move"],
-                    "voice_leave": scores["voice_leave"],
-                    "stay": scores["stay"],
-                })
                 self._record_reward(
                     -punish_amount,
                     "stay",
