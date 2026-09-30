@@ -3836,10 +3836,17 @@ class WebDashboard:
         if psutil is not None:
             try:
                 self._process_metrics = psutil.Process(os.getpid())
-                self._process_metrics.cpu_percent(interval=None)
-                psutil.cpu_percent(interval=None)
             except Exception:
                 self._process_metrics = None
+            try:
+                if self._process_metrics is not None:
+                    self._process_metrics.cpu_percent(interval=None)
+            except Exception:
+                pass
+            try:
+                psutil.cpu_percent(interval=None)
+            except Exception:
+                pass
 
     def _session_token(self, expires: int) -> str:
         payload = str(int(expires))
@@ -4569,20 +4576,29 @@ class WebDashboard:
                 pass
             try:
                 process = self._process_metrics
-                if process is not None:
-                    process_rss = int(process.memory_info().rss)
+                if process is None:
+                    # A failed CPU priming call must not permanently disable
+                    # process metrics. Re-create the current-process handle.
+                    process = psutil.Process(os.getpid())
+                    self._process_metrics = process
+                process_rss = int(process.memory_info().rss)
+                try:
                     process_cpu_percent = float(
                         process.cpu_percent(interval=None)
                     )
-                    process_threads = int(
-                        process.num_threads()
-                    )
+                except Exception:
+                    process_cpu_percent = 0.0
+                try:
+                    process_threads = int(process.num_threads())
+                except Exception:
+                    process_threads = 0
             except Exception:
                 pass
 
-        # psutil is optional in the local Windows launcher. If it is missing
-        # or Process() initialization failed, keep the live Mucha RAM tile
-        # working through the native Win32 working-set counter.
+        # psutil is optional in the local Windows launcher. If it is missing,
+        # broken, or returned an invalid RSS value, query the current process
+        # through Win32. Explicit pointer-sized signatures matter on 64-bit
+        # Python; relying on ctypes defaults can truncate HANDLE values.
         if process_rss <= 0 and os.name == "nt":
             try:
                 class PROCESS_MEMORY_COUNTERS(ctypes.Structure):
@@ -4599,13 +4615,39 @@ class WebDashboard:
                         ("PeakPagefileUsage", ctypes.c_size_t),
                     ]
 
+                kernel32 = ctypes.WinDLL(
+                    "kernel32",
+                    use_last_error=True,
+                )
+                kernel32.GetCurrentProcess.argtypes = []
+                kernel32.GetCurrentProcess.restype = ctypes.c_void_p
+                process_handle = kernel32.GetCurrentProcess()
+
                 counters = PROCESS_MEMORY_COUNTERS()
                 counters.cb = ctypes.sizeof(counters)
-                process_handle = ctypes.windll.kernel32.GetCurrentProcess()
-                if ctypes.windll.psapi.GetProcessMemoryInfo(
+
+                query = getattr(
+                    kernel32,
+                    "K32GetProcessMemoryInfo",
+                    None,
+                )
+                if query is None:
+                    psapi = ctypes.WinDLL(
+                        "psapi",
+                        use_last_error=True,
+                    )
+                    query = psapi.GetProcessMemoryInfo
+
+                query.argtypes = [
+                    ctypes.c_void_p,
+                    ctypes.POINTER(PROCESS_MEMORY_COUNTERS),
+                    ctypes.c_ulong,
+                ]
+                query.restype = ctypes.c_int
+                if query(
                     process_handle,
                     ctypes.byref(counters),
-                    counters.cb,
+                    ctypes.c_ulong(counters.cb),
                 ):
                     process_rss = int(counters.WorkingSetSize)
             except Exception:
