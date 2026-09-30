@@ -303,6 +303,13 @@ class MuchaClient(discord.Client):
             "last_execution": None,
         }
         self._autonomous_history = deque(maxlen=120)
+        self._one_brain_history = deque(maxlen=160)
+        self._one_brain_debug: dict = {
+            "stage": "25",
+            "enabled": bool(cfg.behavior.one_brain_enabled),
+            "last": None,
+            "updated_at": 0.0,
+        }
         self._last_autonomous_explore: dict[int, float] = {}
         self._reaction_debug: dict = {
             "score": 0.0,
@@ -7530,6 +7537,90 @@ class MuchaClient(discord.Client):
             return result
 
 
+    def _remember_one_brain_cycle(
+        self,
+        *,
+        kind: str,
+        guild_id: int,
+        guild_name: str,
+        candidate_set: dict | None,
+        decision: dict | None,
+        executed: bool,
+        external_effect: bool,
+        success: bool,
+        detail: str,
+    ) -> None:
+        """Store one compact cross-modal One Brain decision."""
+        if decision is None:
+            return
+        candidate_set = dict(candidate_set or {})
+        rows = dict(candidate_set.get("rows", {}))
+        competition = dict(decision.get("competition", {}))
+        candidates = []
+        for action in candidate_set.get("candidate_actions", []):
+            row = dict(rows.get(action, {}))
+            candidates.append({
+                "action": str(action),
+                "feasible": bool(row.get("feasible", True)),
+                "technical_reason": str(
+                    row.get("technical_reason", "")
+                ),
+                "effective_score": float(
+                    row.get("effective_score", 0.0)
+                ),
+                "predicted_reward": float(
+                    row.get("predicted_reward", 0.0)
+                ),
+                "prediction_confidence": float(
+                    row.get("prediction_confidence", 0.0)
+                ),
+            })
+
+        entry = {
+            "time": time.time(),
+            "kind": str(kind),
+            "guild_id": int(guild_id),
+            "guild": str(guild_name),
+            "action": str(decision.get("action", "stay")),
+            "display_action": str(
+                decision.get("display_action", "noop")
+            ),
+            "executed": bool(executed),
+            "external_effect": bool(external_effect),
+            "success": bool(success),
+            "detail": str(detail),
+            "decision_context": str(
+                decision.get("decision_context", kind)
+            ),
+            "predicted_reward": float(
+                decision.get("predicted_reward", 0.0)
+            ),
+            "prediction_confidence": float(
+                decision.get("prediction_confidence", 0.0)
+            ),
+            "prediction_source": str(
+                decision.get("prediction_source", "")
+            ),
+            "competition_score": float(
+                competition.get("score", 0.0)
+            ),
+            "competition_margin": float(
+                competition.get("margin", 0.0)
+            ),
+            "runner_up": str(
+                competition.get("runner_up", "none")
+            ),
+            "source": str(decision.get("source", "")),
+            "candidates": candidates,
+        }
+        self._one_brain_history.append(entry)
+        self._one_brain_debug = {
+            "stage": "25",
+            "enabled": bool(self.cfg.behavior.one_brain_enabled),
+            "last": dict(entry),
+            "updated_at": float(entry["time"]),
+        }
+
     def _remember_autonomous_execution(
         self,
         plan: dict,
@@ -8833,6 +8924,10 @@ class MuchaClient(discord.Client):
             ),
             "autonomous_history": deepcopy(
                 list(self._autonomous_history)[-60:]
+            ),
+            "one_brain": deepcopy(self._one_brain_debug),
+            "one_brain_history": deepcopy(
+                list(self._one_brain_history)[-80:]
             ),
             "episodic_memory": self.voice_episodes.diagnostics(),
             "memory_replay": dict(self._memory_replay_debug),
