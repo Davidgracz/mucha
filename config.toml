@@ -235,6 +235,7 @@ attention_topic_words = 5
 attention_mention_boost = 0.35
 speak_threshold = 0.50
 reaction_threshold = 0.62
+connectome_behavior_competition_enabled = true
 reaction_cooldown_seconds = 1
 reaction_candidate_sample = 64
 save_every_seconds = 45
