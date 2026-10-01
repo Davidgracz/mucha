@@ -2450,3 +2450,76 @@ ACTIVE GOAL
 ```
 
 Dzięki temu można odróżnić krótkie „co chcę zrobić teraz” od dłuższego „jaką potrzebę próbuję rozwiązać”.
+
+
+---
+
+# Stage 34 — Neuro-map 2.0
+
+Stage 34 zamienia Neuro-map z samej wizualizacji aktywności w interaktywny debugger neuronalnej decyzji Muchy.
+
+## Klikalny neuron
+
+Każdy widoczny neuron można kliknąć. Inspector pokazuje teraz osobno:
+
+- bieżącą activation i eligibility,
+- biological metadata / neuropile,
+- live flow z ostatniej klatki propagacji,
+- top aktualne strukturalne połączenia IN / OUT z runtime matrix,
+- effective weight i aktualny signed drive każdej krawędzi,
+- signed wkład neuronu do action-output populations,
+- istniejące bezpośrednie połączenia do systemowych readoutów.
+
+Wybrany neuron rysuje swoje najsilniejsze aktualne IN / OUT connections bezpośrednio na mapie.
+
+## Klikalny region
+
+Region / neuropil pokazuje:
+
+- mean i max activity,
+- historię aktywności,
+- runtime correlations z action readoutami,
+- top neurony,
+- live flow IN,
+- live flow INTERNAL,
+- live flow OUT,
+- najmocniejsze krawędzie aktualnej propagacji przechodzące przez region.
+
+Po wybraniu regionu tryb FOLLOW DECISION skupia mapę na jego aktualnym przepływie.
+
+## Frame-by-frame replay
+
+Panel Live signal flow ma teraz:
+
+```text
+◀ FRAME   LIVE   FRAME ▶
+```
+
+Można zatrzymać aktualny przepływ i przechodzić przez zapisane klatki propagacji krok po kroku. Replay używa faktycznie zapisanych krawędzi, cue, winnera i output nodes z historii runtime.
+
+## „Dlaczego VOICE_JOIN?”
+
+Neuro-map pokazuje panel decyzji nazwany dynamicznie, np.:
+
+```text
+Dlaczego VOICE_JOIN?
+```
+
+Panel pokazuje:
+
+- winner score,
+- runner-up,
+- margin,
+- numer klatki,
+- neurony wspierające winnera,
+- neurony hamujące winnera.
+
+Atrybucja jest liczona jako signed current presynaptic drive z widocznych neuronów do output population wybranej akcji na runtime matrix.
+
+Nie jest to deklarowane jako pełny biologiczny dowód przyczynowości. To diagnostyczna atrybucja faktycznego algorytmu Muchy: bieżąca aktywacja × signed effective connectivity do action-output pool.
+
+Kliknięcie neuronu z listy SUPPORT / OPPOSE otwiera ten sam Neuron Inspector.
+
+## Coverage
+
+Dashboard zwiększa interaktywny snapshot z 220 do 320 neuronów i dodatkowo próbuje zachować wysoko aktywne neurony reprezentujące nazwane regiony, żeby drill-down region → neuron działał możliwie stabilnie.
