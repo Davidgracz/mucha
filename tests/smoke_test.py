@@ -2089,6 +2089,9 @@ def main():
         assert "predictions_detailed" in bot_source
         assert '"autonomous_candidates": deepcopy(' in bot_source
         assert "inject_voice_decision_context" in bot_source
+        assert "social_drive_magnitude=float(" in bot_source
+        assert "self.cfg.voice.social_drive_max_magnitude" in bot_source
+        assert "exploration_drive_magnitude=float(" in bot_source
         assert "_last_social_drive_punish" in bot_source
         assert "neural social drive outside voice" in bot_source
         assert "neural social drive join" in bot_source
