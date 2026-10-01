@@ -126,6 +126,16 @@ const groups=[
   ["foresight_base_confidence","Bazowa pewność modelu","number",0.05,0,1,"Pewność strukturalnej części symulacji przed uwzględnieniem historii rewardu."],
   ["foresight_uncertainty_weight","Waga niepewności","number",0.05,0,1,"Ile niepewność historii rewardu wnosi do diagnostycznego risk." ]
  ]},
+ {id:"intention",title:"Stage 32 — Persistent intent",desc:"Finalny neuronalny winner autonomii może utworzyć krótkotrwałą intencję. Intencja nie wymusza akcji: przy następnym ticku wraca jako action-guided sensory cue, propaguje się przez FAFB i może zostać przegłosowana przez świeżą konkurencję.",section:"brain",open:true,fields:[
+  ["intention_enabled","Persistent intent","bool",0,0,0,"Włącza pamięć krótkotrwałego zamiaru Stage 32."],
+  ["intention_half_life_seconds","Half-life intencji [s]","number",1,1,86400,"Co ile sekund siła niepodtrzymywanej intencji spada o połowę."],
+  ["intention_max_age_seconds","Maks. wiek intencji [s]","number",5,1,604800,"Po tym czasie intencja jest kasowana niezależnie od siły."],
+  ["intention_signal_gain","Intencja → sensory signal","number",0.05,0,2,"Jak mocno zapamiętany zamiar wraca do sensorycznych ścieżek kandydata."],
+  ["intention_reinforcement_gain","Wzmocnienie po ponownym winnerze","number",0.05,0,1,"Jak mocno kolejny zgodny winner utrwala istniejącą intencję."],
+  ["intention_switch_margin","Próg zmiany zamiaru","number",0.01,0,1,"Jak dużo silniejszy musi być nowy evidence, aby zastąpić aktywną intencję."],
+  ["intention_min_evidence","Minimum evidence","number",0.01,0,1,"Minimalna siła świeżego neuronalnego zwycięstwa potrzebna do utworzenia intencji."],
+  ["intention_outcome_gain","Wpływ reward/punish","number",0.05,0,1,"Jak mocno realny outcome wzmacnia lub osłabia intencję tej samej akcji."]
+ ]},
  {id:"action-policy",title:"Learned Action Policy",desc:"Reward i punish uczą osobny bias każdej akcji. Connectome nadal daje surowy readout, a policy tylko przesuwa jego skuteczną wartość w ograniczonym zakresie.",section:"brain",open:true,fields:[
   ["action_policy_enabled","Learned action policy","bool",0,0,0,"Włącza trwałe uczenie preferencji akcji na podstawie reward/punish."],
   ["action_policy_lr","Policy learning rate","number",0.005,0,1,"Jak szybko reward zmienia bias wybranej akcji."],
@@ -1754,6 +1764,7 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
  <div class="stage"><b>24C • Reward model</b><span>Reward EMA + episodic context przewidują wynik i confidence bez ręcznego bonusu akcji.</span></div>
  <div class="stage"><b>24D • Neural winner</b><span>Signed prediction → sensory neurons → FAFB propagation → action_competition → executor.</span></div>
  <div class="stage"><b>25 • One Brain</b><span>TEXT, REACT, TTS i autonomia używają tego samego arbitra oraz wspólnej historii decyzji.</span></div>
+ <div class="stage"><b>32 • Persistent intent</b><span>Poprzedni autonomiczny winner może wrócić jako słabnący sensory cue. Nie nadpisuje finalnej konkurencji FAFB.</span></div>
 </section>
 
 <div class="guild-tabs" id="guild-tabs"></div>
@@ -1773,6 +1784,8 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
    <div class="summary"><small>Prediction source</small><strong id="prediction-source">—</strong></div>
    <div class="summary"><small>Foresight winner <span class="help" data-tip="Diagnostyczny ranking kontrfaktycznej symulacji. Nie jest finalnym wyborem — finalny winner nadal pochodzi z FAFB competition.">?</span></small><strong id="foresight-winner">—</strong></div>
    <div class="summary"><small>Foresight margin</small><strong id="foresight-margin">—</strong></div>
+   <div class="summary"><small>Active intent <span class="help" data-tip="Stage 32: poprzedni autonomiczny winner trzymany jako wygasająca pamięć. Przy kolejnym ticku wraca tylko przez sensory cue i nadal musi wygrać w FAFB.">?</span></small><strong id="active-intent">—</strong></div>
+   <div class="summary"><small>Intent strength</small><strong id="intent-strength">—</strong></div>
    <div class="summary"><small>NOOP retry <span class="help" data-tip="Jeżeli autonomia najpierw wybrała NOOP mimo wyraźnej niezaspokojonej potrzeby, One Brain może ponownie podać tę potrzebę do internal-state attractorów i jeszcze raz wykonać normalną konkurencję.">?</span></small><strong id="noop-retry">—</strong></div>
    <div class="summary"><small>External effect</small><strong id="external">—</strong></div>
   </div>
@@ -1788,7 +1801,7 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
   <div class="history" id="history"><div class="muted">Brak historii.</div></div>
  </div>
 </section>
-<div class="foot">Stage 31 Foresight + Stage 30 Motivation + Stage 25 One Brain • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
+<div class="foot">Stage 32 Persistent Intent + Stage 31 Foresight + Stage 30 Motivation + Stage 25 One Brain • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
 
 <script>
 const LIVE_REFRESH_MS=250;
@@ -1912,6 +1925,10 @@ function render(payload){
  const foresight=rowDecision.foresight||row?.candidate_set?.foresight||{};
  $("foresight-winner").textContent=rowSelected?displayAction(foresight.winner):"—";
  $("foresight-margin").textContent=rowSelected?fmt(foresight.margin):"—";
+ const intent=rowDecision.intention||payload?.intention_state||row?.candidate_set?.intention_state||{};
+ $("active-intent").textContent=intent.active?displayAction(intent.action):"BRAK";
+ $("active-intent").className=intent.active?"good":"";
+ $("intent-strength").textContent=intent.active?(fmt(intent.strength,3)+" • "+Math.round(Number(intent.age_seconds||0))+" s"):"0.000";
  const retry=rowDecision.noop_reafference||{};
  $("noop-retry").textContent=rowSelected
    ?(retry.triggered
