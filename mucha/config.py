@@ -73,6 +73,11 @@ class BrainConfig:
     motivation_frustration_gain: float = 0.60
     motivation_satiation_gain: float = 0.70
     motivation_neural_gain: float = 0.55
+    foresight_enabled: bool = True
+    foresight_drive_relief_scale: float = 0.38
+    foresight_state_signal_gain: float = 0.65
+    foresight_base_confidence: float = 0.55
+    foresight_uncertainty_weight: float = 0.35
     action_policy_enabled: bool = True
     action_policy_lr: float = 0.06
     action_policy_max_bias: float = 0.55
