@@ -1777,3 +1777,48 @@ sensory events
 
 Stage 25 zamyka główny roadmap autonomii i integracji mózgu. Dalsze prace mogą rozwijać biologiczną jakość connectome, uczenie, pamięć i zachowanie bez dokładania kolejnych niezależnych systemów decyzyjnych.
 
+
+
+---
+
+# Stage 26 — Circadian Fatigue / Sleep Pressure
+
+Stage 26 rozbudowuje istniejący Sleep / Offline Consolidation o trwały homeostatic drive `fatigue`.
+
+Pipeline:
+
+```text
+czas czuwania + aktywność
+→ persistent fatigue
+→ SATIETY / STRESS attractors
+→ realne ścieżki FAFB
+→ One Brain action competition
+```
+
+`fatigue` nie wybiera akcji bezpośrednio. Wysokie zmęczenie pobudza istniejące attractory wspierające `STAY`, `VOICE_LEAVE` i `VOICE_MOVE`, więc wpływ nadal musi przejść przez connectome.
+
+Każdy prawdziwy cykl snu wykonujący replay wywołuje zdarzenie `rest`, które spłaca część fatigue. Pełna sesja snu uruchamia krótki stan `POST-SLEEP` oraz łagodny cue SATIETY/AROUSAL przez connectome.
+
+Stany cyklu:
+
+```text
+AWAKE
+TIRED
+SLEEP
+POST-SLEEP
+```
+
+Nowe parametry:
+
+```toml
+circadian_enabled = true
+circadian_fatigue_per_minute = 0.006
+circadian_activity_fatigue_per_minute = 0.003
+circadian_sleep_recovery_per_cycle = 0.16
+circadian_tired_threshold = 0.65
+circadian_post_sleep_seconds = 600
+```
+
+Fatigue jest zapisywany razem z innymi homeostatic drives w `brain_state.npz`. Loader pozostaje kompatybilny ze starszymi plikami stanu zawierającymi tylko pięć drive'ów.
+
+Panel Sleep w `/details` pokazuje teraz osobno stan snu, stan dobowy i poziom fatigue.
