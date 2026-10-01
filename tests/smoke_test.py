@@ -2026,6 +2026,8 @@ def main():
         assert "Autonomia 24E" in AUTONOMY_HTML
         assert "One Brain 25" in AUTONOMY_HTML
         assert "One Brain timeline" in AUTONOMY_HTML
+        assert 'id="noop-retry"' in AUTONOMY_HTML
+        assert "noop_reafference" in AUTONOMY_HTML
         assert "one_brain_history" in AUTONOMY_HTML
         assert "/api/state" in AUTONOMY_HTML
         assert "predicted reward" in AUTONOMY_HTML.lower()
