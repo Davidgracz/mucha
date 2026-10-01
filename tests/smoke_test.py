@@ -211,6 +211,24 @@ def main():
         assert boredom_map.get("arousal", 0.0) > 0.0
         assert "speak" in b.INTERNAL_STATE_TARGET_ACTIONS["arousal"]
 
+        affect_before = b.affective_state_diagnostics()
+        assert set(affect_before["values"]) == {
+            "contentment",
+            "tension",
+            "curiosity",
+            "social_longing",
+            "activation",
+        }
+        b.inject_internal_state_cue(
+            "stress",
+            1.2,
+            key="smoke:affect:tension",
+        )
+        b.step(3)
+        affect_after = b.tick_affective_state(5.0)
+        assert affect_after["targets"]["tension"] > 0.0
+        assert affect_after["values"]["tension"] >= 0.0
+
         one_brain_set = b.one_brain_candidate_set(
             {
                 "stay": True,
@@ -1524,6 +1542,9 @@ def main():
         assert 'id="circadian-state"' in HTML
         assert 'id="circadian-fatigue"' in HTML
         assert "POST-SLEEP" in HTML
+        assert "Affective State / Stage 27" in HTML
+        assert "renderAffective" in HTML
+        assert 'id="affective-state-grid"' in HTML
         assert "Credit queue" in HTML
         assert "SIGNAL FLOW" in NEUROMAP_HTML
         assert "FOLLOW DECISION" in NEUROMAP_HTML
@@ -1588,6 +1609,10 @@ def main():
             "circadian_sleep_recovery_per_cycle",
             "circadian_tired_threshold",
             "circadian_post_sleep_seconds",
+            "affective_state_enabled",
+            "affective_state_smoothing",
+            "affective_state_feedback_gain",
+            "affective_state_reward_gain",
         ):
             assert key in config_source
             assert key in config_toml_source
@@ -1608,6 +1633,10 @@ def main():
         assert "Backwards compatible" not in brain_source
         assert "pre-Stage-26 state files" in brain_source
         assert "def internal_drive_value" in brain_source
+        assert "def tick_affective_state" in brain_source
+        assert "def affective_state_diagnostics" in brain_source
+        assert "affective_state_values" in brain_source
+        assert "AFFECTIVE_STATE_NEURAL_MAP" in brain_source
         assert "def voice_channel_target_decision" in brain_source
         assert "def inject_voice_target_context" in brain_source
         assert "tie_evidence" in bot_source
@@ -1694,6 +1723,8 @@ def main():
         assert "_circadian_snapshot" in bot_source
         assert "circadian:post-sleep:satiety" in bot_source
         assert '"circadian": self._circadian_snapshot()' in bot_source
+        assert '"affective_state": self.brain.affective_state_diagnostics()' in bot_source
+        assert "tick_affective_state" in bot_source
         assert "completed_cycle = int(self._sleep_cycle)" in bot_source
         assert "session can begin from cycle 0 after sleep_idle_seconds" in bot_source
         assert "automatycznie uzbroi kolejną sesję" in CONFIG_HTML
