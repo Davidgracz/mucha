@@ -314,6 +314,27 @@ class FlyBrain:
         }
         self._intention_history = deque(maxlen=96)
         self._intention_history.append(dict(self._intention_last_event))
+
+        # Stage 33: one persistent motivational goal. The goal stores what
+        # internal need should improve, while every concrete step is still
+        # selected by fresh FAFB action competition.
+        self._goal_motivation: str | None = None
+        self._goal_baseline_urgency = 0.0
+        self._goal_progress = 0.0
+        self._goal_created_at = 0.0
+        self._goal_updated_at = time.time()
+        self._goal_step_count = 0
+        self._goal_failed_steps = 0
+        self._goal_steps = deque(maxlen=32)
+        self._goal_last_event: dict = {
+            "event": "startup",
+            "time": time.time(),
+            "motivation": None,
+            "progress": 0.0,
+            "reason": "no-goal",
+        }
+        self._goal_history = deque(maxlen=96)
+        self._goal_history.append(dict(self._goal_last_event))
         self._internal_drive_last_event: dict = {
             "event": "startup",
             "intensity": 0.0,
