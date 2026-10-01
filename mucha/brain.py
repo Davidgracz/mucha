@@ -312,6 +312,8 @@ class FlyBrain:
             "strength": 0.0,
             "reason": "no-intention",
         }
+        self._intention_history = deque(maxlen=96)
+        self._intention_history.append(dict(self._intention_last_event))
         self._internal_drive_last_event: dict = {
             "event": "startup",
             "intensity": 0.0,
@@ -2994,6 +2996,12 @@ class FlyBrain:
         }
 
 
+    def _record_intention_event(self, event: dict) -> dict:
+        row = dict(event)
+        self._intention_last_event = row
+        self._intention_history.append(dict(row))
+        return row
+
     def _clear_intention(
         self,
         reason: str,
@@ -3008,14 +3016,13 @@ class FlyBrain:
         self._intention_created_at = 0.0
         self._intention_updated_at = now_value
         self._intention_context = ""
-        self._intention_last_event = {
+        return self._record_intention_event({
             "event": "cleared",
             "time": now_value,
             "action": previous_action,
             "strength": previous_strength,
             "reason": str(reason),
-        }
-        return dict(self._intention_last_event)
+        })
 
     def _decay_intention(
         self,
@@ -3089,6 +3096,10 @@ class FlyBrain:
             ),
             "context": str(self._intention_context),
             "last_event": dict(self._intention_last_event),
+            "history": [
+                dict(row)
+                for row in list(self._intention_history)[-48:]
+            ],
             "method": (
                 "previous FAFB winner -> decaying intention memory -> "
                 "action-guided sensory cue -> FAFB propagation -> "
@@ -3194,13 +3205,13 @@ class FlyBrain:
 
         if winner == "stay":
             if self._intention_action is not None:
-                self._intention_last_event = {
+                self._record_intention_event({
                     "event": "held-through-noop",
                     "time": now_value,
                     "action": self._intention_action,
                     "strength": float(self._intention_strength),
                     "reason": "fresh-competition-chose-noop",
-                }
+                })
             return self.intention_state_diagnostics()
 
         evidence_row = self._intention_evidence(
@@ -3215,7 +3226,7 @@ class FlyBrain:
             min(1.0, float(self.cfg.intention_min_evidence)),
         )
         if evidence < min_evidence:
-            self._intention_last_event = {
+            self._record_intention_event({
                 "event": "weak-winner",
                 "time": now_value,
                 "action": winner,
@@ -3223,7 +3234,7 @@ class FlyBrain:
                 "reason": "winner-evidence-below-threshold",
                 "evidence": evidence,
                 **evidence_row,
-            }
+            })
             return self.intention_state_diagnostics()
 
         previous_action = self._intention_action
@@ -3263,7 +3274,7 @@ class FlyBrain:
                 event = "retained"
 
         self._intention_updated_at = now_value
-        self._intention_last_event = {
+        self._record_intention_event({
             "event": event,
             "time": now_value,
             "action": self._intention_action,
@@ -3278,7 +3289,7 @@ class FlyBrain:
                 else "new winner not strong enough to replace intention"
             ),
             **evidence_row,
-        }
+        })
         return self.intention_state_diagnostics()
 
     def register_intention_outcome(
@@ -3316,14 +3327,14 @@ class FlyBrain:
             )
             self._intention_strength = after
             self._intention_updated_at = now_value
-            self._intention_last_event = {
+            self._record_intention_event({
                 "event": "reward-reinforced",
                 "time": now_value,
                 "action": action,
                 "strength": float(after),
                 "reason": "positive outcome for intended action",
                 "amount": float(amount),
-            }
+            })
         elif amount < 0.0:
             after = max(
                 0.0,
@@ -3343,14 +3354,14 @@ class FlyBrain:
                     now=now_value,
                 )
             else:
-                self._intention_last_event = {
+                self._record_intention_event({
                     "event": "punish-weakened",
                     "time": now_value,
                     "action": action,
                     "strength": float(after),
                     "reason": "negative outcome for intended action",
                     "amount": float(amount),
-                }
+                })
         result["after"] = float(self._intention_strength)
         result["cleared"] = self._intention_action is None
         return result
