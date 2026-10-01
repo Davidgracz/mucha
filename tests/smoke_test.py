@@ -296,8 +296,10 @@ def main():
         )
         assert one_brain_decision["propagation_steps"] == 2
         assert one_brain_decision["executed"] is False
+        assert "foresight" in one_brain_decision
+        assert "foresight_cues" in one_brain_decision
         assert one_brain_decision["source"].startswith(
-            "one-brain predicted-reward sensory guidance"
+            "one-brain learned-reward + counterfactual-state sensory"
         )
 
         unobserved_reward = b.action_reward_prediction("speak")
@@ -337,6 +339,28 @@ def main():
         assert "context_selection_score" in autonomous_outside
         assert "best_non_noop_preview_score" in autonomous_outside
         assert autonomous_outside["context_selection_score"] >= 0.0
+        assert "foresight" in autonomous_outside
+        assert autonomous_outside["foresight_winner"] in (
+            autonomous_outside["candidate_actions"]
+        )
+        assert set(autonomous_outside["foresight"]["simulations"]) == set(
+            autonomous_outside["candidate_actions"]
+        )
+        before_counterfactual = dict(b._internal_drive_values)
+        join_sim = b.simulate_action_outcome(
+            "voice_join",
+            autonomous_outside["rows"]["voice_join"][
+                "reward_prediction"
+            ],
+        )
+        after_counterfactual = dict(b._internal_drive_values)
+        assert before_counterfactual == after_counterfactual
+        assert join_sim["mutated_live_state"] is False
+        assert 0.0 <= join_sim["state_relief"] <= 1.0
+        assert 0.0 <= join_sim["risk"] <= 1.0
+        assert 0.0 <= join_sim["simulation_confidence"] <= 1.0
+        assert "social_need" in join_sim["drive_alignment"]
+        assert "social" in join_sim["motivation_changes"]
         assert (
             autonomous_outside["predicted_reward_winner"]
             in autonomous_outside["candidate_actions"]
@@ -388,10 +412,15 @@ def main():
         assert "noop_reafference" in autonomous_decision
         assert "triggered" in autonomous_decision["noop_reafference"]
         assert "voice_join" in autonomous_decision["prediction_cues"]
+        assert "foresight" in autonomous_decision
+        assert autonomous_decision["foresight"]["winner"] in (
+            autonomous_rewarded["candidate_actions"]
+        )
+        assert isinstance(autonomous_decision["foresight_cues"], dict)
         assert (
             autonomous_decision["source"]
-            == "one-brain predicted-reward sensory guidance -> "
-            "FAFB propagation -> connectome action competition"
+            == "one-brain learned-reward + counterfactual-state sensory "
+            "guidance -> FAFB propagation -> connectome action competition"
         )
         assert autonomous_decision["decision_context"] == "autonomous-idle"
 
@@ -1669,6 +1698,8 @@ def main():
         assert "renderMotivation" in HTML
         assert 'id="motivation-state-grid"' in HTML
         assert "motivation_frustration_threshold" in CONFIG_HTML
+        assert "Stage 31 — Internal foresight" in CONFIG_HTML
+        assert "foresight_drive_relief_scale" in CONFIG_HTML
         assert "Credit queue" in HTML
         assert "SIGNAL FLOW" in NEUROMAP_HTML
         assert "FOLLOW DECISION" in NEUROMAP_HTML
@@ -1749,6 +1780,11 @@ def main():
             "motivation_frustration_gain",
             "motivation_satiation_gain",
             "motivation_neural_gain",
+            "foresight_enabled",
+            "foresight_drive_relief_scale",
+            "foresight_state_signal_gain",
+            "foresight_base_confidence",
+            "foresight_uncertainty_weight",
         ):
             assert key in config_source
             assert key in config_toml_source
@@ -1781,6 +1817,12 @@ def main():
         assert "motivation_frustration" in brain_source
         assert "motivation_satiation" in brain_source
         assert "motivation_scale" in brain_source
+        assert "def simulate_action_outcome" in brain_source
+        assert "def simulate_candidate_outcomes" in brain_source
+        assert "mutated_live_state" in brain_source
+        assert "one-brain-foresight-state:" in brain_source
+        assert "foresight_cues" in brain_source
+        assert "Stage-31 counterfactual foresight" in brain_source
         assert "value - represented" in brain_source
         assert "one-brain:noop-reafference:" in brain_source
         assert "context_selection_score" in brain_source
@@ -2081,6 +2123,10 @@ def main():
         assert "One Brain timeline" in AUTONOMY_HTML
         assert 'id="noop-retry"' in AUTONOMY_HTML
         assert "noop_reafference" in AUTONOMY_HTML
+        assert 'id="foresight-winner"' in AUTONOMY_HTML
+        assert 'id="foresight-margin"' in AUTONOMY_HTML
+        assert "foresight relief" in AUTONOMY_HTML.lower()
+        assert "foresight_cues" in AUTONOMY_HTML
         assert "one_brain_history" in AUTONOMY_HTML
         assert "/api/state" in AUTONOMY_HTML
         assert "predicted reward" in AUTONOMY_HTML.lower()
