@@ -61,6 +61,10 @@ class BrainConfig:
     affective_state_smoothing: float = 0.96
     affective_state_feedback_gain: float = 0.18
     affective_state_reward_gain: float = 0.28
+    one_brain_noop_reafference_enabled: bool = True
+    one_brain_noop_reafference_min_support: float = 0.18
+    one_brain_noop_reafference_gain: float = 0.45
+    one_brain_noop_reafference_steps: int = 1
     action_policy_enabled: bool = True
     action_policy_lr: float = 0.06
     action_policy_max_bias: float = 0.55
