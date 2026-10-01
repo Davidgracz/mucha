@@ -1737,6 +1737,8 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
 .metric small{display:block;color:var(--muted);font-size:9px;margin-bottom:3px}.metric b{font-variant-numeric:tabular-nums}.bar{height:5px;background:#071019;border-radius:999px;overflow:hidden;margin-top:4px}.bar i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--a));border-radius:999px}.bar.reward i.pos{background:linear-gradient(90deg,#398e65,var(--good))}.bar.reward i.neg{background:linear-gradient(90deg,#8b3f4b,var(--bad))}
 .reason{color:#93a5b7;font-size:10px;line-height:1.4}.summary-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.summary{background:var(--panel2);border:1px solid #1e2c3b;border-radius:11px;padding:10px}.summary small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}.summary strong{font-size:14px;word-break:break-word}.cue-list{display:flex;flex-direction:column;gap:7px;margin-top:10px}.cue{display:grid;grid-template-columns:115px 1fr 65px;gap:8px;align-items:center;padding:8px 9px;background:#09121a;border:1px solid #1d2b39;border-radius:10px;font-size:10px}.cue span{color:var(--muted)}
 .history{display:flex;flex-direction:column;gap:7px;max-height:420px;overflow:auto}.hist{display:grid;grid-template-columns:68px 95px 1fr 82px 72px;gap:8px;align-items:center;background:#09121a;border:1px solid #1c2937;border-radius:10px;padding:9px;font-size:10px}.hist .time{color:var(--muted);font-variant-numeric:tabular-nums}.hist .act{font-weight:800}.hist .detail{color:#b6c4d2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hist .rep{color:var(--muted);text-align:right}.hist.external{border-color:rgba(88,218,196,.35)}
+.intent-panel{display:grid;grid-template-columns:240px 1fr;gap:14px;align-items:stretch}.intent-main{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:180px;background:radial-gradient(circle at 50% 15%,rgba(185,149,255,.14),transparent 58%),#09121a;border:1px solid rgba(185,149,255,.30);border-radius:14px;padding:18px}.intent-main .intent-action{font-size:27px;font-weight:900;letter-spacing:.04em}.intent-main .intent-state{font-size:10px;color:var(--purple);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px}.intent-track{width:100%;height:9px;background:#071019;border:1px solid #26384a;border-radius:999px;overflow:hidden;margin:14px 0 7px}.intent-track i{display:block;height:100%;background:linear-gradient(90deg,var(--purple),var(--a));border-radius:999px}.intent-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;margin-top:10px}.intent-k{background:#0b151e;border:1px solid #1d2c3b;border-radius:10px;padding:9px;text-align:center}.intent-k small{display:block;color:var(--muted);font-size:8px;text-transform:uppercase}.intent-k b{font-size:12px}.intent-side{display:flex;flex-direction:column;gap:10px}.intent-flow{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.intent-flow div{background:#09121a;border:1px solid #1d2b39;border-radius:10px;padding:9px;font-size:9px;color:#aebdcb;text-align:center}.intent-flow b{display:block;color:var(--txt);font-size:10px;margin-bottom:3px}.intent-history .hist{grid-template-columns:68px 110px 110px 1fr 72px}
+@media(max-width:900px){.intent-panel{grid-template-columns:1fr}.intent-flow{grid-template-columns:1fr 1fr}}
 .help{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;border:1px solid #385069;border-radius:50%;color:#8fa6ba;font-size:9px;cursor:help;position:relative;vertical-align:middle}.help:hover{color:var(--a);border-color:var(--a)}.help:hover:after{content:attr(data-tip);position:absolute;z-index:20;left:50%;top:22px;transform:translateX(-50%);width:270px;background:#05090e;border:1px solid #31465c;border-radius:9px;padding:9px;color:#d5e3f0;font:10px/1.45 Inter,system-ui;box-shadow:0 12px 35px rgba(0,0,0,.45);pointer-events:none}
 .live{display:inline-flex;align-items:center;gap:6px}.live:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 10px rgba(87,219,145,.65)}.bad{color:var(--bad)}.good{color:var(--good)}.warn{color:var(--warn)}.muted{color:var(--muted)}.foot{margin-top:12px;text-align:right;color:#5e6e7d;font-size:10px}
 @media(max-width:1150px){.hero{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}.candidate{grid-template-columns:120px 65px 1fr 90px 90px}.candidate .optional{display:none}}
@@ -1790,6 +1792,32 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
    <div class="summary"><small>External effect</small><strong id="external">—</strong></div>
   </div>
   <div class="cue-list" id="cues"></div>
+ </div>
+
+ <div class="card span2">
+  <h2>Current Intent / Stage 32 <span class="help" data-tip="Aktywny zamiar jest pamięcią poprzedniego neuronalnego winnera. Nie wykonuje akcji sam — wraca jako sensory cue do FAFB.">?</span></h2>
+  <div class="intent-panel">
+   <div class="intent-main">
+    <div class="intent-state" id="intent-event">BRAK INTENCJI</div>
+    <div class="intent-action" id="intent-action-big">—</div>
+    <div class="intent-track"><i id="intent-bar" style="width:0%"></i></div>
+    <div class="muted" id="intent-strength-label">strength 0.000</div>
+    <div class="intent-meta">
+     <div class="intent-k"><small>Wiek</small><b id="intent-age">0 s</b></div>
+     <div class="intent-k"><small>Pozostało</small><b id="intent-remaining">0 s</b></div>
+     <div class="intent-k"><small>Sensory cue</small><b id="intent-signal">0.000</b></div>
+    </div>
+   </div>
+   <div class="intent-side">
+    <div class="intent-flow">
+     <div><b>1 • Winner</b><span id="intent-flow-winner">—</span></div>
+     <div><b>2 • Intent memory</b><span id="intent-flow-memory">—</span></div>
+     <div><b>3 • Sensory cue</b><span id="intent-flow-cue">—</span></div>
+     <div><b>4 • Fresh FAFB</b><span id="intent-flow-result">—</span></div>
+    </div>
+    <div class="history intent-history" id="intent-history"><div class="muted">Brak historii intencji.</div></div>
+   </div>
+  </div>
  </div>
 
  <div class="card span2">
@@ -1865,6 +1893,38 @@ function renderCues(decision){
    '<div class="cue"><b>'+esc(displayAction(row.action))+'</b><span>'+esc(row.kind.toUpperCase())+' • '+esc(row.x.mode||"sensory")+' • '+Number(row.x.neurons||0)+' neuronów • reach '+fmt(row.x.reach_max)+'</span><strong>'+fmt(row.x.magnitude)+'</strong></div>'
  ).join("");
 }
+function renderIntent(intent,decision){
+ const state=intent||{},cue=decision?.intention_cue||{},hist=Array.isArray(state.history)?state.history.slice().reverse():[];
+ const active=!!state.active,strength=Number(state.strength||0),event=state.last_event||{};
+ $("intent-event").textContent=active?String(event.event||"active").replaceAll("-"," ").toUpperCase():"BRAK INTENCJI";
+ $("intent-event").className="intent-state "+(active?"good":"muted");
+ $("intent-action-big").textContent=active?displayAction(state.action):"—";
+ $("intent-bar").style.width=pct(strength)+"%";
+ $("intent-strength-label").textContent="strength "+fmt(strength,3);
+ $("intent-age").textContent=Math.round(Number(state.age_seconds||0))+" s";
+ $("intent-remaining").textContent=Math.round(Number(state.remaining_seconds||0))+" s";
+ $("intent-signal").textContent=fmt(cue.signal||0,3);
+ $("intent-flow-winner").textContent=displayAction(event.winner||event.action);
+ $("intent-flow-memory").textContent=active?(displayAction(state.action)+" • "+fmt(strength,2)):"BRAK";
+ $("intent-flow-cue").textContent=cue.active?(displayAction(cue.action)+" +"+fmt(cue.signal,3)):"BRAK";
+ $("intent-flow-result").textContent=displayAction(decision?.action);
+ const root=$("intent-history");
+ if(!hist.length){root.innerHTML='<div class="muted">Brak historii intencji.</div>';return}
+ root.innerHTML=hist.slice(0,24).map(x=>{
+   const t=new Date(Number(x.time||0)*1000).toLocaleTimeString("pl-PL");
+   const ev=String(x.event||"—").replaceAll("-"," ").toUpperCase();
+   const winner=x.winner?displayAction(x.winner):"—";
+   const action=x.action?displayAction(x.action):"—";
+   return '<div class="hist">'+
+     '<span class="time">'+esc(t)+'</span>'+
+     '<span class="act">'+esc(ev)+'</span>'+
+     '<span>'+esc(action)+(winner!=="—"&&winner!==action?' ← '+esc(winner):'')+'</span>'+
+     '<span class="detail" title="'+esc(x.reason||"")+'">'+esc(x.reason||"—")+'</span>'+
+     '<span class="rep">'+fmt(x.strength||0,2)+'</span>'+
+   '</div>';
+ }).join("");
+}
+
 function renderOneBrainHistory(items){
  const root=$("one-brain-history"),rows=Array.isArray(items)?items.slice().reverse():[];
  if(!rows.length){root.innerHTML='<div class="muted">Brak decyzji One Brain — timeline pojawi się po TEXT, TTS albo ticku autonomii.</div>';return}
@@ -1939,6 +1999,7 @@ function render(payload){
  $("external").textContent=rowSelected?(exec.external_effect?"TAK":"NIE"):"—";
  renderCandidates(row,rowDecision);
  renderCues(rowDecision);
+ renderIntent(intent,rowDecision);
  renderOneBrainHistory(payload?.one_brain_history||[]);
  renderHistory(payload?.autonomous_history||[]);
 }
