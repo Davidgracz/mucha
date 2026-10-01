@@ -2027,7 +2027,7 @@ function renderCues(decision){
  ];
  if(!entries.length){root.innerHTML='<div class="muted" style="font-size:10px;margin-top:10px">Brak sensory guidance w tej decyzji.</div>';return}
  root.innerHTML='<div class="muted" style="font-size:10px">Reward + foresight + intent + goal + personality → sensory paths → FAFB</div>'+entries.map(row=>
-   '<div class="cue"><b>'+esc(displayAction(row.action))+'</b><span>'+esc(row.kind.toUpperCase())+(row.target?' • '+esc(String(row.target).toUpperCase()):'')+' • '+esc(row.x.mode||"sensory")+' • '+Number(row.x.neurons||0)+' neuronów</span><strong>'+fmt(row.signal||0)+'</strong></div>'
+   '<div class="cue"><b>'+esc(displayAction(row.action))+'</b><span>'+esc(row.kind.toUpperCase())+(row.target?' • '+esc(String(row.target).toUpperCase()):'')+' • '+esc(row.x.mode||"sensory")+' • '+Number(row.x.neurons||row.x.entry_neurons||0)+' neuronów</span><strong>'+fmt(row.signal||0)+'</strong></div>'
  ).join("");
 }
 function renderIntent(intent,decision){
