@@ -4822,6 +4822,136 @@ class FlyBrain:
                 80,
             )
 
+        # Stage 29: place chronology and recent reputation are sensory-only.
+        history_observations = max(
+            0,
+            int(profile.get("history_observations", 0) or 0),
+        )
+        if history_observations > 0:
+            history_bucket = min(
+                7,
+                max(1, int(math.log2(history_observations)) + 1),
+            )
+            cue(
+                f"voice:place-history:density:{history_bucket}",
+                base * min(
+                    1.0,
+                    0.15 + 0.11 * math.log1p(history_observations),
+                ),
+                88,
+            )
+
+        place_trend = str(
+            profile.get("place_trend") or "stable"
+        )
+        trend_delta = max(
+            -1.0,
+            min(
+                1.0,
+                float(profile.get("place_trend_delta", 0.0)),
+            ),
+        )
+        cue(
+            f"voice:place-history:trend:{place_trend}",
+            base * (0.16 + 0.70 * abs(trend_delta)),
+            104,
+        )
+
+        recent_valence = max(
+            -1.0,
+            min(
+                1.0,
+                float(profile.get("recent_valence", 0.0)),
+            ),
+        )
+        if abs(recent_valence) >= 0.02:
+            recent_sign = (
+                "positive"
+                if recent_valence > 0.0
+                else "negative"
+            )
+            cue(
+                f"voice:place-history:recent:{recent_sign}",
+                base * (0.18 + 0.72 * abs(recent_valence)),
+                112,
+            )
+
+        place_stability = max(
+            0.0,
+            min(
+                1.0,
+                float(profile.get("place_stability", 0.0)),
+            ),
+        )
+        stability_label = (
+            "stable"
+            if place_stability >= 0.70
+            else (
+                "variable"
+                if place_stability >= 0.35
+                else "volatile"
+            )
+        )
+        cue(
+            f"voice:place-history:stability:{stability_label}",
+            base * (0.12 + 0.52 * place_stability),
+            88,
+        )
+
+        recent_humans = max(
+            0.0,
+            min(
+                6.0,
+                float(profile.get("recent_human_density", 0.0)),
+            ),
+        )
+        recent_human_bucket = min(
+            6,
+            max(0, int(round(recent_humans))),
+        )
+        cue(
+            f"voice:place-history:recent-human-density:{recent_human_bucket}",
+            base * min(0.95, 0.14 + 0.10 * recent_humans),
+            88,
+        )
+
+        last_seen = float(profile.get("last_seen", 0.0) or 0.0)
+        if last_seen > 0.0:
+            age_seconds = max(0.0, time.time() - last_seen)
+            recency = math.exp(
+                -age_seconds / max(1.0, 7.0 * 86400.0)
+            )
+            cue(
+                "voice:place-history:recent-visit",
+                base * (0.10 + 0.48 * recency),
+                80,
+            )
+
+        for row in list(profile.get("action_outcomes") or [])[:4]:
+            action = str(row.get("action") or "unknown")
+            mean_reward = max(
+                -1.0,
+                min(1.0, float(row.get("mean_reward", 0.0))),
+            )
+            action_obs = max(
+                0,
+                int(row.get("observations", 0) or 0),
+            )
+            if action_obs <= 0 or abs(mean_reward) < 0.02:
+                continue
+            sign = "positive" if mean_reward > 0.0 else "negative"
+            evidence = min(
+                1.0,
+                1.0 - math.exp(-action_obs / 4.0),
+            )
+            cue(
+                f"voice:place-history:action-outcome:{action}:{sign}",
+                base
+                * (0.14 + 0.62 * abs(mean_reward))
+                * (0.45 + 0.55 * evidence),
+                104,
+            )
+
         return {
             "enabled": True,
             "channel_id": channel_id,
@@ -4834,6 +4964,21 @@ class FlyBrain:
             "mean_intensity": mean_intensity,
             "mean_speech_ratio": mean_speech,
             "mean_human_density": mean_humans,
+            "history_observations": int(
+                profile.get("history_observations", 0)
+            ),
+            "recent_valence": float(
+                profile.get("recent_valence", 0.0)
+            ),
+            "place_trend": str(
+                profile.get("place_trend", "stable")
+            ),
+            "place_stability": float(
+                profile.get("place_stability", 0.0)
+            ),
+            "recent_human_density": float(
+                profile.get("recent_human_density", 0.0)
+            ),
             "is_current": bool(is_current),
             "cue_count": len(cues),
             "cues": cues[:24],
