@@ -4505,13 +4505,14 @@ class FlyBrain:
             ),
             "intention_state": self.intention_state_diagnostics(),
             "goal_state": self.goal_state_diagnostics(),
+            "personality_state": self.personality_state_diagnostics(),
             "executed": False,
             "source": (
                 "technical-feasibility + Stage-30 motivational urgency + "
                 "homeostatic drives + FAFB internal-state attractors + "
                 "learned reward prediction + Stage-31 counterfactual "
                 "foresight + Stage-32 intent + Stage-33 goal context + "
-                "neural competition preview"
+                "Stage-35 emergent temperament + neural competition preview"
             ),
             "prediction_executed": False,
         }
@@ -4607,11 +4608,13 @@ class FlyBrain:
             ),
             "intention_state": self.intention_state_diagnostics(),
             "goal_state": self.goal_state_diagnostics(),
+            "personality_state": self.personality_state_diagnostics(),
             "executed": False,
             "source": (
                 "one-brain generic feasibility + learned reward + "
                 "Stage-31 counterfactual foresight + "
-                "Stage-32 persistent intent + Stage-33 multi-step goals"
+                "Stage-32 persistent intent + Stage-33 multi-step goals + "
+                "Stage-35 emergent temperament"
             ),
         }
 
@@ -4656,6 +4659,19 @@ class FlyBrain:
             or self.simulate_candidate_outcomes(actions, rows)
         )
         simulations = dict(foresight.get("simulations", {}))
+        personality_before = self.personality_state_diagnostics()
+        personality_cues = {
+            "enabled": bool(self.cfg.personality_enabled),
+            "traits": {},
+            "injected": [],
+        }
+        if (
+            bool(self.cfg.personality_enabled)
+            and str(decision_context) == "autonomous-idle"
+        ):
+            personality_cues = self.inject_personality_context(
+                context_key
+            )
         intention_before = self.intention_state_diagnostics()
         goal_before = self.goal_state_diagnostics()
         goal_cues: dict[str, dict] = {}
@@ -4952,6 +4968,9 @@ class FlyBrain:
             "goal_before": goal_before,
             "goal_cues": goal_cues,
             "goal": goal,
+            "personality_before": personality_before,
+            "personality_cues": personality_cues,
+            "personality": self.personality_state_diagnostics(),
             "noop_reafference": noop_reafference,
             "prediction_gain": float(gain),
             "propagation_steps": int(steps),
@@ -4969,8 +4988,9 @@ class FlyBrain:
             ),
             "source": (
                 "one-brain learned-reward + counterfactual-state + "
-                "persistent-intent + multi-step-goal sensory guidance -> "
-                "FAFB propagation -> connectome action competition"
+                "persistent-intent + multi-step-goal + emergent-temperament "
+                "sensory guidance -> FAFB propagation -> "
+                "connectome action competition"
             ),
             "executed": False,
         }
