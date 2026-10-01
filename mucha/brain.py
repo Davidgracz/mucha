@@ -5346,6 +5346,26 @@ class FlyBrain:
             values = np.asarray(data["goal_failed_steps"], dtype=np.int32).ravel()
             if len(values):
                 self._goal_failed_steps = max(0, int(values[0]))
+        if "personality_values" in data:
+            values = np.asarray(
+                data["personality_values"],
+                dtype=np.float32,
+            ).ravel()
+            for name, value in zip(self.PERSONALITY_NAMES, values):
+                self._personality_values[name] = max(
+                    0.0,
+                    min(1.0, float(value)),
+                )
+        if "personality_observations" in data:
+            values = np.asarray(
+                data["personality_observations"],
+                dtype=np.int64,
+            ).ravel()
+            for name, value in zip(self.PERSONALITY_NAMES, values):
+                self._personality_observations[name] = max(
+                    0,
+                    int(value),
+                )
         if (
             "goal_step_action_indices" in data
             and "goal_step_times" in data
@@ -5408,6 +5428,20 @@ class FlyBrain:
                 "failed_steps": int(self._goal_failed_steps),
                 "reason": "restored from brain_state.npz",
             })
+        if any(
+            int(self._personality_observations.get(name, 0)) > 0
+            for name in self.PERSONALITY_NAMES
+        ):
+            self._personality_last_event = {
+                "event": "restored",
+                "time": time.time(),
+                "trait": None,
+                "evidence": 0.0,
+                "reason": "restored from brain_state.npz",
+            }
+            self._personality_history.append(
+                dict(self._personality_last_event)
+            )
         self._refresh_goal_lifecycle()
 
     def save(self) -> None:
@@ -5581,6 +5615,20 @@ class FlyBrain:
                     for row in list(self._goal_steps)
                 ],
                 dtype=np.int8,
+            ),
+            personality_values=np.asarray(
+                [
+                    self._personality_values[name]
+                    for name in self.PERSONALITY_NAMES
+                ],
+                dtype=np.float32,
+            ),
+            personality_observations=np.asarray(
+                [
+                    self._personality_observations[name]
+                    for name in self.PERSONALITY_NAMES
+                ],
+                dtype=np.int64,
             ),
         )
         tmp.replace(p)
