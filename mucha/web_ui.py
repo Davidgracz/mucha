@@ -2753,7 +2753,7 @@ const HELP={
   "sleep":{title:"Sleep / Circadian / Offline Consolidation",body:"Stage 26 łączy sen z trwałym fatigue. Podczas czuwania fatigue narasta i przez istniejące attractory SATIETY/STRESS wpływa na One Brain. Każdy prawdziwy cykl replay spłaca fatigue, a pełny sen uruchamia krótki POST-SLEEP.",read:"AWAKE = zwykłe czuwanie, TIRED = fatigue przekroczył próg, SLEEP = trwa replay/konsolidacja, POST-SLEEP = okres po pełnej sesji. Sen nie tworzy nowych zdarzeń Discord."},
   "learning-startup":{title:"Learning Since Startup",body:"Liczniki uczenia od uruchomienia procesu: język, reward events i skumulowane zmiany.",read:"Te liczniki resetują się po restarcie, nawet jeśli trwały stan został zapisany."},
   "social-learning":{title:"Social Learning / Relacje",body:"Długoterminowe sygnały społeczne i affinity użytkowników.",read:"Nie myl z Attention: affinity opisuje relację, Attention opisuje to, co zajmuje Muchę teraz."},
-  "person-memory":{title:"Long-term People Memory",body:"Profil osoby powstaje z trwałej pamięci semantycznej: kontaktów tekstowych i voice, wyników wcześniejszych akcji przy tej osobie, signed social events, kanałów i utrwalonych epizodów.",read:"Familiarity mówi ile doświadczenia zebrała Mucha. Valence opisuje typowy wynik zapisanych doświadczeń. To nie jest bezpośredni bonus do decyzji — profil wraca do sensorycznych neuronów connectomu."},
+  "person-memory":{title:"Long-term People Memory / Stage 28",body:"Profil osoby łączy trwałą pamięć semantyczną z chronologiczną historią kontaktów. Mucha pamięta teraz nie tylko średnią relacji, ale też kiedy kogo spotkała, gdzie, jakie akcje wykonywała i czy ostatnio relacja się poprawia czy pogarsza.",read:"Familiarity = ilość doświadczenia. Recent valence = ostatnie realne outcome. Trend = kierunek zmian w nowszych vs starszych zdarzeniach. Stability = jak przewidywalna jest relacja. Te cechy wracają jako sensory do connectomu; nie ustawiają akcji bezpośrednio."},
   "channel-memory":{title:"Long-term Channel / Place Memory",body:"Trwały model kanału voice łączy wizyty, wyniki wcześniejszych decyzji, osoby spotykane w tym miejscu i statystyki dynamiki rozmowy zbierane przy prawdziwych transkrypcjach STT.",read:"Dominant mode i średnie metryki opisują charakter miejsca. Valence pochodzi z realnych rezultatów epizodów. Profil jest sensorycznym wejściem connectomu, nie ręcznym bonusem do wyboru kanału."},
   "voice-dynamics-memory":{title:"Reward-learned Conversation Dynamics",body:"Ten model generalizuje ponad ludźmi i kanałami. Rozpoznaje wzorce typu DIALOGUE/CROSSTALK, tempo zmian mówców, overlap, handoff, długość tur, dominację, ciszę i tempo mowy, a realny reward/punish uczy wyników akcji w takich warunkach.",read:"Seen zwiększa tylko familiarity. Historyczne wyniki SPEAK/STAY/JOIN/MOVE/LEAVE wracają jako sensory connectomu, nie jako bezpośredni bonus do action score."},
   "social-scene-memory":{title:"Long-term Social Situations",body:"Scena łączy KTO + GDZIE + dynamikę rozmowy + dominujący stan wewnętrzny Muchy. Neutralne widzenie sceny zwiększa familiarity, a reward/punish zapisuje wynik konkretnych akcji.",read:"Klikalnego wyboru akcji tu nie ma: znana scena wraca jako sensory do connectomu. Dobra/zła akcja opisuje pamięć historyczną, a nie ręcznie ustawiony bonus."},
@@ -3759,6 +3759,11 @@ function renderPersonProfiles(items){
     const social=(p.social_events||[]).slice(0,4);
     const channels=(p.channels||[]).slice(0,3);
     const recent=(p.recent_episodes||[])[0]||null;
+    const history=(p.interaction_history||[]).slice(0,4);
+    const actionOutcomes=(p.action_outcomes||[]).slice(0,3);
+    const trend=String(p.relationship_trend||"stable");
+    const recentValence=Math.max(-1,Math.min(1,Number(p.recent_valence||0)));
+    const stability=Math.max(0,Math.min(1,Number(p.relationship_stability||0)));
     const inj=p.last_injection||{},brain=inj.brain||{};
     const tags=[];
     contacts.forEach(x=>tags.push('<span class="person-tag">'+esc(x.source||"contact")+' ×'+nfmt(x.observations||0)+'</span>'));
@@ -3773,12 +3778,25 @@ function renderPersonProfiles(items){
         '<div class="person-kpi"><small>Familiarity</small><b>'+(fam*100).toFixed(0)+'%</b></div>'+
         '<div class="person-kpi"><small>Confidence</small><b>'+(conf*100).toFixed(0)+'%</b></div>'+
         '<div class="person-kpi"><small>Doświadczenia</small><b>'+nfmt(p.observations||0)+'</b></div>'+
+        '<div class="person-kpi"><small>Historia</small><b>'+nfmt(p.history_observations||0)+'</b></div>'+
+        '<div class="person-kpi"><small>Recent valence</small><b class="'+(recentValence>0.05?'ok':recentValence<-0.05?'no':'')+'">'+(recentValence>=0?"+":"")+recentValence.toFixed(2)+'</b></div>'+
+        '<div class="person-kpi"><small>Trend</small><b class="'+(trend==="improving"?'ok':trend==="worsening"?'no':'')+'">'+esc(trend.toUpperCase())+'</b></div>'+
+        '<div class="person-kpi"><small>Stability</small><b>'+(stability*100).toFixed(0)+'%</b></div>'+
         '<div class="person-kpi"><small>Contact / social</small><b>'+nfmt(p.contact_observations||0)+' / '+nfmt(p.social_observations||0)+'</b></div>'+
       '</div>'+
       '<div class="person-lines">'+
         '<div><b>Typowa dobra akcja:</b> '+(preferred?esc(preferred.action)+' '+(Number(preferred.signal||0)>=0?"+":"")+Number(preferred.signal||0).toFixed(2):'—')+'</div>'+
         '<div><b>Typowa zła akcja:</b> '+(avoided?esc(avoided.action)+' '+Number(avoided.signal||0).toFixed(2):'—')+'</div>'+
         '<div><b>Kanały:</b> '+(channels.length?channels.map(x=>esc(x.channel_name||x.channel_id)+' ('+nfmt(x.observations||0)+')').join(' • '):'—')+'</div>'+
+        '<div><b>Chronologia:</b> '+(history.length?history.map(x=>{
+          const amount=Number(x.amount||0);
+          return esc(x.kind||"event")+' '+esc(x.action||x.source||"")+(Math.abs(amount)>0.0001?' '+(amount>=0?"+":"")+amount.toFixed(2):'');
+        }).join(' • '):'—')+'</div>'+
+        '<div><b>Outcome akcji:</b> '+(actionOutcomes.length?actionOutcomes.map(x=>{
+          const reward=Number(x.mean_reward||0);
+          return esc(x.action||"—")+' '+(reward>=0?"+":"")+reward.toFixed(2)+' ×'+nfmt(x.observations||0);
+        }).join(' • '):'—')+'</div>'+
+        '<div><b>Wiek relacji:</b> '+Number(p.relationship_age_days||0).toFixed(1)+' d • ostatnio '+(p.last_seen?sessionDuration(Math.max(0,Date.now()/1000-Number(p.last_seen)))+' temu':'—')+'</div>'+
         '<div><b>Ostatni epizod:</b> '+(recent?(esc(recent.action||"—")+' • '+esc(recent.channel_name||"poza VC")+' • reward '+(Number(recent.actual_reward||0)>=0?"+":"")+Number(recent.actual_reward||0).toFixed(2)):'—')+'</div>'+
         '<div><b>Ostatnie wejście do connectomu:</b> '+(inj.checked_at?(esc(inj.source||"—")+' • '+nfmt(brain.cue_count||0)+' cues • '+Math.max(0,Date.now()/1000-Number(inj.checked_at)).toFixed(0)+'s temu'):'jeszcze nie użyty w bieżącej sesji')+'</div>'+
       '</div>'+
