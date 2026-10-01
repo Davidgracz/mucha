@@ -146,6 +146,12 @@ const groups=[
   ["goal_max_steps","Maks. liczba kroków","number",1,1,100,"Ile wykonanych prób może należeć do jednego celu."],
   ["goal_max_failed_steps","Maks. nieudanych kroków","number",1,1,50,"Po ilu nieudanych wykonaniach cel zostaje porzucony."]
  ]},
+ {id:"personality",title:"Stage 35 — Emergent personality",desc:"Trwały temperament uczy się powoli z faktycznych zachowań, reward/punish i sukcesów lub porzuceń celów. Cechy nie dodają punktów do action score — powyżej neutralnego poziomu wracają tylko przez sensoryczne wejścia istniejących attractorów FAFB.",section:"brain",open:true,fields:[
+  ["personality_enabled","Emergent personality","bool",0,0,0,"Włącza trwałe cechy Stage 35."],
+  ["personality_learning_rate","Personality learning rate","number",0.005,0.0001,0.5,"Jak wolno nowe doświadczenia przesuwają trwały temperament. Ma być znacznie wolniejsze niż zwykły reward learning."],
+  ["personality_signal_gain","Personality → attractor signal","number",0.02,0,1.5,"Maksymalny wpływ wyuczonej cechy na istniejące internal-state sensory entries."],
+  ["personality_min_observations","Obserwacje do confidence","number",1,1,1000,"Skala liczby doświadczeń potrzebna, aby wyuczona cecha zaczęła być mocno wyrażana neuronalnie."]
+ ]},
  {id:"action-policy",title:"Learned Action Policy",desc:"Reward i punish uczą osobny bias każdej akcji. Connectome nadal daje surowy readout, a policy tylko przesuwa jego skuteczną wartość w ograniczonym zakresie.",section:"brain",open:true,fields:[
   ["action_policy_enabled","Learned action policy","bool",0,0,0,"Włącza trwałe uczenie preferencji akcji na podstawie reward/punish."],
   ["action_policy_lr","Policy learning rate","number",0.005,0,1,"Jak szybko reward zmienia bias wybranej akcji."],
@@ -1822,7 +1828,7 @@ AUTONOMY_HTML = r"""<!doctype html>
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 12% 0%,rgba(88,218,196,.10),transparent 30%),radial-gradient(circle at 88% 0%,rgba(110,168,254,.10),transparent 32%),linear-gradient(180deg,#070b10,#0a1017 60%,#080c11);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}.brand{display:flex;gap:13px;align-items:center}.logo{font-size:37px}h1{margin:0;font-size:24px}.sub{margin-top:4px;color:var(--muted);font-size:12px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#b9c8d7;text-decoration:none;background:#0e1720;border:1px solid var(--line);padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{color:#07110e;background:var(--a);border-color:var(--a);font-weight:800}
 .hero{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}.card,.hero-card{background:rgba(15,22,31,.94);border:1px solid var(--line);border-radius:16px}.hero-card{padding:14px}.hero-card small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}.hero-card strong{font-size:17px;word-break:break-word}
-.pipeline{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:12px}.stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px}.stage:not(:last-child):after{content:"→";position:absolute;right:-9px;top:50%;transform:translateY(-50%);z-index:3;color:var(--a);font-size:20px;font-weight:900}.stage b{display:block;font-size:12px;margin-bottom:5px}.stage span{color:var(--muted);font-size:11px;line-height:1.45}
+.pipeline{display:grid;grid-template-columns:repeat(8,1fr);gap:10px;margin-bottom:12px}.stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px}.stage:not(:last-child):after{content:"→";position:absolute;right:-9px;top:50%;transform:translateY(-50%);z-index:3;color:var(--a);font-size:20px;font-weight:900}.stage b{display:block;font-size:12px;margin-bottom:5px}.stage span{color:var(--muted);font-size:11px;line-height:1.45}
 .grid{display:grid;grid-template-columns:1.35fr .65fr;gap:12px}.card{padding:15px;min-width:0}.card h2{margin:0 0 12px;font-size:12px;color:#aebdcb;text-transform:uppercase;letter-spacing:.1em}.span2{grid-column:1/-1}
 .guild-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.guild-tab{border:1px solid var(--line);background:#0a121a;color:#aebdcb;border-radius:999px;padding:7px 10px;cursor:pointer;font-size:11px}.guild-tab.active{background:rgba(88,218,196,.15);border-color:var(--a);color:#dffff8}
 .candidates{display:flex;flex-direction:column;gap:8px}.candidate{display:grid;grid-template-columns:128px 70px minmax(100px,1fr) 110px 110px 126px 110px;gap:8px;align-items:center;padding:10px;background:var(--panel2);border:1px solid #1e2c3b;border-radius:12px;font-size:11px}.candidate.winner{border-color:var(--a);box-shadow:0 0 0 1px rgba(88,218,196,.15),0 0 24px rgba(88,218,196,.08)}.candidate.disabled{opacity:.52}.action-name{font-weight:850;font-size:12px}.pill{display:inline-flex;align-items:center;justify-content:center;border:1px solid #2b4054;border-radius:999px;padding:4px 7px;font-size:9px;white-space:nowrap}.pill.ok{color:var(--good);border-color:rgba(87,219,145,.45)}.pill.no{color:var(--bad);border-color:rgba(255,114,114,.45)}.pill.win{color:#06110e;background:var(--a);border-color:var(--a);font-weight:900}
@@ -1831,7 +1837,8 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
 .history{display:flex;flex-direction:column;gap:7px;max-height:420px;overflow:auto}.hist{display:grid;grid-template-columns:68px 95px 1fr 82px 72px;gap:8px;align-items:center;background:#09121a;border:1px solid #1c2937;border-radius:10px;padding:9px;font-size:10px}.hist .time{color:var(--muted);font-variant-numeric:tabular-nums}.hist .act{font-weight:800}.hist .detail{color:#b6c4d2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hist .rep{color:var(--muted);text-align:right}.hist.external{border-color:rgba(88,218,196,.35)}
 .intent-panel{display:grid;grid-template-columns:240px 1fr;gap:14px;align-items:stretch}.intent-main{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:180px;background:radial-gradient(circle at 50% 15%,rgba(185,149,255,.14),transparent 58%),#09121a;border:1px solid rgba(185,149,255,.30);border-radius:14px;padding:18px}.intent-main .intent-action{font-size:27px;font-weight:900;letter-spacing:.04em}.intent-main .intent-state{font-size:10px;color:var(--purple);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px}.intent-track{width:100%;height:9px;background:#071019;border:1px solid #26384a;border-radius:999px;overflow:hidden;margin:14px 0 7px}.intent-track i{display:block;height:100%;background:linear-gradient(90deg,var(--purple),var(--a));border-radius:999px}.intent-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;margin-top:10px}.intent-k{background:#0b151e;border:1px solid #1d2c3b;border-radius:10px;padding:9px;text-align:center}.intent-k small{display:block;color:var(--muted);font-size:8px;text-transform:uppercase}.intent-k b{font-size:12px}.intent-side{display:flex;flex-direction:column;gap:10px}.intent-flow{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.intent-flow div{background:#09121a;border:1px solid #1d2b39;border-radius:10px;padding:9px;font-size:9px;color:#aebdcb;text-align:center}.intent-flow b{display:block;color:var(--txt);font-size:10px;margin-bottom:3px}.intent-history .hist{grid-template-columns:68px 110px 110px 1fr 72px}
 .goal-panel{display:grid;grid-template-columns:260px 1fr;gap:14px}.goal-main{background:radial-gradient(circle at 50% 15%,rgba(88,218,196,.13),transparent 58%),#09121a;border:1px solid rgba(88,218,196,.32);border-radius:14px;padding:18px}.goal-title{font-size:26px;font-weight:900;letter-spacing:.06em}.goal-status{font-size:10px;color:var(--a);text-transform:uppercase;letter-spacing:.12em;margin-bottom:7px}.goal-track{height:10px;background:#071019;border:1px solid #26384a;border-radius:999px;overflow:hidden;margin:14px 0 7px}.goal-track i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--a));border-radius:999px}.goal-kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}.goal-k{background:#0b151e;border:1px solid #1d2c3b;border-radius:10px;padding:9px}.goal-k small{display:block;color:var(--muted);font-size:8px;text-transform:uppercase}.goal-k b{font-size:12px}.goal-sequence{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.goal-step{display:inline-flex;gap:6px;align-items:center;background:#09121a;border:1px solid #24374a;border-radius:999px;padding:7px 10px;font-size:10px}.goal-step.ok{border-color:rgba(87,219,145,.45)}.goal-step.fail{border-color:rgba(255,114,114,.45)}.goal-step .n{color:var(--muted)}.goal-history .hist{grid-template-columns:68px 100px 110px 1fr 72px}
-@media(max-width:900px){.intent-panel,.goal-panel{grid-template-columns:1fr}.intent-flow{grid-template-columns:1fr 1fr}}
+.personality-panel{display:grid;grid-template-columns:repeat(5,1fr);gap:9px}.trait{background:#09121a;border:1px solid #1d2c3b;border-radius:12px;padding:11px}.trait-head{display:flex;justify-content:space-between;gap:8px;align-items:center}.trait-head b{font-size:10px}.trait-head span{font-size:14px;font-weight:900}.trait-track{height:8px;background:#071019;border:1px solid #26384a;border-radius:999px;overflow:hidden;margin:9px 0 6px;position:relative}.trait-track:after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#53677b}.trait-track i{display:block;height:100%;background:linear-gradient(90deg,var(--purple),var(--a));border-radius:999px}.trait small{color:var(--muted);font-size:8px}.personality-meta{display:grid;grid-template-columns:1fr 2fr;gap:9px;margin-top:10px}.personality-meta>div{background:#09121a;border:1px solid #1d2c3b;border-radius:11px;padding:10px;font-size:10px}.personality-cues{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}.personality-cue{border:1px solid #29465c;background:#07131d;border-radius:999px;padding:5px 8px;font-size:9px;color:#a9bdcf}
+@media(max-width:900px){.intent-panel,.goal-panel{grid-template-columns:1fr}.intent-flow{grid-template-columns:1fr 1fr}.personality-panel{grid-template-columns:1fr 1fr}.personality-meta{grid-template-columns:1fr}}
 .help{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;border:1px solid #385069;border-radius:50%;color:#8fa6ba;font-size:9px;cursor:help;position:relative;vertical-align:middle}.help:hover{color:var(--a);border-color:var(--a)}.help:hover:after{content:attr(data-tip);position:absolute;z-index:20;left:50%;top:22px;transform:translateX(-50%);width:270px;background:#05090e;border:1px solid #31465c;border-radius:9px;padding:9px;color:#d5e3f0;font:10px/1.45 Inter,system-ui;box-shadow:0 12px 35px rgba(0,0,0,.45);pointer-events:none}
 .live{display:inline-flex;align-items:center;gap:6px}.live:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 10px rgba(87,219,145,.65)}.bad{color:var(--bad)}.good{color:var(--good)}.warn{color:var(--warn)}.muted{color:var(--muted)}.foot{margin-top:12px;text-align:right;color:#5e6e7d;font-size:10px}
 @media(max-width:1150px){.hero{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}.candidate{grid-template-columns:120px 65px 1fr 90px 90px}.candidate .optional{display:none}}
@@ -1861,6 +1868,7 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
  <div class="stage"><b>25 • One Brain</b><span>TEXT, REACT, TTS i autonomia używają tego samego arbitra oraz wspólnej historii decyzji.</span></div>
  <div class="stage"><b>32 • Persistent intent</b><span>Poprzedni autonomiczny winner może wrócić jako słabnący sensory cue. Nie nadpisuje finalnej konkurencji FAFB.</span></div>
  <div class="stage"><b>33 • Multi-step goal</b><span>Cel SOCIAL / NOVELTY / SAFETY / REST nadaje kierunek wielu kolejnym tickom, ale każdy krok musi ponownie wygrać w FAFB.</span></div>
+ <div class="stage"><b>35 • Personality</b><span>Trwały temperament uczy się z outcome'ów i zachowań, a potem wraca tylko przez internal-state sensory cues.</span></div>
 </section>
 
 <div class="guild-tabs" id="guild-tabs"></div>
@@ -1938,6 +1946,15 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
  </div>
 
  <div class="card span2">
+  <h2>Emergent Personality / Stage 35 <span class="help" data-tip="To nie są ręcznie ustawione bonusy. Każda cecha startuje neutralnie przy 0.50, uczy się wolnym EMA z doświadczeń i działa dopiero przez attractory FAFB.">?</span></h2>
+  <div class="personality-panel" id="personality-traits"><div class="muted">Czekam na dane personality.</div></div>
+  <div class="personality-meta">
+   <div><small class="muted">DOMINUJĄCA CECHA</small><br><strong id="personality-dominant">BRAK • NEUTRAL</strong></div>
+   <div><small class="muted">OSTATNIA ZMIANA</small><br><strong id="personality-last">Brak doświadczeń.</strong><div class="personality-cues" id="personality-cues"></div></div>
+  </div>
+ </div>
+
+ <div class="card span2">
   <h2>One Brain timeline <span class="help" data-tip="Wspólna historia decyzji z różnych modalności. kind pokazuje, czy bodziec pochodził z TEXT, VOICE_TTS czy AUTONOMY.">?</span></h2>
   <div class="history" id="one-brain-history"><div class="muted">Brak historii Stage 25.</div></div>
  </div>
@@ -1946,7 +1963,7 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
   <div class="history" id="history"><div class="muted">Brak historii.</div></div>
  </div>
 </section>
-<div class="foot">Stage 33 Multi-step Goals + Stage 32 Persistent Intent + Stage 31 Foresight + Stage 30 Motivation + Stage 25 One Brain • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
+<div class="foot">Stage 35 Emergent Personality + Stage 33 Multi-step Goals + Stage 32 Persistent Intent + Stage 31 Foresight + Stage 30 Motivation + Stage 25 One Brain • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
 
 <script>
 const LIVE_REFRESH_MS=250;
@@ -2000,15 +2017,16 @@ function renderCandidates(row,decision){
  }).join("");
 }
 function renderCues(decision){
- const rewardCues=decision?.prediction_cues||{},foresightCues=decision?.foresight_cues||{},goalCues=decision?.goal_cues||{},intentCue=decision?.intention_cue||{},root=$("cues");
+ const rewardCues=decision?.prediction_cues||{},foresightCues=decision?.foresight_cues||{},goalCues=decision?.goal_cues||{},intentCue=decision?.intention_cue||{},personality=decision?.personality_cues||{},root=$("cues");
  const entries=[
    ...Object.entries(rewardCues).map(([action,x])=>({action,x,kind:"reward",signal:x.magnitude})),
    ...Object.entries(foresightCues).map(([action,x])=>({action,x,kind:"foresight",signal:x.magnitude})),
    ...Object.entries(goalCues).map(([action,x])=>({action,x:x.cue||{},kind:"goal",signal:x.signal,target:x.target})),
-   ...(intentCue.active?[{action:intentCue.action,x:intentCue.cue||{},kind:"intent",signal:intentCue.signal}]:[])
+   ...(intentCue.active?[{action:intentCue.action,x:intentCue.cue||{},kind:"intent",signal:intentCue.signal}]:[]),
+   ...(personality.injected||[]).map(x=>({action:x.state,x:x.cue||{},kind:"personality",signal:x.magnitude,target:x.trait}))
  ];
  if(!entries.length){root.innerHTML='<div class="muted" style="font-size:10px;margin-top:10px">Brak sensory guidance w tej decyzji.</div>';return}
- root.innerHTML='<div class="muted" style="font-size:10px">Reward + foresight + intent + goal → sensory paths → FAFB</div>'+entries.map(row=>
+ root.innerHTML='<div class="muted" style="font-size:10px">Reward + foresight + intent + goal + personality → sensory paths → FAFB</div>'+entries.map(row=>
    '<div class="cue"><b>'+esc(displayAction(row.action))+'</b><span>'+esc(row.kind.toUpperCase())+(row.target?' • '+esc(String(row.target).toUpperCase()):'')+' • '+esc(row.x.mode||"sensory")+' • '+Number(row.x.neurons||0)+' neuronów</span><strong>'+fmt(row.signal||0)+'</strong></div>'
  ).join("");
 }
@@ -2070,6 +2088,23 @@ function renderGoal(goal){
      '<span class="rep">'+Math.round(Number(x.progress||0)*100)+'%</span>'+
    '</div>';
  }).join("");
+}
+
+function renderPersonality(personality,decision){
+ const p=personality||{},traits=p.traits||{},order=["sociability","curiosity","caution","persistence","expressiveness"];
+ const labels={sociability:"SOCIABILITY",curiosity:"CURIOSITY",caution:"CAUTION",persistence:"PERSISTENCE",expressiveness:"EXPRESSIVENESS"};
+ const root=$("personality-traits");
+ root.innerHTML=order.map(name=>{
+   const x=traits[name]||{},value=Number(x.value??0.5),conf=Number(x.confidence||0),obs=Number(x.observations||0),expr=Number(x.expressed||0);
+   return '<div class="trait"><div class="trait-head"><b>'+labels[name]+'</b><span>'+value.toFixed(3)+'</span></div>'+
+     '<div class="trait-track"><i style="width:'+pct(value)+'%"></i></div>'+
+     '<small>confidence '+Math.round(conf*100)+'% • '+obs+' obs • neural '+expr.toFixed(3)+'</small></div>';
+ }).join("");
+ $("personality-dominant").textContent=p.dominant?String(p.dominant).toUpperCase()+" • "+Number(p.dominant_expression||0).toFixed(3):"BRAK • NEUTRAL";
+ const ev=p.last_event||{};
+ $("personality-last").textContent=ev.event==="startup"||!ev.trait?String(ev.reason||"Brak doświadczeń."):(String(ev.trait).toUpperCase()+" "+(Number(ev.delta||0)>=0?"+":"")+Number(ev.delta||0).toFixed(4)+" • "+String(ev.reason||""));
+ const injected=decision?.personality_cues?.injected||[];
+ $("personality-cues").innerHTML=injected.length?injected.map(x=>'<span class="personality-cue">'+esc(String(x.trait||"").toUpperCase())+' → '+esc(String(x.state||"").toUpperCase())+' +'+fmt(x.magnitude,3)+'</span>').join(""):'<span class="muted">Brak aktywnego personality cue w tym ticku.</span>'
 }
 
 function renderOneBrainHistory(items){
@@ -2148,6 +2183,7 @@ function render(payload){
  renderCues(rowDecision);
  renderIntent(intent,rowDecision);
  renderGoal(rowDecision.goal||payload?.goal_state||row?.candidate_set?.goal_state||{});
+ renderPersonality(rowDecision.personality||payload?.personality_state||row?.candidate_set?.personality_state||{},rowDecision);
  renderOneBrainHistory(payload?.one_brain_history||[]);
  renderHistory(payload?.autonomous_history||[]);
 }
