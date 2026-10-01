@@ -1512,6 +1512,10 @@ def main():
         assert "Historia — kliknij, aby odtworzyć przepływ" in NEUROMAP_HTML
         assert "flowReplayTick" in NEUROMAP_HTML
         assert "live flow in / out" in NEUROMAP_HTML
+        assert "CONNECTOME_FRAME_MS" in CONNECTOME_HTML
+        assert "NEUROMAP_FRAME_MS" in NEUROMAP_HTML
+        assert "document.hidden" in CONNECTOME_HTML
+        assert "document.hidden" in NEUROMAP_HTML
         assert "neural tie-break" in HTML
         assert "overstay_punish_amount" in CONFIG_HTML
         assert "overstay_punish_interval_seconds" in CONFIG_HTML
@@ -1827,6 +1831,9 @@ def main():
         assert "consolidate_replay" in bot_source
         assert "apply_forgetting" in bot_source
         assert "preferred_channel_id" in bot_source
+        assert "_connectome_dashboard_cache" in bot_source
+        assert "_connectome_path_cache" in bot_source
+        assert "_neuromap_dashboard_cache" in bot_source
         assert "NA SZTYWNO" in CONFIG_HTML
         assert "\\n  [\"connectome_word_control_enabled\"" not in CONFIG_HTML
         assert "Mucha — publiczny podgląd" in PUBLIC_OVERVIEW_HTML
