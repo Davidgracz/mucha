@@ -1951,3 +1951,84 @@ social:person-history:recent-contact
 Dopiero potem sygnał propaguje się przez connectome i bierze udział w One Brain.
 
 Dashboard `/details` pokazuje teraz trend relacji, recent valence, stability, wiek relacji, chronologię i historyczne outcome konkretnych akcji.
+
+
+---
+
+# Stage 29 — Durable Channel / Place Memory
+
+Stage 29 rozbudowuje model kanału voice z agregatów semantycznych do trwałej chronologii miejsca.
+
+Nowa tabela w `state/voice_episodes.sqlite3`:
+
+```text
+channel_interaction_history
+```
+
+Chronologia może zapisać:
+
+```text
+czas
+channel_id / channel_name
+rodzaj: visit / dynamics / episode
+źródło
+akcję Muchy
+reward / outcome
+liczbę ludzi
+user_ids
+conversation mode
+intensity
+speech ratio
+context
+```
+
+Istniejące zapisane `voice_episodes` są przy pierwszym uruchomieniu używane do zainicjalizowania historii kanałów.
+
+Profil miejsca zawiera teraz m.in.:
+
+```text
+familiarity
+valence
+confidence
+dominant_mode
+mean_intensity
+mean_speech_ratio
+mean_human_density
+history_observations
+first_seen / last_seen
+place_age_days
+recent_valence
+place_trend = improving / stable / worsening
+place_stability
+recent_human_density
+action_outcomes
+interaction_history
+people
+conversation_modes
+preferred_action
+avoided_action
+```
+
+`recent_valence` bazuje na najnowszych realnych outcome akcji w danym miejscu. `place_trend` porównuje nowszą część historii ze starszą, a `place_stability` opisuje przewidywalność ostatnich wyników. `recent_human_density` opisuje ostatnią typową liczbę ludzi.
+
+## Wpływ na connectome
+
+Stage 29 nie dodaje bezpośrednich punktów do `VOICE_JOIN`, `VOICE_MOVE`, `STAY` ani `VOICE_LEAVE`.
+
+Historia miejsca jest zamieniana na sensoryczne cues:
+
+```text
+voice:place-history:density:<bucket>
+voice:place-history:trend:<state>
+voice:place-history:recent:<positive|negative>
+voice:place-history:stability:<stable|variable|volatile>
+voice:place-history:recent-human-density:<bucket>
+voice:place-history:recent-visit
+voice:place-history:action-outcome:<action>:<positive|negative>
+```
+
+Dopiero potem sygnał propaguje się przez connectome i uczestniczy w One Brain.
+
+Dashboard `/details` pokazuje teraz chronologię miejsca, recent valence, trend, stability, recent occupancy, wiek miejsca i historyczne outcome akcji.
+
+Nowa tabela jest częścią `voice_episodes.sqlite3`, więc istniejący automatyczny backup Google Drive zabezpiecza ją bez dodatkowej konfiguracji.
