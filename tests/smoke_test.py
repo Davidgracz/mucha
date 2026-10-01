@@ -1821,6 +1821,15 @@ def main():
         assert "Live signal flow" in NEUROMAP_HTML
         assert "renderSignalFlow" in NEUROMAP_HTML
         assert "flow-live-btn" in NEUROMAP_HTML
+        assert 'id="flow-prev-btn"' in NEUROMAP_HTML
+        assert 'id="flow-next-btn"' in NEUROMAP_HTML
+        assert "function stepFlow" in NEUROMAP_HTML
+        assert "renderDecisionExplanation" in NEUROMAP_HTML
+        assert 'id="decision-explanation"' in NEUROMAP_HTML
+        assert "Dlaczego " in NEUROMAP_HTML
+        assert "Najsilniejsze aktualne połączenia strukturalne" in NEUROMAP_HTML
+        assert "Live flow regionu" in NEUROMAP_HTML
+        assert "data-peer-neuron" in NEUROMAP_HTML
         assert "Historia — kliknij, aby odtworzyć przepływ" in NEUROMAP_HTML
         assert "flowReplayTick" in NEUROMAP_HTML
         assert "live flow in / out" in NEUROMAP_HTML
@@ -2242,6 +2251,11 @@ def main():
         assert "action_policy_diagnostics" in brain_source
         assert "connectome-readout+learned-policy" in brain_source
         assert "signal_flow_snapshot" in brain_source
+        assert "def structural_connections" in brain_source
+        assert "action_direct_contribution" in brain_source
+        assert "decision_explanation" in brain_source
+        assert "live_flow_internal" in brain_source
+        assert "signed current presynaptic drive" in brain_source
         assert "effective_weight" in brain_source
         assert "top_synapses" in brain_source
         assert "consolidate_and_forget" in brain_source
@@ -2348,6 +2362,16 @@ def main():
         assert "outgoing_edges" in neuro["nodes"][0]
         assert "live_flow_in" in neuro["nodes"][0]
         assert "live_flow_out" in neuro["nodes"][0]
+        assert "structural_connections" in neuro["nodes"][0]
+        assert "action_contributions" in neuro["nodes"][0]
+        assert "decision_explanation" in neuro
+        assert neuro["decision_explanation"]["action"] in b.ACTIONS
+        assert "supporting_neurons" in neuro["decision_explanation"]
+        assert "opposing_neurons" in neuro["decision_explanation"]
+        assert "live_flow_in" in neuro["regions"][0]
+        assert "live_flow_out" in neuro["regions"][0]
+        assert "live_flow_internal" in neuro["regions"][0]
+        assert "live_flow_edges" in neuro["regions"][0]
         assert "learned_synapses" in neuro
         assert "internal_states" in neuro
         assert neuro["internal_states"]["states"]
