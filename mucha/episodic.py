@@ -2002,6 +2002,81 @@ class VoiceEpisodicMemory:
             for row in rows
         ]
 
+    def _backfill_person_history_from_db(self) -> None:
+        """Seed Stage 28 chronology from already persisted voice episodes."""
+        if self.db is None:
+            return
+        existing = int(
+            self.db.execute(
+                "SELECT COUNT(*) FROM person_interaction_history"
+            ).fetchone()[0]
+        )
+        if existing > 0:
+            return
+        rows = self.db.execute(
+            """
+            SELECT created_at, guild_id, channel_id, channel_name,
+                   user_ids_json, user_names_json, context,
+                   action, actual_reward, source
+            FROM voice_episodes
+            ORDER BY id ASC
+            """
+        ).fetchall()
+        for row in rows:
+            (
+                created_at,
+                guild_id,
+                channel_id,
+                channel_name,
+                user_ids_json,
+                user_names_json,
+                context,
+                action,
+                actual_reward,
+                source,
+            ) = row
+            try:
+                user_ids = [
+                    int(x)
+                    for x in json.loads(user_ids_json or "[]")
+                ]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                user_ids = []
+            try:
+                user_names = [
+                    str(x)
+                    for x in json.loads(user_names_json or "[]")
+                ]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                user_names = []
+            for pos, user_id in enumerate(user_ids):
+                self._record_person_history(
+                    user_id,
+                    kind="episode",
+                    source=str(source or ""),
+                    action=str(action or ""),
+                    amount=float(actual_reward or 0.0),
+                    user_name=(
+                        user_names[pos]
+                        if pos < len(user_names)
+                        else ""
+                    ),
+                    guild_id=(
+                        int(guild_id)
+                        if guild_id is not None
+                        else None
+                    ),
+                    channel_id=(
+                        int(channel_id)
+                        if channel_id is not None
+                        else None
+                    ),
+                    channel_name=str(channel_name or ""),
+                    context=str(context or ""),
+                    now=float(created_at),
+                )
+        self.db.commit()
+
     def observe_person_contact(
         self,
         user_id: int,
@@ -2428,6 +2503,137 @@ class VoiceEpisodicMemory:
             if len(recent_episodes) >= 6:
                 break
 
+        history = self._person_history_rows(user_id, 64)
+        if history and not display_name:
+            display_name = next(
+                (
+                    str(row.get("user_name") or "")
+                    for row in history
+                    if row.get("user_name")
+                ),
+                "",
+            )
+
+        signed_history = [
+            row
+            for row in history
+            if (
+                str(row.get("kind")) in {"episode", "social"}
+                and abs(float(row.get("amount", 0.0))) > 1e-9
+            )
+        ]
+        recent_signed = signed_history[:12]
+        recent_valence = (
+            sum(float(row["amount"]) for row in recent_signed)
+            / len(recent_signed)
+            if recent_signed
+            else 0.0
+        )
+        newer = recent_signed[:6]
+        older = recent_signed[6:12]
+        newer_mean = (
+            sum(float(row["amount"]) for row in newer) / len(newer)
+            if newer
+            else 0.0
+        )
+        older_mean = (
+            sum(float(row["amount"]) for row in older) / len(older)
+            if older
+            else newer_mean
+        )
+        trend_delta = newer_mean - older_mean
+        if len(recent_signed) < 4 or abs(trend_delta) < 0.06:
+            relationship_trend = "stable"
+        elif trend_delta > 0.0:
+            relationship_trend = "improving"
+        else:
+            relationship_trend = "worsening"
+
+        if len(recent_signed) >= 2:
+            mean_signed = sum(
+                float(row["amount"]) for row in recent_signed
+            ) / len(recent_signed)
+            variance = sum(
+                (float(row["amount"]) - mean_signed) ** 2
+                for row in recent_signed
+            ) / len(recent_signed)
+            relationship_stability = max(
+                0.0,
+                min(1.0, 1.0 - math.sqrt(variance)),
+            )
+        else:
+            relationship_stability = 0.0
+
+        history_times = [
+            float(row.get("time", 0.0))
+            for row in history
+            if float(row.get("time", 0.0)) > 0.0
+        ]
+        first_seen_history = min(history_times) if history_times else 0.0
+        last_seen_history = max(history_times) if history_times else 0.0
+        if first_seen_history > 0.0:
+            first_seen = first_seen_history
+        else:
+            first_seen = last_seen
+        last_seen = max(last_seen, last_seen_history)
+        relationship_age_days = (
+            max(0.0, (last_seen - first_seen) / 86400.0)
+            if first_seen > 0.0 and last_seen >= first_seen
+            else 0.0
+        )
+
+        action_history_groups: dict[str, list[float]] = {}
+        channel_history_counts: dict[tuple[int | None, str], int] = {}
+        for row in history:
+            action_name = str(row.get("action") or "")
+            if (
+                row.get("kind") == "episode"
+                and action_name
+            ):
+                action_history_groups.setdefault(
+                    action_name,
+                    [],
+                ).append(float(row.get("amount", 0.0)))
+            channel_key = (
+                row.get("channel_id"),
+                str(row.get("channel_name") or ""),
+            )
+            if channel_key[0] is not None or channel_key[1]:
+                channel_history_counts[channel_key] = (
+                    channel_history_counts.get(channel_key, 0) + 1
+                )
+
+        action_outcomes = []
+        for action_name, amounts in action_history_groups.items():
+            mean_reward = sum(amounts) / max(1, len(amounts))
+            positive_n = sum(1 for amount in amounts if amount > 1e-9)
+            negative_n = sum(1 for amount in amounts if amount < -1e-9)
+            action_outcomes.append({
+                "action": action_name,
+                "observations": len(amounts),
+                "mean_reward": max(-1.0, min(1.0, mean_reward)),
+                "positive_count": positive_n,
+                "negative_count": negative_n,
+            })
+        action_outcomes.sort(
+            key=lambda row: (
+                int(row["observations"]),
+                abs(float(row["mean_reward"])),
+            ),
+            reverse=True,
+        )
+        dominant_history_channel = None
+        if channel_history_counts:
+            (channel_id_key, channel_name_key), count = max(
+                channel_history_counts.items(),
+                key=lambda item: item[1],
+            )
+            dominant_history_channel = {
+                "channel_id": channel_id_key,
+                "channel_name": channel_name_key,
+                "observations": int(count),
+            }
+
         profile = {
             "user_id": user_id,
             "display_name": display_name,
@@ -2446,8 +2652,24 @@ class VoiceEpisodicMemory:
                 0,
                 observations - positive - negative,
             ),
-            "updated_at": float(direct["updated_at"]),
+            "updated_at": max(
+                float(direct["updated_at"]),
+                last_seen_history,
+            ),
+            "first_seen": first_seen,
             "last_seen": last_seen,
+            "relationship_age_days": relationship_age_days,
+            "history_observations": len(history),
+            "recent_valence": max(
+                -1.0,
+                min(1.0, recent_valence),
+            ),
+            "relationship_trend": relationship_trend,
+            "relationship_trend_delta": float(trend_delta),
+            "relationship_stability": relationship_stability,
+            "dominant_history_channel": dominant_history_channel,
+            "action_outcomes": action_outcomes[:8],
+            "interaction_history": history[:16],
             "preferred_action": (
                 dict(preferred)
                 if preferred is not None
@@ -2743,6 +2965,8 @@ class VoiceEpisodicMemory:
             self._episodes.append(
                 self._episode_from_row(row)
             )
+
+        self._backfill_person_history_from_db()
 
         if (
             self.semantic_memory_enabled
