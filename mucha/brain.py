@@ -11136,6 +11136,72 @@ class FlyBrain:
                 ),
             })
 
+        def structural_connections(
+            neuron_idx: int,
+            limit: int = 6,
+        ) -> list[dict]:
+            rows: list[dict] = []
+            csr = self._runtime_matrix_cpu
+            csc = self._runtime_matrix_csc_cpu
+
+            in_start = int(csr.indptr[neuron_idx])
+            in_end = int(csr.indptr[neuron_idx + 1])
+            if in_end > in_start:
+                sources = csr.indices[in_start:in_end]
+                weights = csr.data[in_start:in_end]
+                drives = weights * state_cpu[sources]
+                keep = min(limit, len(sources))
+                if keep:
+                    order = np.argsort(np.abs(drives))[::-1][:keep]
+                    for pos_raw in order:
+                        pos = int(pos_raw)
+                        peer = int(sources[pos])
+                        rows.append({
+                            "direction": "in",
+                            "peer": str(int(self.c.root_ids[peer])),
+                            "peer_index": peer,
+                            "peer_position": {
+                                "x": float(self._neuro_map_coords[peer, 0]),
+                                "y": float(self._neuro_map_coords[peer, 1]),
+                                "z": float(self._neuro_map_coords[peer, 2]),
+                            },
+                            "peer_activation": float(state_cpu[peer]),
+                            "effective_weight": float(weights[pos]),
+                            "current_drive": float(drives[pos]),
+                        })
+
+            out_start = int(csc.indptr[neuron_idx])
+            out_end = int(csc.indptr[neuron_idx + 1])
+            if out_end > out_start:
+                targets = csc.indices[out_start:out_end]
+                weights = csc.data[out_start:out_end]
+                drives = weights * float(state_cpu[neuron_idx])
+                keep = min(limit, len(targets))
+                if keep:
+                    order = np.argsort(np.abs(drives))[::-1][:keep]
+                    for pos_raw in order:
+                        pos = int(pos_raw)
+                        peer = int(targets[pos])
+                        rows.append({
+                            "direction": "out",
+                            "peer": str(int(self.c.root_ids[peer])),
+                            "peer_index": peer,
+                            "peer_position": {
+                                "x": float(self._neuro_map_coords[peer, 0]),
+                                "y": float(self._neuro_map_coords[peer, 1]),
+                                "z": float(self._neuro_map_coords[peer, 2]),
+                            },
+                            "peer_activation": float(state_cpu[peer]),
+                            "effective_weight": float(weights[pos]),
+                            "current_drive": float(drives[pos]),
+                        })
+
+            rows.sort(
+                key=lambda row: abs(float(row["current_drive"])),
+                reverse=True,
+            )
+            return rows[: max(2, limit * 2)]
+
         nodes: list[dict] = []
         sensory_set = self._sensory_lookup
         output_set = self._output_lookup
@@ -11247,6 +11313,7 @@ class FlyBrain:
                     ),
                     reverse=True,
                 )[:8],
+                "structural_connections": structural_connections(idx),
                 "decision_output": (
                     str(self.c.root_ids[idx])
                     in set(latest_flow.get("output_nodes", []))
@@ -11306,6 +11373,48 @@ class FlyBrain:
                     ),
                 })
 
+            region_index_set = set(int(i) for i in indices.tolist())
+            region_flow_rows: list[dict] = []
+            region_flow_in = 0.0
+            region_flow_out = 0.0
+            region_flow_internal = 0.0
+            for edge in latest_flow.get("edges", []):
+                source_index = int(edge.get("source_index", -1))
+                target_index = int(edge.get("target_index", -1))
+                source_inside = source_index in region_index_set
+                target_inside = target_index in region_index_set
+                if not source_inside and not target_inside:
+                    continue
+                contribution = float(edge.get("contribution", 0.0))
+                magnitude = abs(contribution)
+                if source_inside and target_inside:
+                    direction = "internal"
+                    region_flow_internal += magnitude
+                elif target_inside:
+                    direction = "in"
+                    region_flow_in += magnitude
+                else:
+                    direction = "out"
+                    region_flow_out += magnitude
+                region_flow_rows.append({
+                    "direction": direction,
+                    "source": str(edge.get("source", "")),
+                    "target": str(edge.get("target", "")),
+                    "contribution": contribution,
+                    "source_position": dict(
+                        edge.get("source_position") or {}
+                    ),
+                    "target_position": dict(
+                        edge.get("target_position") or {}
+                    ),
+                })
+            region_flow_rows.sort(
+                key=lambda item: abs(
+                    float(item.get("contribution", 0.0))
+                ),
+                reverse=True,
+            )
+
             region_rows.append({
                 "name": label,
                 "mean_abs": mean_abs,
@@ -11323,9 +11432,119 @@ class FlyBrain:
                     )
                 ),
                 "top_neurons": top_neurons,
+                "live_flow_in": float(region_flow_in),
+                "live_flow_out": float(region_flow_out),
+                "live_flow_internal": float(region_flow_internal),
+                "live_flow_edges": region_flow_rows[:16],
             })
 
         scores_now = self.action_scores()
+        decision_action = str(
+            latest_flow.get("winner")
+            or (
+                max(scores_now, key=scores_now.get)
+                if scores_now
+                else "stay"
+            )
+        )
+        if decision_action not in self.ACTIONS:
+            decision_action = "stay"
+        contribution_values = action_direct_contribution.get(
+            decision_action,
+            np.zeros(len(selected), dtype=np.float32),
+        )
+        positive_order = np.argsort(contribution_values)[::-1]
+        negative_order = np.argsort(contribution_values)
+        supporting_neurons = []
+        opposing_neurons = []
+        for pos_raw in positive_order:
+            pos = int(pos_raw)
+            value = float(contribution_values[pos])
+            if value <= 1e-10:
+                break
+            node = nodes[pos]
+            supporting_neurons.append({
+                "id": str(node["id"]),
+                "contribution": value,
+                "activation": float(node["activation"]),
+                "type": str(
+                    node.get("primary_type")
+                    or node.get("cell_class")
+                    or node.get("super_class")
+                    or node.get("role")
+                    or ""
+                ),
+                "region": str(
+                    node.get("primary_neuropil")
+                    or node.get("cell_class")
+                    or ""
+                ),
+            })
+            if len(supporting_neurons) >= 12:
+                break
+        for pos_raw in negative_order:
+            pos = int(pos_raw)
+            value = float(contribution_values[pos])
+            if value >= -1e-10:
+                break
+            node = nodes[pos]
+            opposing_neurons.append({
+                "id": str(node["id"]),
+                "contribution": value,
+                "activation": float(node["activation"]),
+                "type": str(
+                    node.get("primary_type")
+                    or node.get("cell_class")
+                    or node.get("super_class")
+                    or node.get("role")
+                    or ""
+                ),
+                "region": str(
+                    node.get("primary_neuropil")
+                    or node.get("cell_class")
+                    or ""
+                ),
+            })
+            if len(opposing_neurons) >= 12:
+                break
+        score_order = sorted(
+            (
+                (str(action), float(value))
+                for action, value in scores_now.items()
+            ),
+            key=lambda item: item[1],
+            reverse=True,
+        )
+        runner_up = (
+            score_order[1][0]
+            if len(score_order) > 1
+            else None
+        )
+        runner_score = (
+            score_order[1][1]
+            if len(score_order) > 1
+            else 0.0
+        )
+        decision_explanation = {
+            "action": decision_action,
+            "score": float(scores_now.get(decision_action, 0.0)),
+            "runner_up": runner_up,
+            "runner_up_score": float(runner_score),
+            "margin": float(
+                scores_now.get(decision_action, 0.0) - runner_score
+            ),
+            "supporting_neurons": supporting_neurons,
+            "opposing_neurons": opposing_neurons,
+            "tick": int(latest_flow.get("tick", self.tick_count)),
+            "frame": int(latest_flow.get("frame", 0)),
+            "frames": int(latest_flow.get("frames", 0)),
+            "method": (
+                "signed current presynaptic drive from visible neurons into "
+                "the selected action output population; useful runtime "
+                "attribution, not a complete biological causal proof"
+            ),
+        }
+
         self._neuro_map_history.append({
             "time": float(time.time()),
             "regions": region_values,
@@ -11469,6 +11688,7 @@ class FlyBrain:
             ),
             "history_samples": len(history),
             "signal_flow": flow_snapshot,
+            "decision_explanation": decision_explanation,
             "learned_synapses": self.learned_synapses_snapshot(160),
             "internal_states": self.internal_state_diagnostics(),
         }
