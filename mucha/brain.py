@@ -297,6 +297,21 @@ class FlyBrain:
             "time": time.time(),
             "changes": {},
         }
+        # Stage 32: a short-lived intention is memory of a previous neural
+        # winner, not a second action selector. On later autonomous ticks it
+        # can only re-enter through sensory guidance and FAFB competition.
+        self._intention_action: str | None = None
+        self._intention_strength = 0.0
+        self._intention_created_at = 0.0
+        self._intention_updated_at = time.time()
+        self._intention_context = ""
+        self._intention_last_event: dict = {
+            "event": "startup",
+            "time": time.time(),
+            "action": None,
+            "strength": 0.0,
+            "reason": "no-intention",
+        }
         self._internal_drive_last_event: dict = {
             "event": "startup",
             "intensity": 0.0,
@@ -2979,6 +2994,367 @@ class FlyBrain:
         }
 
 
+    def _clear_intention(
+        self,
+        reason: str,
+        *,
+        now: float | None = None,
+    ) -> dict:
+        now_value = time.time() if now is None else float(now)
+        previous_action = self._intention_action
+        previous_strength = float(self._intention_strength)
+        self._intention_action = None
+        self._intention_strength = 0.0
+        self._intention_created_at = 0.0
+        self._intention_updated_at = now_value
+        self._intention_context = ""
+        self._intention_last_event = {
+            "event": "cleared",
+            "time": now_value,
+            "action": previous_action,
+            "strength": previous_strength,
+            "reason": str(reason),
+        }
+        return dict(self._intention_last_event)
+
+    def _decay_intention(
+        self,
+        now: float | None = None,
+    ) -> None:
+        now_value = time.time() if now is None else float(now)
+        if not bool(self.cfg.intention_enabled):
+            if self._intention_action is not None:
+                self._clear_intention("disabled", now=now_value)
+            return
+        if self._intention_action is None:
+            self._intention_updated_at = now_value
+            return
+
+        elapsed = max(
+            0.0,
+            now_value - float(self._intention_updated_at or now_value),
+        )
+        half_life = max(
+            1.0,
+            float(self.cfg.intention_half_life_seconds),
+        )
+        if elapsed > 0.0:
+            self._intention_strength *= math.pow(
+                0.5,
+                elapsed / half_life,
+            )
+        self._intention_updated_at = now_value
+
+        age = max(
+            0.0,
+            now_value - float(self._intention_created_at or now_value),
+        )
+        max_age = max(
+            1.0,
+            float(self.cfg.intention_max_age_seconds),
+        )
+        if age >= max_age:
+            self._clear_intention("max-age", now=now_value)
+        elif self._intention_strength <= 1e-4:
+            self._clear_intention("decayed", now=now_value)
+
+    def intention_state_diagnostics(self) -> dict:
+        self._decay_intention()
+        now_value = time.time()
+        action = self._intention_action
+        age = (
+            max(0.0, now_value - float(self._intention_created_at))
+            if action is not None and self._intention_created_at > 0.0
+            else 0.0
+        )
+        max_age = max(
+            1.0,
+            float(self.cfg.intention_max_age_seconds),
+        )
+        return {
+            "enabled": bool(self.cfg.intention_enabled),
+            "active": bool(action is not None),
+            "action": action,
+            "display_action": (
+                "noop"
+                if action == "stay"
+                else action
+            ),
+            "strength": float(self._intention_strength),
+            "age_seconds": float(age),
+            "remaining_seconds": float(
+                max(0.0, max_age - age)
+                if action is not None
+                else 0.0
+            ),
+            "context": str(self._intention_context),
+            "last_event": dict(self._intention_last_event),
+            "method": (
+                "previous FAFB winner -> decaying intention memory -> "
+                "action-guided sensory cue -> FAFB propagation -> "
+                "fresh action competition"
+            ),
+        }
+
+    def _intention_evidence(
+        self,
+        action: str,
+        competition: dict,
+        foresight: dict,
+        rows: dict[str, dict],
+    ) -> dict:
+        candidate_scores = {
+            str(name): float(value)
+            for name, value in dict(
+                competition.get("candidates", {})
+            ).items()
+        }
+        winner_score = float(candidate_scores.get(action, 0.0))
+        runner_scores = [
+            float(value)
+            for name, value in candidate_scores.items()
+            if name != action
+        ]
+        runner_score = max(runner_scores) if runner_scores else 0.0
+        margin = max(0.0, winner_score - runner_score)
+        neural_support = max(0.0, min(1.0, winner_score))
+        margin_support = max(
+            0.0,
+            min(1.0, margin * 4.0),
+        )
+
+        simulation = dict(
+            dict(foresight.get("simulations", {})).get(action, {})
+        )
+        state_relief = max(
+            0.0,
+            min(1.0, float(simulation.get("state_relief", 0.0))),
+        )
+        simulation_confidence = max(
+            0.0,
+            min(
+                1.0,
+                float(simulation.get("simulation_confidence", 0.0)),
+            ),
+        )
+        foresight_support = state_relief * simulation_confidence
+
+        row = dict(rows.get(action, {}))
+        predicted_reward = max(
+            0.0,
+            min(1.0, float(row.get("predicted_reward", 0.0))),
+        )
+        prediction_confidence = max(
+            0.0,
+            min(
+                1.0,
+                float(row.get("prediction_confidence", 0.0)),
+            ),
+        )
+        reward_support = predicted_reward * prediction_confidence
+
+        evidence = max(
+            0.0,
+            min(
+                1.0,
+                0.35 * neural_support
+                + 0.35 * margin_support
+                + 0.20 * foresight_support
+                + 0.10 * reward_support,
+            ),
+        )
+        return {
+            "evidence": float(evidence),
+            "winner_score": float(winner_score),
+            "runner_score": float(runner_score),
+            "neural_margin": float(margin),
+            "neural_support": float(neural_support),
+            "margin_support": float(margin_support),
+            "foresight_support": float(foresight_support),
+            "reward_support": float(reward_support),
+        }
+
+    def _update_intention_from_decision(
+        self,
+        winner: str,
+        *,
+        competition: dict,
+        foresight: dict,
+        rows: dict[str, dict],
+        decision_context: str,
+    ) -> dict:
+        self._decay_intention()
+        now_value = time.time()
+        winner = str(winner)
+        if (
+            not bool(self.cfg.intention_enabled)
+            or str(decision_context) != "autonomous-idle"
+        ):
+            return self.intention_state_diagnostics()
+
+        if winner == "stay":
+            if self._intention_action is not None:
+                self._intention_last_event = {
+                    "event": "held-through-noop",
+                    "time": now_value,
+                    "action": self._intention_action,
+                    "strength": float(self._intention_strength),
+                    "reason": "fresh-competition-chose-noop",
+                }
+            return self.intention_state_diagnostics()
+
+        evidence_row = self._intention_evidence(
+            winner,
+            competition,
+            foresight,
+            rows,
+        )
+        evidence = float(evidence_row["evidence"])
+        min_evidence = max(
+            0.0,
+            min(1.0, float(self.cfg.intention_min_evidence)),
+        )
+        if evidence < min_evidence:
+            self._intention_last_event = {
+                "event": "weak-winner",
+                "time": now_value,
+                "action": winner,
+                "strength": float(self._intention_strength),
+                "reason": "winner-evidence-below-threshold",
+                "evidence": evidence,
+                **evidence_row,
+            }
+            return self.intention_state_diagnostics()
+
+        previous_action = self._intention_action
+        previous_strength = float(self._intention_strength)
+        reinforcement_gain = max(
+            0.0,
+            min(1.0, float(self.cfg.intention_reinforcement_gain)),
+        )
+        event = "formed"
+
+        if previous_action is None:
+            self._intention_action = winner
+            self._intention_strength = evidence
+            self._intention_created_at = now_value
+            self._intention_context = str(decision_context)
+        elif previous_action == winner:
+            self._intention_strength = min(
+                1.0,
+                max(previous_strength, evidence)
+                + reinforcement_gain
+                * evidence
+                * (1.0 - max(previous_strength, evidence)),
+            )
+            event = "reinforced"
+        else:
+            switch_margin = max(
+                0.0,
+                min(1.0, float(self.cfg.intention_switch_margin)),
+            )
+            if evidence >= previous_strength + switch_margin:
+                self._intention_action = winner
+                self._intention_strength = evidence
+                self._intention_created_at = now_value
+                self._intention_context = str(decision_context)
+                event = "switched"
+            else:
+                event = "retained"
+
+        self._intention_updated_at = now_value
+        self._intention_last_event = {
+            "event": event,
+            "time": now_value,
+            "action": self._intention_action,
+            "winner": winner,
+            "previous_action": previous_action,
+            "previous_strength": previous_strength,
+            "strength": float(self._intention_strength),
+            "evidence": evidence,
+            "reason": (
+                "fresh neural winner"
+                if event != "retained"
+                else "new winner not strong enough to replace intention"
+            ),
+            **evidence_row,
+        }
+        return self.intention_state_diagnostics()
+
+    def register_intention_outcome(
+        self,
+        action: str | None,
+        amount: float,
+    ) -> dict:
+        self._decay_intention()
+        action = str(action) if action is not None else None
+        matched = bool(
+            self._intention_action is not None
+            and action == self._intention_action
+        )
+        result = {
+            "matched": matched,
+            "action": action,
+            "amount": float(amount),
+            "before": float(self._intention_strength),
+            "after": float(self._intention_strength),
+            "cleared": False,
+        }
+        if not matched:
+            return result
+
+        now_value = time.time()
+        gain = max(
+            0.0,
+            min(1.0, float(self.cfg.intention_outcome_gain)),
+        )
+        before = float(self._intention_strength)
+        if amount > 0.0:
+            after = min(
+                1.0,
+                before + gain * min(1.0, amount) * (1.0 - before),
+            )
+            self._intention_strength = after
+            self._intention_updated_at = now_value
+            self._intention_last_event = {
+                "event": "reward-reinforced",
+                "time": now_value,
+                "action": action,
+                "strength": float(after),
+                "reason": "positive outcome for intended action",
+                "amount": float(amount),
+            }
+        elif amount < 0.0:
+            after = max(
+                0.0,
+                before * (1.0 - gain * min(1.0, abs(amount))),
+            )
+            self._intention_strength = after
+            self._intention_updated_at = now_value
+            if (
+                amount <= -0.75
+                or after < max(
+                    0.01,
+                    float(self.cfg.intention_min_evidence) * 0.5,
+                )
+            ):
+                self._clear_intention(
+                    "negative-outcome",
+                    now=now_value,
+                )
+            else:
+                self._intention_last_event = {
+                    "event": "punish-weakened",
+                    "time": now_value,
+                    "action": action,
+                    "strength": float(after),
+                    "reason": "negative outcome for intended action",
+                    "amount": float(amount),
+                }
+        result["after"] = float(self._intention_strength)
+        result["cleared"] = self._intention_action is None
+        return result
+
     def action_reward_prediction(
         self,
         action: str,
@@ -3385,6 +3761,7 @@ class FlyBrain:
             "foresight_winner": str(
                 foresight.get("winner", "stay")
             ),
+            "intention_state": self.intention_state_diagnostics(),
             "executed": False,
             "source": (
                 "technical-feasibility + Stage-30 motivational urgency + "
@@ -3484,10 +3861,12 @@ class FlyBrain:
             "foresight_winner": str(
                 foresight.get("winner", "stay")
             ),
+            "intention_state": self.intention_state_diagnostics(),
             "executed": False,
             "source": (
                 "one-brain generic feasibility + learned reward + "
-                "Stage-31 counterfactual foresight"
+                "Stage-31 counterfactual foresight + "
+                "Stage-32 persistent intent"
             ),
         }
 
@@ -3532,6 +3911,65 @@ class FlyBrain:
             or self.simulate_candidate_outcomes(actions, rows)
         )
         simulations = dict(foresight.get("simulations", {}))
+        intention_before = self.intention_state_diagnostics()
+        intention_cue: dict = {
+            "enabled": bool(self.cfg.intention_enabled),
+            "active": False,
+            "action": None,
+            "strength": 0.0,
+            "signal": 0.0,
+            "reason": "not-autonomous-context",
+        }
+        if (
+            bool(self.cfg.intention_enabled)
+            and str(decision_context) == "autonomous-idle"
+            and intention_before.get("active")
+        ):
+            intended_action = str(
+                intention_before.get("action") or ""
+            )
+            if intended_action not in actions:
+                self._clear_intention("infeasible-in-current-context")
+                intention_cue = {
+                    "enabled": True,
+                    "active": False,
+                    "action": intended_action,
+                    "strength": 0.0,
+                    "signal": 0.0,
+                    "reason": "intended-action-infeasible",
+                }
+            else:
+                intention_signal = (
+                    max(
+                        0.0,
+                        min(
+                            1.0,
+                            float(intention_before.get("strength", 0.0)),
+                        ),
+                    )
+                    * max(
+                        0.0,
+                        min(2.0, float(self.cfg.intention_signal_gain)),
+                    )
+                )
+                cue = self.inject_action_guided_signed_sensory(
+                    intended_action,
+                    f"one-brain-intention:{context_key}:{intended_action}",
+                    intention_signal,
+                    width=192,
+                    hops=3,
+                )
+                intention_cue = {
+                    "enabled": True,
+                    "active": True,
+                    "action": intended_action,
+                    "strength": float(
+                        intention_before.get("strength", 0.0)
+                    ),
+                    "signal": float(intention_signal),
+                    "reason": "persistent-intent-sensory-guidance",
+                    "cue": cue,
+                }
 
         for action in actions:
             row = dict(rows.get(action, {}))
@@ -3706,6 +4144,13 @@ class FlyBrain:
                         "winner_after": winner,
                     })
 
+        intention = self._update_intention_from_decision(
+            winner,
+            competition=competition,
+            foresight=foresight,
+            rows=rows,
+            decision_context=str(decision_context),
+        )
         winner_row = dict(rows.get(winner, {}))
         return {
             "action": winner,
@@ -3716,6 +4161,9 @@ class FlyBrain:
             "prediction_cues": cues,
             "foresight": foresight,
             "foresight_cues": foresight_cues,
+            "intention_before": intention_before,
+            "intention_cue": intention_cue,
+            "intention": intention,
             "noop_reafference": noop_reafference,
             "prediction_gain": float(gain),
             "propagation_steps": int(steps),
@@ -3732,8 +4180,9 @@ class FlyBrain:
                 )
             ),
             "source": (
-                "one-brain learned-reward + counterfactual-state sensory "
-                "guidance -> FAFB propagation -> connectome action competition"
+                "one-brain learned-reward + counterfactual-state + "
+                "persistent-intent sensory guidance -> FAFB propagation -> "
+                "connectome action competition"
             ),
             "executed": False,
         }
@@ -4031,7 +4480,41 @@ class FlyBrain:
                     0.0,
                     min(1.0, float(value)),
                 )
+        if "intention_action_index" in data:
+            values = np.asarray(
+                data["intention_action_index"],
+                dtype=np.int16,
+            ).ravel()
+            if len(values):
+                action_index = int(values[0])
+                if 0 <= action_index < len(self.ACTIONS):
+                    self._intention_action = self.ACTIONS[action_index]
+        if "intention_strength" in data:
+            values = np.asarray(
+                data["intention_strength"],
+                dtype=np.float32,
+            ).ravel()
+            if len(values):
+                self._intention_strength = max(
+                    0.0,
+                    min(1.0, float(values[0])),
+                )
+        if "intention_created_at" in data:
+            values = np.asarray(
+                data["intention_created_at"],
+                dtype=np.float64,
+            ).ravel()
+            if len(values):
+                self._intention_created_at = max(0.0, float(values[0]))
+        if "intention_updated_at" in data:
+            values = np.asarray(
+                data["intention_updated_at"],
+                dtype=np.float64,
+            ).ravel()
+            if len(values):
+                self._intention_updated_at = max(0.0, float(values[0]))
         self.tick_motivation_state(0.0)
+        self._decay_intention()
 
     def save(self) -> None:
         p = self.cfg.state_file
@@ -4154,6 +4637,14 @@ class FlyBrain:
                 ],
                 dtype=np.float32,
             ),
+            intention_action_index=np.int16(
+                self.ACTIONS.index(self._intention_action)
+                if self._intention_action in self.ACTIONS
+                else -1
+            ),
+            intention_strength=np.float32(self._intention_strength),
+            intention_created_at=np.float64(self._intention_created_at),
+            intention_updated_at=np.float64(self._intention_updated_at),
         )
         tmp.replace(p)
 
@@ -7637,6 +8128,13 @@ class FlyBrain:
             self.last_learning["internal_drives"] = (
                 self.internal_drive_diagnostics()
             )
+
+        intention_outcome = self.register_intention_outcome(
+            action,
+            amount,
+        )
+        if intention_outcome.get("matched"):
+            self.last_learning["intention"] = intention_outcome
 
         return self.last_learning
 
