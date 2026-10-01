@@ -704,10 +704,49 @@ def main():
             for row in place["people"]
         )
         assert place["recent_episodes"]
+        assert place["history_observations"] >= 6
+        assert place["interaction_history"]
+        assert place["first_seen"] > 0.0
+        assert place["last_seen"] >= place["first_seen"]
+        assert place["place_age_days"] >= 0.0
+        assert place["place_trend"] in {
+            "improving",
+            "stable",
+            "worsening",
+        }
+        assert -1.0 <= place["recent_valence"] <= 1.0
+        assert 0.0 <= place["place_stability"] <= 1.0
+        assert place["recent_human_density"] > 0.0
+        assert any(
+            row["action"] == "voice_move"
+            and row["observations"] >= 2
+            and row["mean_reward"] > 0.0
+            for row in place["action_outcomes"]
+        )
+        assert any(
+            row["kind"] == "dynamics"
+            and row["conversation_mode"] == "DIALOGUE"
+            for row in place["interaction_history"]
+        )
         assert any(
             row["channel_id"] == 555
             for row in restored.channel_profiles(8)
         )
+
+        place_restored = VoiceEpisodicMemory(
+            max_events=32,
+            learning_rate=0.5,
+            database=persistent_path,
+            max_persisted_events=100,
+        )
+        reloaded_place = place_restored.channel_profile(555)
+        assert reloaded_place["history_observations"] >= 6
+        assert reloaded_place["interaction_history"]
+        assert any(
+            row["action"] == "voice_move"
+            for row in reloaded_place["action_outcomes"]
+        )
+        place_restored.close()
 
         social_scene_key = restored.make_social_scene_key(
             channel_id=555,
@@ -1502,6 +1541,9 @@ def main():
         assert "renderChannelProfiles" in HTML
         assert 'id="channel-memory-grid"' in HTML
         assert "channel-memory" in HTML
+        assert "Recent humans" in HTML
+        assert "Wiek miejsca" in HTML
+        assert "Outcome akcji" in HTML
         assert "Long-term Social Situations" in HTML
         assert "renderSocialScenes" in HTML
         assert 'id="social-scene-grid"' in HTML
@@ -1807,11 +1849,23 @@ def main():
         assert '"channel_visit"' in episodic_source
         assert '"channel_people"' in episodic_source
         assert '"channel_mode"' in episodic_source
+        assert "channel_interaction_history" in episodic_source
+        assert "def _record_channel_history" in episodic_source
+        assert "def _channel_history_rows" in episodic_source
+        assert "def _channel_history_summary" in episodic_source
+        assert "def _backfill_channel_history_from_db" in episodic_source
+        assert '"place_trend"' in episodic_source
+        assert '"place_stability"' in episodic_source
+        assert '"recent_human_density"' in episodic_source
         assert "inject_person_profile" in bot_source
         assert "social:person-history:trend:" in brain_source
         assert "social:person-history:recent:" in brain_source
         assert "social:person-history:action-outcome:" in brain_source
         assert "inject_channel_profile" in bot_source
+        assert "voice:place-history:trend:" in brain_source
+        assert "voice:place-history:recent:" in brain_source
+        assert "voice:place-history:stability:" in brain_source
+        assert "voice:place-history:action-outcome:" in brain_source
         assert "inject_social_scene_profile" in bot_source
         assert "inject_voice_dynamics_profile" in bot_source
         assert "voice_dynamics_key" in bot_source
