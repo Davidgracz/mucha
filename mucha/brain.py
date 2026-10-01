@@ -5045,6 +5045,24 @@ class FlyBrain:
                 })
         self.tick_motivation_state(0.0)
         self._decay_intention()
+        if self._intention_action is not None:
+            self._record_intention_event({
+                "event": "restored",
+                "time": time.time(),
+                "action": self._intention_action,
+                "strength": float(self._intention_strength),
+                "reason": "restored from brain_state.npz",
+            })
+        if self._goal_motivation is not None:
+            self._record_goal_event({
+                "event": "restored",
+                "time": time.time(),
+                "motivation": self._goal_motivation,
+                "progress": float(self._goal_progress),
+                "step_count": int(self._goal_step_count),
+                "failed_steps": int(self._goal_failed_steps),
+                "reason": "restored from brain_state.npz",
+            })
         self._refresh_goal_lifecycle()
 
     def save(self) -> None:
