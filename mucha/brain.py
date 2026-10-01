@@ -4665,10 +4665,7 @@ class FlyBrain:
             "traits": {},
             "injected": [],
         }
-        if (
-            bool(self.cfg.personality_enabled)
-            and str(decision_context) == "autonomous-idle"
-        ):
+        if bool(self.cfg.personality_enabled):
             personality_cues = self.inject_personality_context(
                 context_key
             )
