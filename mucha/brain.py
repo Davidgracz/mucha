@@ -660,7 +660,7 @@ class FlyBrain:
 
         # Fixed low-density point cloud gives the eye a stable outline of the
         # whole brain while only active neurons are drawn brightly.
-        sample_n = min(1800, n)
+        sample_n = min(1200, n)
         sample_rng = np.random.default_rng(self.cfg.seed + 4242)
         if sample_n >= n:
             ref = np.arange(n, dtype=np.int32)
