@@ -1822,3 +1822,61 @@ circadian_post_sleep_seconds = 600
 Fatigue jest zapisywany razem z innymi homeostatic drives w `brain_state.npz`. Loader pozostaje kompatybilny ze starszymi plikami stanu zawierającymi tylko pięć drive'ów.
 
 Panel Sleep w `/details` pokazuje teraz osobno stan snu, stan dobowy i poziom fatigue.
+
+
+---
+
+# Stage 27 — Persistent Affective State
+
+Stage 27 dodaje wolnozmienny stan afektywny wynikający z realnej aktywności connectomu, homeostatic drives i reward trace.
+
+Stany:
+
+```text
+CONTENTMENT
+TENSION
+CURIOSITY
+SOCIAL_LONGING
+ACTIVATION
+```
+
+To nie jest osobny system decyzji ani ręczne `mood += 1`.
+
+Pipeline:
+
+```text
+FAFB internal attractors
++ homeostatic drives
++ reward trace
+        ↓
+slow affective EMA
+        ↓
+persistent affective state
+        ↓
+sensory feedback do tych samych attractorów
+        ↓
+FAFB propagation
+        ↓
+One Brain
+```
+
+Przykłady:
+
+- `CONTENTMENT` bazuje głównie na SATIETY i dodatnim reward trace,
+- `TENSION` bazuje na STRESS, caution i ujemnym reward trace,
+- `CURIOSITY` bazuje na attractorze CURIOSITY oraz drives curiosity/exploration,
+- `SOCIAL_LONGING` bazuje na SOCIAL_NEED,
+- `ACTIVATION` bazuje głównie na AROUSAL.
+
+Stan afektywny ma pamięć czasową przez EMA, więc nie znika po pojedynczym ticku. Jest zapisywany w `brain_state.npz` jako `affective_state_values` i pozostaje kompatybilny ze starszymi plikami stanu.
+
+Nowe ustawienia:
+
+```toml
+affective_state_enabled = true
+affective_state_smoothing = 0.96
+affective_state_feedback_gain = 0.18
+affective_state_reward_gain = 0.28
+```
+
+Dashboard `/details` pokazuje osobno aktualną wartość i target każdego stanu. Dzięki temu można zobaczyć nie tylko „co Mucha czuje teraz”, ale też w którą stronę przesuwa ją bieżąca aktywność neuronalna.
