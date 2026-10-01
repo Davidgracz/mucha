@@ -3503,6 +3503,21 @@ class FlyBrain:
             "failed_steps": int(self._goal_failed_steps),
             "reason": str(reason),
         })
+        if previous is not None and bool(self.cfg.personality_enabled):
+            if str(status) == "completed":
+                self._observe_personality(
+                    "persistence",
+                    0.85,
+                    reason="completed multi-step goal",
+                    source="goal",
+                )
+            elif str(status) == "abandoned":
+                self._observe_personality(
+                    "persistence",
+                    -0.45,
+                    reason="abandoned multi-step goal",
+                    source="goal",
+                )
         self._goal_motivation = None
         self._goal_baseline_urgency = 0.0
         self._goal_progress = 0.0
@@ -3793,6 +3808,17 @@ class FlyBrain:
             self._goal_current_urgency(self._goal_motivation)
         )
         self._goal_steps.append(dict(row))
+        if bool(self.cfg.personality_enabled):
+            self._observe_personality(
+                "persistence",
+                0.14 if executed and success else -0.12,
+                reason=(
+                    "successful goal step"
+                    if executed and success
+                    else "failed goal step"
+                ),
+                source="goal-step",
+            )
         self._record_goal_event({
             "event": "step",
             "time": now_value,
@@ -3807,6 +3833,269 @@ class FlyBrain:
         })
         self._refresh_goal_lifecycle()
         return self.goal_state_diagnostics()
+
+    def _observe_personality(
+        self,
+        trait: str,
+        evidence: float,
+        *,
+        reason: str,
+        source: str,
+        weight: float = 1.0,
+    ) -> dict:
+        trait = str(trait)
+        if trait not in self.PERSONALITY_NAMES:
+            return self.personality_state_diagnostics()
+        evidence = max(-1.0, min(1.0, float(evidence)))
+        weight = max(0.0, min(2.0, float(weight)))
+        before = float(self._personality_values[trait])
+        alpha = (
+            max(
+                0.0001,
+                min(0.5, float(self.cfg.personality_learning_rate)),
+            )
+            * weight
+            * (0.35 + 0.65 * abs(evidence))
+        )
+        target = 0.5 + 0.5 * evidence
+        after = max(
+            0.0,
+            min(1.0, before + alpha * (target - before)),
+        )
+        self._personality_values[trait] = after
+        self._personality_observations[trait] = (
+            int(self._personality_observations.get(trait, 0)) + 1
+        )
+        event = {
+            "event": "observed",
+            "time": time.time(),
+            "trait": trait,
+            "evidence": float(evidence),
+            "before": before,
+            "after": after,
+            "delta": after - before,
+            "observations": int(self._personality_observations[trait]),
+            "source": str(source),
+            "reason": str(reason),
+        }
+        self._personality_last_event = dict(event)
+        self._personality_history.append(dict(event))
+        return self.personality_state_diagnostics()
+
+    def register_personality_action(
+        self,
+        action: str | None,
+        *,
+        executed: bool,
+        success: bool,
+    ) -> dict:
+        action = str(action or "")
+        if (
+            not bool(self.cfg.personality_enabled)
+            or action not in self.ACTIONS
+            or action == "stay"
+            or not executed
+        ):
+            return self.personality_state_diagnostics()
+
+        behavioural = 0.22 if success else -0.18
+        if action in {"voice_join", "speak", "react"}:
+            self._observe_personality(
+                "sociability",
+                behavioural,
+                reason=f"repeated social behaviour: {action}",
+                source="autonomous-action",
+                weight=0.45,
+            )
+        if action in {"speak", "react"}:
+            self._observe_personality(
+                "expressiveness",
+                behavioural,
+                reason=f"expressive behaviour: {action}",
+                source="autonomous-action",
+                weight=0.45,
+            )
+        if action in {"explore", "voice_move"}:
+            self._observe_personality(
+                "curiosity",
+                behavioural,
+                reason=f"novelty-seeking behaviour: {action}",
+                source="autonomous-action",
+                weight=0.45,
+            )
+        return self.personality_state_diagnostics()
+
+    def register_personality_outcome(
+        self,
+        action: str | None,
+        amount: float,
+    ) -> dict:
+        if not bool(self.cfg.personality_enabled):
+            return self.personality_state_diagnostics()
+        action = str(action or "")
+        amount = max(-1.0, min(1.0, float(amount)))
+        if abs(amount) <= 1e-8:
+            return self.personality_state_diagnostics()
+
+        if action in {"voice_join", "speak", "react"}:
+            self._observe_personality(
+                "sociability",
+                amount,
+                reason=f"signed social outcome: {action}",
+                source="reward",
+                weight=1.0,
+            )
+        if action in {"speak", "react"}:
+            self._observe_personality(
+                "expressiveness",
+                amount,
+                reason=f"signed expressive outcome: {action}",
+                source="reward",
+                weight=0.90,
+            )
+        if action in {"explore", "voice_move"}:
+            self._observe_personality(
+                "curiosity",
+                amount,
+                reason=f"signed novelty outcome: {action}",
+                source="reward",
+                weight=1.0,
+            )
+
+        # Caution learns mostly from aversive outcomes. Positive outcomes can
+        # relax it slowly, but never by directly suppressing an action.
+        caution_evidence = (
+            abs(amount)
+            if amount < 0.0
+            else -0.35 * amount
+        )
+        self._observe_personality(
+            "caution",
+            caution_evidence,
+            reason="signed safety evidence from outcome",
+            source="reward",
+            weight=0.85,
+        )
+        return self.personality_state_diagnostics()
+
+    def personality_state_diagnostics(self) -> dict:
+        min_obs = max(1, int(self.cfg.personality_min_observations))
+        traits: dict[str, dict] = {}
+        for name in self.PERSONALITY_NAMES:
+            value = max(
+                0.0,
+                min(1.0, float(self._personality_values.get(name, 0.5))),
+            )
+            observations = max(
+                0,
+                int(self._personality_observations.get(name, 0)),
+            )
+            confidence = (
+                1.0 - math.exp(-float(observations) / float(min_obs))
+                if observations > 0
+                else 0.0
+            )
+            traits[name] = {
+                "value": value,
+                "centered": (value - 0.5) * 2.0,
+                "observations": observations,
+                "confidence": confidence,
+                "expressed": max(0.0, (value - 0.5) * 2.0) * confidence,
+            }
+        ranked = sorted(
+            traits.items(),
+            key=lambda item: float(item[1]["expressed"]),
+            reverse=True,
+        )
+        dominant = (
+            ranked[0][0]
+            if ranked and float(ranked[0][1]["expressed"]) > 1e-6
+            else None
+        )
+        return {
+            "enabled": bool(self.cfg.personality_enabled),
+            "traits": traits,
+            "dominant": dominant,
+            "dominant_expression": (
+                float(traits[dominant]["expressed"])
+                if dominant is not None
+                else 0.0
+            ),
+            "last_event": dict(self._personality_last_event),
+            "history": [
+                dict(row)
+                for row in list(self._personality_history)[-64:]
+            ],
+            "learning_rate": float(self.cfg.personality_learning_rate),
+            "signal_gain": float(self.cfg.personality_signal_gain),
+            "method": (
+                "slow outcome/behaviour EMA -> confidence-weighted trait "
+                "expression -> existing internal-state sensory entries -> "
+                "FAFB propagation; no direct action-score bonus"
+            ),
+        }
+
+    def inject_personality_context(
+        self,
+        context_key: str,
+    ) -> dict:
+        diag = self.personality_state_diagnostics()
+        result = {
+            "enabled": bool(self.cfg.personality_enabled),
+            "traits": {},
+            "injected": [],
+        }
+        if not bool(self.cfg.personality_enabled):
+            return result
+
+        signal_gain = max(
+            0.0,
+            min(1.5, float(self.cfg.personality_signal_gain)),
+        )
+        for trait, row in diag.get("traits", {}).items():
+            expression = max(
+                0.0,
+                min(1.0, float(row.get("expressed", 0.0))),
+            )
+            trait_rows = []
+            if expression <= 1e-6:
+                result["traits"][trait] = {
+                    **dict(row),
+                    "signals": trait_rows,
+                }
+                continue
+            for state_name, weight in self.PERSONALITY_STATE_MAP.get(
+                trait,
+                (),
+            ):
+                magnitude = (
+                    expression
+                    * max(0.0, float(weight))
+                    * signal_gain
+                )
+                if magnitude <= 1e-6:
+                    continue
+                cue = self.inject_internal_state_cue(
+                    state_name,
+                    magnitude,
+                    key=(
+                        f"personality:{context_key}:"
+                        f"{trait}:{state_name}"
+                    ),
+                )
+                cue_row = {
+                    "trait": trait,
+                    "state": state_name,
+                    "magnitude": float(magnitude),
+                    "cue": cue,
+                }
+                trait_rows.append(cue_row)
+                result["injected"].append(cue_row)
+            result["traits"][trait] = {
+                **dict(row),
+                "signals": trait_rows,
+            }
+        return result
 
     def action_reward_prediction(
         self,
