@@ -62,8 +62,11 @@ class FlyBrain:
         # choose an action directly; it excites existing FAFB attractors that
         # already support rest/stay or disengagement/movement.
         "fatigue": (
-            ("satiety", 0.65),
-            ("stress", 0.35),
+            # Fatigue is context for rest/disengagement, not a standing NOOP
+            # command. Keep it weaker than social/curiosity drives so sleep
+            # pressure cannot permanently monopolize STAY.
+            ("satiety", 0.35),
+            ("stress", 0.15),
         ),
     }
 
@@ -2194,14 +2197,29 @@ class FlyBrain:
             ),
         )
         if feedback_gain > 0.0:
+            # Feed back only the part of slow affect that is NOT already
+            # represented by the live attractor. Reinjection of the full
+            # affect value created a positive loop (notably
+            # SATIETY -> CONTENTMENT -> SATIETY) that could lock One Brain
+            # into STAY/NOOP.
+            live_states = self._internal_state_levels()
             for affect, mapped in self.AFFECTIVE_STATE_NEURAL_MAP.items():
                 value = float(self._affective_values.get(affect, 0.0))
                 if value <= 0.001:
                     continue
                 for state_name, weight in mapped:
+                    represented = float(
+                        live_states.get(state_name, {}).get(
+                            "level",
+                            0.0,
+                        )
+                    )
+                    residual = max(0.0, value - represented)
+                    if residual <= 0.001:
+                        continue
                     self.inject_internal_state_cue(
                         state_name,
-                        feedback_gain * value * float(weight),
+                        feedback_gain * residual * float(weight),
                         key=f"affective:{affect}:{state_name}",
                     )
 
@@ -2631,6 +2649,19 @@ class FlyBrain:
             reverse=True,
         )
         reward_winner = reward_ranked[0] if reward_ranked else "stay"
+        preview_candidates = dict(
+            competition.get("candidates", {})
+        )
+        non_noop_preview = {
+            action: float(preview_candidates.get(action, 0.0))
+            for action in candidates
+            if action != "stay"
+        }
+        context_selection_score = (
+            max(non_noop_preview.values())
+            if non_noop_preview
+            else float(preview_candidates.get("stay", 0.0))
+        )
         return {
             "candidate_actions": candidates,
             "display_candidates": [
@@ -2645,6 +2676,12 @@ class FlyBrain:
             ),
             "rows": rows,
             "competition_preview": competition,
+            "context_selection_score": float(context_selection_score),
+            "best_non_noop_preview_score": (
+                max(non_noop_preview.values())
+                if non_noop_preview
+                else 0.0
+            ),
             "winner_preview": str(
                 competition.get("action", "stay")
             ),
@@ -2815,6 +2852,127 @@ class FlyBrain:
 
         competition = self.action_competition(actions)
         winner = str(competition.get("action", "stay"))
+
+        noop_reafference = {
+            "enabled": bool(
+                self.cfg.one_brain_noop_reafference_enabled
+            ),
+            "triggered": False,
+            "candidate": None,
+            "support": 0.0,
+            "stay_support": 0.0,
+            "injected_states": [],
+            "winner_before": winner,
+            "winner_after": winner,
+        }
+        if (
+            winner == "stay"
+            and str(decision_context) == "autonomous-idle"
+            and bool(self.cfg.one_brain_noop_reafference_enabled)
+        ):
+            stay_row = dict(rows.get("stay", {}))
+            stay_support = (
+                float(stay_row.get("drive_support", 0.0))
+                + float(stay_row.get("state_support", 0.0))
+            )
+            noop_reafference["stay_support"] = float(stay_support)
+
+            motivated_rows = []
+            for action in actions:
+                if action == "stay":
+                    continue
+                row = dict(rows.get(action, {}))
+                support = (
+                    float(row.get("drive_support", 0.0))
+                    + float(row.get("state_support", 0.0))
+                )
+                motivated_rows.append((support, action, row))
+
+            motivated_rows.sort(reverse=True, key=lambda item: item[0])
+            min_support = max(
+                0.0,
+                min(
+                    2.0,
+                    float(
+                        self.cfg.one_brain_noop_reafference_min_support
+                    ),
+                ),
+            )
+            if motivated_rows and motivated_rows[0][0] >= min_support:
+                support, motivated_action, motivated_row = motivated_rows[0]
+                gain_retry = max(
+                    0.0,
+                    min(
+                        2.0,
+                        float(
+                            self.cfg.one_brain_noop_reafference_gain
+                        ),
+                    ),
+                )
+                state_amounts: dict[str, float] = {}
+                for drive_row in list(
+                    motivated_row.get("supporting_drives", [])
+                ):
+                    drive_value = max(
+                        0.0,
+                        float(drive_row.get("value", 0.0)),
+                    )
+                    for path in list(drive_row.get("paths", [])):
+                        state_name = str(path.get("state") or "")
+                        if not state_name:
+                            continue
+                        state_amounts[state_name] = (
+                            state_amounts.get(state_name, 0.0)
+                            + drive_value
+                            * max(0.0, float(path.get("weight", 0.0)))
+                        )
+
+                injected_states = []
+                for state_name, amount in sorted(
+                    state_amounts.items(),
+                    key=lambda item: item[1],
+                    reverse=True,
+                )[:3]:
+                    magnitude = gain_retry * amount
+                    if magnitude <= 1e-4:
+                        continue
+                    diag = self.inject_internal_state_cue(
+                        state_name,
+                        magnitude,
+                        key=(
+                            "one-brain:noop-reafference:"
+                            f"{context_key}:{state_name}"
+                        ),
+                    )
+                    injected_states.append({
+                        "state": state_name,
+                        "magnitude": float(magnitude),
+                        "neurons": int(diag.get("neurons", 0)),
+                    })
+
+                retry_steps = max(
+                    0,
+                    min(
+                        4,
+                        int(
+                            self.cfg.one_brain_noop_reafference_steps
+                        ),
+                    ),
+                )
+                if injected_states and retry_steps > 0:
+                    self.step(retry_steps)
+                    competition = self.action_competition(actions)
+                    winner = str(
+                        competition.get("action", "stay")
+                    )
+                    noop_reafference.update({
+                        "triggered": True,
+                        "candidate": motivated_action,
+                        "support": float(support),
+                        "injected_states": injected_states,
+                        "winner_after": winner,
+                    })
+
         winner_row = dict(rows.get(winner, {}))
         return {
             "action": winner,
@@ -2823,6 +2981,7 @@ class FlyBrain:
             "competition": competition,
             "candidate_actions": actions,
             "prediction_cues": cues,
+            "noop_reafference": noop_reafference,
             "prediction_gain": float(gain),
             "propagation_steps": int(steps),
             "predicted_reward": float(
