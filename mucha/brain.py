@@ -12263,4 +12263,5 @@ class FlyBrain:
             "action_pools": self.action_pool_diagnostics(),
             "action_policy": self.action_policy_diagnostics(),
             "neuromodulation": self.neuromodulator_diagnostics(),
+            "personality_state": self.personality_state_diagnostics(),
         }
