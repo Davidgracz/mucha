@@ -1329,7 +1329,8 @@ def main():
         assert "biological-circuits" in CONNECTOME_HTML
         assert "connected-outputs" in CONNECTOME_HTML
         assert "isolated-nodes" in CONNECTOME_HTML
-        assert "Direction arrow" in CONNECTOME_HTML
+        assert "Math.atan2(b.y-a.y,b.x-a.x)" in CONNECTOME_HTML
+        assert "ctx.closePath();ctx.fill()" in CONNECTOME_HTML
         assert "Neuromodulation v2" in CONNECTOME_HTML
         assert "neuromod-da" in CONNECTOME_HTML
         assert "Path Inspector" in CONNECTOME_HTML
