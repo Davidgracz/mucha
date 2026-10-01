@@ -1490,6 +1490,7 @@ let mapCanvasW=1,mapCanvasH=1,mapLastFrameTs=0,mapUpdating=false,mapMaxActivatio
 const NEUROMAP_FRAME_MS=1000/24;
 const trail=new Map(),mouse={x:0,y:0,inside:false};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),nfmt=n=>Number(n||0).toLocaleString("pl-PL");
+const displayAction=a=>String(a||"stay")==="stay"?"NOOP":String(a||"—").toUpperCase();
 const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 function axes(p){return p==="xy"?["x","y"]:p==="xz"?["x","z"]:["y","z"]}
 function point(o,w,h,pad=30){const [a,b]=axes(projection);return {x:pad+clamp(Number(o[a]||0),0,1)*(w-pad*2),y:pad+(1-clamp(Number(o[b]||0),0,1))*(h-pad*2)}}
@@ -1721,7 +1722,7 @@ function neuropilRows(n){
 }
 function structuralRows(n){
  const rows=n.structural_connections||[];if(!rows.length)return '<div class="note">Brak połączeń w aktualnym runtime matrix.</div>';
- return rows.map(x=>'<div class="conn-row"><b>'+esc(String(x.direction||"").toUpperCase())+'</b><span>'+esc(x.peer||"—")+'</span><em>w '+Number(x.effective_weight||0).toFixed(4)+'</em><em class="drive '+(Number(x.current_drive||0)>=0?"pos":"neg")+'">'+(Number(x.current_drive||0)>=0?"+":"")+Number(x.current_drive||0).toFixed(4)+'</em></div>').join("")
+ return rows.map(x=>'<div class="conn-row" data-peer-neuron="'+esc(x.peer||"")+'"><b>'+esc(String(x.direction||"").toUpperCase())+'</b><span>'+esc(x.peer||"—")+'</span><em>w '+Number(x.effective_weight||0).toFixed(4)+'</em><em class="drive '+(Number(x.current_drive||0)>=0?"pos":"neg")+'">'+(Number(x.current_drive||0)>=0?"+":"")+Number(x.current_drive||0).toFixed(4)+'</em></div>').join("")
 }
 function directActionRows(n){
  const rows=n.action_contributions||[];if(!rows.length)return '<div class="note">Brak mierzalnego bezpośredniego wkładu do widocznych action-output pools.</div>';
@@ -1742,7 +1743,8 @@ function inspect(n){
  '<div class="effects"><small>Signed wkład do action readoutów</small>'+directActionRows(n0)+'</div>'+
  '<div class="effects"><small>Top neuropile wg incident synapse mass</small>'+neuropilRows(n0)+'</div>'+
  '<div class="effects"><small>Siła bezpośrednich połączeń do systemowych readoutów</small>'+effectRows(n0)+'</div>'+
- '<div class="note">Stage 34 rozdziela: live propagation, strukturalny runtime matrix i signed presynaptic contribution. To telemetryka algorytmu, nie pełny dowód biologicznej przyczynowości.</div>'
+ '<div class="note">Stage 34 rozdziela: live propagation, strukturalny runtime matrix i signed presynaptic contribution. To telemetryka algorytmu, nie pełny dowód biologicznej przyczynowości.</div>';
+ $("inspector").querySelectorAll("[data-peer-neuron]").forEach(el=>el.onclick=()=>selectNeuronById(el.dataset.peerNeuron))
 }
 canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.inside=true;if(hover){tip.style.display="block";tip.style.left=Math.min(r.width-255,mouse.x+13)+"px";tip.style.top=Math.min(r.height-155,mouse.y+13)+"px";tip.innerHTML='<b>'+esc(hover.id)+'</b><br><span class="mut">'+esc(hover.primary_type||hover.cell_class||hover.super_class||hover.role)+'</span><br><span class="acc">activation '+Number(hover.activation||0).toFixed(5)+'</span><br>flow in/out '+Number(hover.live_flow_in||0).toFixed(3)+' / '+Number(hover.live_flow_out||0).toFixed(3)+'<br>neuropil '+esc(hover.primary_neuropil||"—")+'<br>'+esc(hover.side||"")+' '+esc(hover.nt_type||"")}else tip.style.display="none"});
 canvas.addEventListener("mouseleave",()=>{mouse.inside=false;tip.style.display="none"});
