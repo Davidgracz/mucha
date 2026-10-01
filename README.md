@@ -1880,3 +1880,74 @@ affective_state_reward_gain = 0.28
 ```
 
 Dashboard `/details` pokazuje osobno aktualną wartość i target każdego stanu. Dzięki temu można zobaczyć nie tylko „co Mucha czuje teraz”, ale też w którą stronę przesuwa ją bieżąca aktywność neuronalna.
+
+
+---
+
+# Stage 28 — Durable Person Relationship Memory
+
+Stage 28 rozbudowuje Long-term People Memory z profilu agregatowego do trwałej historii relacji.
+
+Nowa tabela w `state/voice_episodes.sqlite3`:
+
+```text
+person_interaction_history
+```
+
+Każdy wpis może przechować:
+
+```text
+czas
+user_id / user_name
+rodzaj zdarzenia: contact / social / episode
+źródło
+akcję Muchy
+reward / signed social outcome
+guild
+kanał
+kontekst
+```
+
+Przy pierwszym uruchomieniu Stage 28 istniejące zapisane `voice_episodes` są automatycznie używane do zainicjalizowania historii osób. Migracja jest wykonywana hurtowo i przycinana dopiero na końcu, żeby nie blokować startu przy dużej bazie.
+
+Profil osoby zawiera teraz m.in.:
+
+```text
+familiarity
+valence
+confidence
+first_seen / last_seen
+relationship_age_days
+history_observations
+recent_valence
+relationship_trend = improving / stable / worsening
+relationship_stability
+action_outcomes
+dominant_history_channel
+interaction_history
+preferred_action
+avoided_action
+```
+
+`recent_valence` opisuje ostatnie realne signed outcomes, a `relationship_trend` porównuje nowszą część historii ze starszą. `relationship_stability` mierzy, jak zmienne są ostatnie outcomes.
+
+Chronologia jest ograniczona w panelu do najnowszych wpisów, ale licznik i wiek relacji są liczone po całej zachowanej historii osoby.
+
+## Wpływ na connectome
+
+Stage 28 nie dodaje bezpośredniego bonusu do action score.
+
+Profil osoby jest zamieniany na sensoryczne cues, m.in.:
+
+```text
+social:person-history:trend:<state>
+social:person-history:recent:<positive|negative>
+social:person-history:stability:<stable|variable|volatile>
+social:person-history:action-outcome:<action>:<positive|negative>
+social:person-history:density:<bucket>
+social:person-history:recent-contact
+```
+
+Dopiero potem sygnał propaguje się przez connectome i bierze udział w One Brain.
+
+Dashboard `/details` pokazuje teraz trend relacji, recent valence, stability, wiek relacji, chronologię i historyczne outcome konkretnych akcji.
