@@ -1523,9 +1523,9 @@ function drawSignalFlow(w,h){
  })).filter(x=>x.a&&x.b);
  if(!edges.length)return;const maxC=Math.max(.000001,...edges.map(x=>Math.abs(Number(x.e.contribution||0)))),tone=actionColors[f.winner]||"#55ead0",phase=(performance.now()%1100)/1100;
  ctx.save();ctx.globalCompositeOperation="lighter";
- edges.slice(0,140).forEach((row,i)=>{const e=row.e,p1=point(row.a,w,h,26),p2=point(row.b,w,h,26),q=clamp(Math.abs(Number(e.contribution||0))/maxC,0,1),neg=Number(e.contribution||0)<0;
-  ctx.strokeStyle=tone;ctx.globalAlpha=.08+q*.48;ctx.lineWidth=.45+q*2.0;ctx.setLineDash(neg?[4,4]:[]);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();ctx.setLineDash([]);
-  const t=(phase+i*.071)%1,x=p1.x+(p2.x-p1.x)*t,y=p1.y+(p2.y-p1.y)*t;ctx.fillStyle=neg?"#ff77b7":tone;ctx.globalAlpha=.40+q*.60;ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=5+q*9;ctx.beginPath();ctx.arc(x,y,1.2+q*2.1,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0
+ edges.slice(0,90).forEach((row,i)=>{const e=row.e,p1=point(row.a,w,h,26),p2=point(row.b,w,h,26),q=clamp(Math.abs(Number(e.contribution||0))/maxC,0,1),neg=Number(e.contribution||0)<0;
+  ctx.strokeStyle=tone;ctx.globalAlpha=.07+q*.44;ctx.lineWidth=.45+q*1.8;ctx.setLineDash(neg?[4,4]:[]);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke();ctx.setLineDash([]);
+  const t=(phase+i*.071)%1,x=p1.x+(p2.x-p1.x)*t,y=p1.y+(p2.y-p1.y)*t;ctx.fillStyle=neg?"#ff77b7":tone;ctx.globalAlpha=.38+q*.56;ctx.shadowColor=ctx.fillStyle;ctx.shadowBlur=q>.35?3+q*6:0;ctx.beginPath();ctx.arc(x,y,1.1+q*1.8,0,Math.PI*2);ctx.fill();ctx.shadowBlur=0
  });
  ctx.setLineDash([]);ctx.globalAlpha=.9;ctx.strokeStyle=tone;ctx.lineWidth=1.35;
  for(const out of (f.output_points||[]).slice(0,28)){const p=point(out,w,h,26);ctx.beginPath();ctx.arc(p.x,p.y,8.5,0,Math.PI*2);ctx.stroke()}
