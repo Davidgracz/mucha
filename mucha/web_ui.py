@@ -1099,6 +1099,8 @@ table{width:100%;border-collapse:collapse;font-size:10px}th,td{padding:7px 5px;b
 const $=id=>document.getElementById(id);
 const canvas=$("net"),ctx=canvas.getContext("2d"),wrap=$("graph-wrap"),tip=$("tip");
 let stateSnap=null,visualSnap=null,layout={},hover=null,lastUpdate=0;
+let canvasW=1,canvasH=1,canvasDpr=1,lastFrameTs=0,updating=false,maxGraphImportance=.0001;
+const CONNECTOME_FRAME_MS=1000/30;
 let followActivity=localStorage.getItem("mucha-connectome-follow")==="1";
 let selectedAction=localStorage.getItem("mucha-connectome-action")||"voice_move";
 let actionPathSnap=null,pathLastRequest=0;
@@ -1108,7 +1110,7 @@ const nfmt=n=>Number(n||0).toLocaleString("pl-PL");
 const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 function hash(s){let h=2166136261;for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619)}return (h>>>0)/4294967295}
-function resize(){const r=wrap.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0)}
+function resize(){const r=wrap.getBoundingClientRect(),dpr=Math.min(1.5,window.devicePixelRatio||1);canvasW=Math.max(1,r.width);canvasH=Math.max(1,r.height);canvasDpr=dpr;canvas.width=Math.max(1,Math.floor(canvasW*dpr));canvas.height=Math.max(1,Math.floor(canvasH*dpr));canvas.style.width=canvasW+"px";canvas.style.height=canvasH+"px";ctx.setTransform(dpr,0,0,dpr,0,0);updateLayout([...graphNodes.values()].map(x=>x.node))}
 function roleTarget(n,w,h){
  const seed=hash(n.id),seed2=hash(n.id+"x");
  if(n.role==="sensory")return {x:w*(.07+.12*seed),y:h*(.10+.80*seed2)};
@@ -1154,12 +1156,15 @@ function ingestGraph(v){
   if(old){old.node=n;old.targetAlpha=1}else graphNodes.set(n.id,{node:n,alpha:0,targetAlpha:1});
  }
  const nowEdges=new Set();
+ maxGraphImportance=.0001;
  for(const e of (v.edges||[])){
   const key=e.source+">"+e.target;nowEdges.add(key);
+  maxGraphImportance=Math.max(maxGraphImportance,Number(e.importance||0));
   const old=graphEdges.get(key);
   if(old){old.edge=e;old.targetAlpha=1}else graphEdges.set(key,{edge:e,alpha:0,targetAlpha:1});
  }
  for(const [key,entry] of graphEdges)if(!nowEdges.has(key))entry.targetAlpha=0;
+ updateLayout(v.nodes||[]);
 }
 function drawGrid(w,h){
  ctx.save();ctx.strokeStyle="rgba(73,108,137,.07)";ctx.lineWidth=1;
@@ -1167,33 +1172,31 @@ function drawGrid(w,h){
  for(let y=24;y<h;y+=48){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(w,y);ctx.stroke()}
  ctx.restore();
 }
-function draw(){
+function draw(ts=0){
  requestAnimationFrame(draw);
- const r=wrap.getBoundingClientRect(),w=r.width,h=r.height;ctx.clearRect(0,0,w,h);drawGrid(w,h);
+ if(document.hidden||ts-lastFrameTs<CONNECTOME_FRAME_MS)return;
+ lastFrameTs=ts;
+ const w=canvasW,h=canvasH;ctx.clearRect(0,0,w,h);drawGrid(w,h);
  const nodeEntries=[...graphNodes.values()];
- for(const e of nodeEntries){e.alpha+=(e.targetAlpha-e.alpha)*.075}
+ for(const e of nodeEntries){e.alpha+=(e.targetAlpha-e.alpha)*.11}
  for(const [id,e] of graphNodes)if(e.targetAlpha===0&&e.alpha<.018){graphNodes.delete(id);delete layout[id]}
- for(const e of graphEdges.values()){e.alpha+=(e.targetAlpha-e.alpha)*.09}
+ for(const e of graphEdges.values()){e.alpha+=(e.targetAlpha-e.alpha)*.13}
  for(const [id,e] of graphEdges)if(e.targetAlpha===0&&e.alpha<.018)graphEdges.delete(id);
- const nodes=[...graphNodes.values()].map(x=>x.node);updateLayout(nodes);
- for(const p of Object.values(layout)){p.x+=(p.tx-p.x)*.045;p.y+=(p.ty-p.y)*.045}
- const byId=Object.fromEntries([...graphNodes.entries()].map(([id,e])=>[id,e]));
- let maxImp=.0001;for(const x of graphEdges.values())maxImp=Math.max(maxImp,Number(x.edge.importance||0));
- const t=performance.now()/1000;
+ for(const p of Object.values(layout)){p.x+=(p.tx-p.x)*.075;p.y+=(p.ty-p.y)*.075}
+ const t=ts/1000;
  for(const item of graphEdges.values()){
   const e=item.edge,a=layout[e.source],b=layout[e.target];if(!a||!b)continue;
-  const srcEntry=byId[e.source],dstEntry=byId[e.target];if(!srcEntry||!dstEntry)continue;
-  const alpha=item.alpha*Math.min(srcEntry.alpha,dstEntry.alpha),q=clamp(Number(e.importance||0)/maxImp,0,1);
+  const srcEntry=graphNodes.get(e.source),dstEntry=graphNodes.get(e.target);if(!srcEntry||!dstEntry)continue;
+  const alpha=item.alpha*Math.min(srcEntry.alpha,dstEntry.alpha),q=clamp(Number(e.importance||0)/maxGraphImportance,0,1);
   const target=dstEntry.node,source=srcEntry.node,pathEdge=!!e.path;
   const rgb=pathEdge?"85,234,208":(target.role==="output"?"255,120,183":(Number(e.weight||0)<0?"181,140,255":"90,151,197"));
-  ctx.strokeStyle="rgba("+rgb+","+(alpha*(pathEdge?.70:(0.15+q*.58)))+")";ctx.lineWidth=(pathEdge?2.2:.7)+q*(pathEdge?2.4:1.9);
+  ctx.strokeStyle="rgba("+rgb+","+(alpha*(pathEdge?.70:(0.13+q*.52)))+")";ctx.lineWidth=(pathEdge?2.0:.65)+q*(pathEdge?2.2:1.65);
   ctx.beginPath();ctx.moveTo(a.x,a.y);ctx.lineTo(b.x,b.y);ctx.stroke();
 
-  // Direction arrow near the postsynaptic neuron.
-  if(q>.08&&alpha>.08){
+  if((pathEdge||q>.18)&&alpha>.10){
    const ang=Math.atan2(b.y-a.y,b.x-a.x),back=8+q*4,wing=3+q*2;
    const ax=b.x-Math.cos(ang)*back,ay=b.y-Math.sin(ang)*back;
-   ctx.fillStyle="rgba("+rgb+","+(alpha*(.35+q*.55))+")";
+   ctx.fillStyle="rgba("+rgb+","+(alpha*(.32+q*.50))+")";
    ctx.beginPath();ctx.moveTo(ax,ay);
    ctx.lineTo(ax-Math.cos(ang-.65)*wing,ay-Math.sin(ang-.65)*wing);
    ctx.lineTo(ax-Math.cos(ang+.65)*wing,ay-Math.sin(ang+.65)*wing);
@@ -1201,16 +1204,17 @@ function draw(){
   }
 
   const act=Math.abs(Number(source.activation||0));
-  if(act>.05&&q>.07&&alpha>.06){
+  if((pathEdge||act>.08)&&q>.11&&alpha>.08){
    const phase=(t*(.20+.55*q)+hash(e.source+e.target))%1;
    const x=a.x+(b.x-a.x)*phase,y=a.y+(b.y-a.y)*phase;
-   ctx.fillStyle=colors[source.role]||colors.internal;ctx.globalAlpha=alpha*(.45+.50*q);ctx.beginPath();ctx.arc(x,y,1.5+q*2.0,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
+   ctx.fillStyle=colors[source.role]||colors.internal;ctx.globalAlpha=alpha*(.42+.48*q);ctx.beginPath();ctx.arc(x,y,1.4+q*1.8,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;
   }
  }
  hover=null;
  for(const item of graphNodes.values()){
-  const n=item.node,p=layout[n.id];if(!p)continue;const act=Math.abs(Number(n.activation||0)),rad=3.2+Math.min(9,act*11),c=colors[n.role]||colors.internal;
-  ctx.shadowColor=c;ctx.shadowBlur=(5+act*16)*item.alpha;ctx.fillStyle=c;ctx.globalAlpha=item.alpha*(.38+Math.min(.62,act*.75));
+  const n=item.node,p=layout[n.id];if(!p)continue;const act=Math.abs(Number(n.activation||0)),rad=3.1+Math.min(8,act*10),c=colors[n.role]||colors.internal;
+  const glow=n.path||act>.18;
+  ctx.shadowColor=c;ctx.shadowBlur=glow?(4+Math.min(10,act*12))*item.alpha:0;ctx.fillStyle=c;ctx.globalAlpha=item.alpha*(.38+Math.min(.62,act*.75));
   ctx.beginPath();ctx.arc(p.x,p.y,rad,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;
   if(n.path&&item.alpha>.2){ctx.strokeStyle="#55ead0";ctx.lineWidth=1.8;ctx.globalAlpha=item.alpha*.9;ctx.beginPath();ctx.arc(p.x,p.y,rad+4,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
   if(mouse.inside&&item.alpha>.45){const dx=mouse.x-p.x,dy=mouse.y-p.y;if(dx*dx+dy*dy<(rad+8)*(rad+8))hover=n}
@@ -1312,8 +1316,10 @@ function render(s,v){
  lastUpdate=Date.now();$("live").textContent="LIVE";
 }
 async function update(){
+ if(updating||document.hidden)return;
+ updating=true;
  try{
-  const wantPath=Date.now()-pathLastRequest>2500;
+  const wantPath=Date.now()-pathLastRequest>8000;
   const pathQuery=wantPath?"&action="+encodeURIComponent(selectedAction):"";
   const [stateResp,visualResp]=await Promise.all([
    fetch("/api/state",{cache:"no-store"}),
@@ -1324,8 +1330,10 @@ async function update(){
   if(!visualResp.ok)throw new Error("connectome HTTP "+visualResp.status);
   render(await stateResp.json(),await visualResp.json())
  }catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}
+ finally{updating=false}
 }
-window.addEventListener("resize",resize);$("path-action").textContent=selectedAction.toUpperCase();updateModeButton();resize();draw();setInterval(update,900);update();
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){lastFrameTs=0;update()}});
+window.addEventListener("resize",resize);$("path-action").textContent=selectedAction.toUpperCase();updateModeButton();resize();draw();setInterval(update,1500);update();
 </script>
 </body></html>"""
 NEUROMAP_HTML = r"""<!doctype html>
