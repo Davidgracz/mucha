@@ -1419,7 +1419,10 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 .meta{display:grid;grid-template-columns:1fr 1fr;gap:7px;margin-top:10px}.meta div{padding:8px;background:#071019;border:1px solid #172637;border-radius:9px}.meta small{display:block;color:#6f879b;font-size:8px;text-transform:uppercase;letter-spacing:.09em;margin-bottom:3px}.meta b{font-size:10px;word-break:break-word}
 .effects{margin-top:9px;padding:9px;background:#061019;border:1px solid #172637;border-radius:10px}.effects small{display:block;color:#71899e;font-size:8px;text-transform:uppercase;letter-spacing:.1em;margin-bottom:7px}.effect{display:grid;grid-template-columns:80px 1fr auto;gap:7px;align-items:center;font-size:9px;margin-top:5px}.effect .efill{height:6px;background:#08141f;border-radius:999px;overflow:hidden}.effect .efill i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--cyan))}
 .note{color:#71879a;font-size:9px;line-height:1.5;margin-top:8px}.legend{display:flex;gap:10px;flex-wrap:wrap;margin-top:8px;color:#748b9f;font-size:9px}.legend span{display:inline-flex;align-items:center;gap:5px}.legend i{width:8px;height:8px;border-radius:50%}.sens{background:var(--cyan)}.internal{background:var(--blue)}.mod{background:var(--violet)}.out{background:var(--pink)}
-.region-inspector{min-height:300px}.spark-wrap{height:76px;border:1px solid #172637;background:#050c12;border-radius:10px;margin-top:9px;padding:5px}.spark-wrap canvas{width:100%;height:100%}.chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.chip{font-size:8px;padding:4px 6px;border-radius:999px;border:1px solid #263c50;background:#071019;color:#9db0c1}.corr{display:grid;grid-template-columns:82px 1fr 42px;gap:7px;align-items:center;margin-top:6px;font-size:9px}.corrbar{height:6px;background:#07131d;border-radius:999px;overflow:hidden;position:relative}.corrbar:after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#28445b}.corrfill{height:100%;position:absolute;top:0}.corrfill.pos{left:50%;background:var(--cyan)}.corrfill.neg{right:50%;background:var(--pink)}.neuron-list{display:flex;flex-direction:column;gap:5px;margin-top:7px}.nrow{display:grid;grid-template-columns:1fr 62px;gap:8px;font-size:9px;padding:6px 7px;border:1px solid #172637;background:#071019;border-radius:8px}.nrow span{color:#9fb1c1}.nrow b{text-align:right}
+.region-inspector{min-height:300px}.spark-wrap{height:76px;border:1px solid #172637;background:#050c12;border-radius:10px;margin-top:9px;padding:5px}.spark-wrap canvas{width:100%;height:100%}.chips{display:flex;gap:5px;flex-wrap:wrap;margin-top:7px}.chip{font-size:8px;padding:4px 6px;border-radius:999px;border:1px solid #263c50;background:#071019;color:#9db0c1}.corr{display:grid;grid-template-columns:82px 1fr 42px;gap:7px;align-items:center;margin-top:6px;font-size:9px}.corrbar{height:6px;background:#07131d;border-radius:999px;overflow:hidden;position:relative}.corrbar:after{content:"";position:absolute;left:50%;top:0;bottom:0;width:1px;background:#28445b}.corrfill{height:100%;position:absolute;top:0}.corrfill.pos{left:50%;background:var(--cyan)}.corrfill.neg{right:50%;background:var(--pink)}.neuron-list{display:flex;flex-direction:column;gap:5px;margin-top:7px}.nrow{display:grid;grid-template-columns:1fr 62px;gap:8px;font-size:9px;padding:6px 7px;border:1px solid #172637;background:#071019;border-radius:8px}.nrow span{color:#9fb1c1}.nrow b{text-align:right}.nrow.clickable{cursor:pointer}.nrow.clickable:hover{border-color:#3a617d;background:#091925}
+.why-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}.why-col{min-width:0}.why-head{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:6px}.why-head b{font-size:10px}.why-row{display:grid;grid-template-columns:1fr 72px;gap:8px;align-items:center;padding:7px 8px;border:1px solid #172637;background:#071019;border-radius:9px;font-size:9px;margin-top:5px;cursor:pointer}.why-row:hover{border-color:#3a617d}.why-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#9fb1c1}.why-row strong{text-align:right;font-variant-numeric:tabular-nums}.why-row.pos strong{color:var(--cyan)}.why-row.neg strong{color:var(--pink)}.why-summary{display:grid;grid-template-columns:repeat(4,1fr);gap:7px;margin-bottom:8px}.why-summary div{padding:8px;border:1px solid #172637;background:#071019;border-radius:9px}.why-summary small{display:block;color:#6f879b;font-size:8px;text-transform:uppercase}.why-summary b{display:block;margin-top:4px;font-size:10px}
+.conn-row{display:grid;grid-template-columns:38px 1fr 68px 68px;gap:7px;align-items:center;padding:7px;border:1px solid #172637;background:#071019;border-radius:9px;font-size:9px;margin-top:5px}.conn-row b{font-size:8px}.conn-row span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#9fb1c1}.conn-row em{font-style:normal;text-align:right}.conn-row .drive.pos{color:var(--cyan)}.conn-row .drive.neg{color:var(--pink)}
+.replay-controls{display:flex;gap:5px;align-items:center}.replay-controls .btn{padding:5px 8px;font-size:8px}
 @media(max-width:1150px){.grid{grid-template-columns:1fr}.map-wrap{height:650px}.hero{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:720px){main{padding:12px}.top{align-items:flex-start;flex-direction:column}.hero{grid-template-columns:1fr 1fr}.map-wrap{height:540px}.meta{grid-template-columns:1fr}}
 </style>
@@ -1464,7 +1467,9 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 
   <div class="card"><div class="card-head"><h2>🧠 Internal attractors</h2><span class="badge" id="attractor-dominant">czekam</span></div><div id="internal-states" class="empty">Brak odczytu attractorów.</div></div>
 
-  <div class="card"><div class="card-head"><h2>⚡ Live signal flow</h2><div class="flow-head-actions"><button class="btn on" id="flow-live-btn">LIVE</button><span class="badge" id="flow-winner">czekam</span></div></div><div id="signal-flow" class="empty">Pierwsza klatka pojawi się po następnym bodźcu i propagacji connectomu.</div></div>
+  <div class="card"><div class="card-head"><h2>⚡ Live signal flow</h2><div class="flow-head-actions"><div class="replay-controls"><button class="btn" id="flow-prev-btn">◀ FRAME</button><button class="btn on" id="flow-live-btn">LIVE</button><button class="btn" id="flow-next-btn">FRAME ▶</button></div><span class="badge" id="flow-winner">czekam</span></div></div><div id="signal-flow" class="empty">Pierwsza klatka pojawi się po następnym bodźcu i propagacji connectomu.</div></div>
+
+  <div class="card"><div class="card-head"><h2 id="why-title">🔬 Dlaczego ta akcja?</h2><span class="badge" id="why-action">czekam</span></div><div id="decision-explanation" class="empty">Atrybucja neuronów pojawi się po propagacji i odczycie akcji.</div></div>
 
   <div class="card"><div class="card-head"><h2>Najaktywniejsze neuropile / rejony</h2><span class="badge" id="region-filter">ALL</span></div><div class="regions" id="regions"></div><div class="note" id="region-note">—</div></div>
 
@@ -1522,6 +1527,11 @@ function currentFlow(){
 }
 function flowNodeSet(){
  const f=currentFlow(),ids=new Set();if(!f)return ids;
+ if(selectedRegion&&data){
+  const r=(data.regions||[]).find(x=>x.name===selectedRegion);
+  for(const e of ((r||{}).live_flow_edges||[])){ids.add(String(e.source));ids.add(String(e.target))}
+  if(ids.size)return ids
+ }
  for(const e of (f.edges||[])){ids.add(String(e.source));ids.add(String(e.target))}
  for(const id of (f.output_nodes||[]))ids.add(String(id));
  for(const cue of (f.cues||[]))for(const id of (cue.root_ids||[]))ids.add(String(id));
@@ -1553,7 +1563,8 @@ function drawLearnedSynapses(w,h){
 }
 function drawSignalFlow(w,h){
  if(!data||!showFlow)return;const f=currentFlow();if(!f||!(f.edges||[]).length)return;
- const edges=(f.edges||[]).map(e=>({
+ const regionFocus=selectedRegion?flowNodeSet():null;
+ const edges=(f.edges||[]).filter(e=>!regionFocus||!regionFocus.size||regionFocus.has(String(e.source))||regionFocus.has(String(e.target))).map(e=>({
   e,
   a:mapNodeLookup.get(String(e.source))||e.source_position,
   b:mapNodeLookup.get(String(e.target))||e.target_position
@@ -1592,6 +1603,18 @@ function renderSignalFlow(){
  root.className="";root.innerHTML='<div class="signal-summary"><div><small>readout</small><b style="color:'+(actionColors[f.winner]||"#fff")+'">'+esc(f.winner||"—")+'</b></div><div><small>gain</small><b>'+Number(f.propagation_gain||0).toFixed(3)+'</b></div><div><small>edges</small><b>'+nfmt(edges.length)+'</b></div></div><div>'+cueHtml+'</div><div class="flow-note">'+esc(snap.method||"")+'</div><div class="signal-list" style="margin-top:8px">'+edgeHtml+'</div>'+learnHtml+learnedHtml+'<div class="effects"><small>Historia — kliknij, aby odtworzyć przepływ</small><div class="signal-list">'+histHtml+'</div></div>';
  root.querySelectorAll("[data-flow-tick]").forEach(el=>el.onclick=()=>{flowReplayTick=Number(el.dataset.flowTick);mapFlowFocus=flowNodeSet();renderSignalFlow()})
 }
+function drawSelectedConnections(w,h){
+ if(!selected)return;const rows=selected.structural_connections||[];if(!rows.length)return;
+ const p0=point(selected,w,h,26),max=Math.max(.000001,...rows.map(x=>Math.abs(Number(x.current_drive||0))));
+ ctx.save();ctx.globalCompositeOperation="source-over";
+ for(const row of rows){
+  const peer=mapNodeLookup.get(String(row.peer))||row.peer_position;if(!peer)continue;
+  const p1=point(peer,w,h,26),q=clamp(Math.abs(Number(row.current_drive||0))/max,0,1),positive=Number(row.current_drive||0)>=0;
+  ctx.strokeStyle=positive?"#55ead0":"#ff77b7";ctx.globalAlpha=.18+q*.52;ctx.lineWidth=.6+q*1.7;ctx.setLineDash(row.direction==="in"?[3,3]:[]);
+  ctx.beginPath();if(row.direction==="in"){ctx.moveTo(p1.x,p1.y);ctx.lineTo(p0.x,p0.y)}else{ctx.moveTo(p0.x,p0.y);ctx.lineTo(p1.x,p1.y)}ctx.stroke()
+ }
+ ctx.setLineDash([]);ctx.globalAlpha=1;ctx.restore()
+}
 function drawNodes(w,h){
  if(!data)return;hover=null;const nodes=(data.nodes||[]),focus=followDecision?mapFlowFocus:null;
  for(const n of nodes){if(!roleVisible(n))continue;if(selectedRegion&&regionOf(n)!==selectedRegion)continue;const p=point(n,w,h,26),a=Math.abs(Number(n.activation||0)),q=clamp(a/mapMaxActivation,0,1),hist=showTrail?(trail.get(n.id)||a):a,c=colors[n.role]||colors.internal,dim=followDecision&&focus&&focus.size&&!focus.has(String(n.id));
@@ -1608,7 +1631,7 @@ function draw(ts=0){
  if(document.hidden||ts-mapLastFrameTs<NEUROMAP_FRAME_MS)return;
  mapLastFrameTs=ts;const w=mapCanvasW,h=mapCanvasH;ctx.clearRect(0,0,w,h);
  const grad=ctx.createRadialGradient(w*.5,h*.5,20,w*.5,h*.5,Math.max(w,h)*.55);grad.addColorStop(0,"rgba(34,67,91,.07)");grad.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
- drawReference(w,h);drawRegions(w,h);drawAttractors(w,h);drawLearnedSynapses(w,h);drawSignalFlow(w,h);drawNodes(w,h)
+ drawReference(w,h);drawRegions(w,h);drawAttractors(w,h);drawLearnedSynapses(w,h);drawSignalFlow(w,h);drawSelectedConnections(w,h);drawNodes(w,h)
 }
 function renderActions(scores){
  const order=["speak","explore","react","voice_join","voice_move","voice_leave","stay"];
