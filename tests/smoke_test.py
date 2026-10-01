@@ -211,6 +211,38 @@ def main():
         assert boredom_map.get("arousal", 0.0) > 0.0
         assert "speak" in b.INTERNAL_STATE_TARGET_ACTIONS["arousal"]
 
+        motivation_before = b.motivation_state_diagnostics()
+        assert set(motivation_before["motivations"]) == {
+            "social",
+            "novelty",
+            "safety",
+            "rest",
+        }
+        b._internal_drive_values["social_need"] = 0.90
+        motivation_pressured = b.tick_motivation_state(60.0)
+        assert motivation_pressured["motivations"]["social"][
+            "pressure"
+        ] > 0.40
+        assert motivation_pressured["motivations"]["social"][
+            "frustration"
+        ] >= motivation_before["motivations"]["social"][
+            "frustration"
+        ]
+        social_sat_before = motivation_pressured[
+            "motivations"
+        ]["social"]["satiation"]
+        b.register_internal_drive_event(
+            "social_success",
+            1.0,
+            inject=False,
+        )
+        motivation_satisfied = b.motivation_state_diagnostics()
+        assert motivation_satisfied["motivations"]["social"][
+            "satiation"
+        ] > social_sat_before
+        assert b._drive_motivation_multiplier("social_need") > 0.0
+        assert motivation_satisfied["dominant"] in b.MOTIVATION_NAMES
+
         affect_before = b.affective_state_diagnostics()
         assert set(affect_before["values"]) == {
             "contentment",
@@ -1633,6 +1665,10 @@ def main():
         assert "Affective State / Stage 27" in HTML
         assert "renderAffective" in HTML
         assert 'id="affective-state-grid"' in HTML
+        assert "Natural Motivation / Stage 30" in HTML
+        assert "renderMotivation" in HTML
+        assert 'id="motivation-state-grid"' in HTML
+        assert "motivation_frustration_threshold" in CONFIG_HTML
         assert "Credit queue" in HTML
         assert "SIGNAL FLOW" in NEUROMAP_HTML
         assert "FOLLOW DECISION" in NEUROMAP_HTML
@@ -1705,6 +1741,14 @@ def main():
             "one_brain_noop_reafference_min_support",
             "one_brain_noop_reafference_gain",
             "one_brain_noop_reafference_steps",
+            "motivation_enabled",
+            "motivation_frustration_threshold",
+            "motivation_frustration_per_minute",
+            "motivation_frustration_decay_per_minute",
+            "motivation_satiation_decay_per_minute",
+            "motivation_frustration_gain",
+            "motivation_satiation_gain",
+            "motivation_neural_gain",
         ):
             assert key in config_source
             assert key in config_toml_source
@@ -1729,6 +1773,14 @@ def main():
         assert "def affective_state_diagnostics" in brain_source
         assert "affective_state_values" in brain_source
         assert "AFFECTIVE_STATE_NEURAL_MAP" in brain_source
+        assert "MOTIVATION_NAMES" in brain_source
+        assert "MOTIVATION_DRIVE_WEIGHTS" in brain_source
+        assert "DRIVE_MOTIVATION_MAP" in brain_source
+        assert "def tick_motivation_state" in brain_source
+        assert "def motivation_state_diagnostics" in brain_source
+        assert "motivation_frustration" in brain_source
+        assert "motivation_satiation" in brain_source
+        assert "motivation_scale" in brain_source
         assert "value - represented" in brain_source
         assert "one-brain:noop-reafference:" in brain_source
         assert "context_selection_score" in brain_source
@@ -1821,6 +1873,7 @@ def main():
         assert "circadian:post-sleep:satiety" in bot_source
         assert '"circadian": self._circadian_snapshot()' in bot_source
         assert '"affective_state": self.brain.affective_state_diagnostics()' in bot_source
+        assert '"motivation_state": self.brain.motivation_state_diagnostics()' in bot_source
         assert "tick_affective_state" in bot_source
         assert "completed_cycle = int(self._sleep_cycle)" in bot_source
         assert "session can begin from cycle 0 after sleep_idle_seconds" in bot_source
@@ -2222,6 +2275,16 @@ def main():
         reloaded_policy = reloaded.action_policy_diagnostics()
         assert reloaded_policy["actions"]["speak"]["updates"] > 0
         assert reloaded_policy["actions"]["speak"]["bias"] > 0.0
+        reloaded_motivation = reloaded.motivation_state_diagnostics()
+        assert reloaded_motivation["motivations"]["social"][
+            "satiation"
+        ] > 0.0
+        assert set(reloaded_motivation["motivations"]) == {
+            "social",
+            "novelty",
+            "safety",
+            "rest",
+        }
 
         lang = OnlineLanguage(
             td / "lang.sqlite3",
