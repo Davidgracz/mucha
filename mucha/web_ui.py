@@ -2467,8 +2467,10 @@ main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template
 
     <div class="card span3 focus-card">
       <h2>💤 Sleep / Offline Consolidation <span class="help-dot" data-help-key="sleep" tabindex="0">?</span></h2>
-      <div class="learning-grid" style="grid-template-columns:repeat(5,minmax(0,1fr))">
-        <div class="kpi"><small>stan</small><strong id="sleep-state">—</strong></div>
+      <div class="learning-grid" style="grid-template-columns:repeat(6,minmax(0,1fr))">
+        <div class="kpi"><small>stan snu</small><strong id="sleep-state">—</strong></div>
+        <div class="kpi"><small>stan dobowy</small><strong id="circadian-state">—</strong></div>
+        <div class="kpi"><small>fatigue</small><strong id="circadian-fatigue">—</strong></div>
         <div class="kpi"><small>cisza</small><strong id="sleep-quiet">—</strong></div>
         <div class="kpi"><small>cykl</small><strong id="sleep-cycle">—</strong></div>
         <div class="kpi"><small>replay epizodów</small><strong id="sleep-episodes">—</strong></div>
@@ -2741,7 +2743,7 @@ const HELP={
   "activity-chart":{title:"Aktywność w czasie",body:"Historia średniej i maksymalnej aktywacji connectomu.",read:"Pozwala zobaczyć odpowiedź na bodźce i tempo wygaszania stanu."},
   "events":{title:"Ostatnie zdarzenia",body:"Ostatni bodziec oraz ostatnia wykonana akcja.",read:"Do pełnej kolejności użyj Action History."},
   "learning-debug":{title:"Learning Debug",body:"Ostatni reward() i jego wpływ na bias neuronów, synaptic delta oraz readouty przed/po.",read:"Dodatnie Δ wzmacnia, ujemne osłabia. Target action mówi czego dotyczył ślad."},
-  "sleep":{title:"Sleep / Offline Consolidation",body:"Po dłuższej ciszy runtime zawiesza zwykłe autonomiczne decyzje i wykonuje serię MEMORY REPLAY na ważnych epizodach. Replay przechodzi przez connectome, captured learning trace i istniejącą plastyczność.",read:"Sen nie tworzy nowych zdarzeń Discord. Semantic rehearsal stabilizuje tylko istniejące uogólnienia i nie zwiększa liczby realnych obserwacji."},
+  "sleep":{title:"Sleep / Circadian / Offline Consolidation",body:"Stage 26 łączy sen z trwałym fatigue. Podczas czuwania fatigue narasta i przez istniejące attractory SATIETY/STRESS wpływa na One Brain. Każdy prawdziwy cykl replay spłaca fatigue, a pełny sen uruchamia krótki POST-SLEEP.",read:"AWAKE = zwykłe czuwanie, TIRED = fatigue przekroczył próg, SLEEP = trwa replay/konsolidacja, POST-SLEEP = okres po pełnej sesji. Sen nie tworzy nowych zdarzeń Discord."},
   "learning-startup":{title:"Learning Since Startup",body:"Liczniki uczenia od uruchomienia procesu: język, reward events i skumulowane zmiany.",read:"Te liczniki resetują się po restarcie, nawet jeśli trwały stan został zapisany."},
   "social-learning":{title:"Social Learning / Relacje",body:"Długoterminowe sygnały społeczne i affinity użytkowników.",read:"Nie myl z Attention: affinity opisuje relację, Attention opisuje to, co zajmuje Muchę teraz."},
   "person-memory":{title:"Long-term People Memory",body:"Profil osoby powstaje z trwałej pamięci semantycznej: kontaktów tekstowych i voice, wyników wcześniejszych akcji przy tej osobie, signed social events, kanałów i utrwalonych epizodów.",read:"Familiarity mówi ile doświadczenia zebrała Mucha. Valence opisuje typowy wynik zapisanych doświadczeń. To nie jest bezpośredni bonus do decyzji — profil wraca do sensorycznych neuronów connectomu."},
@@ -3498,6 +3500,13 @@ function renderSleep(s){
   const state=String(s.state||"AWAKE");
   $("sleep-state").textContent=state;
   $("sleep-state").className=s.active?"warn":state==="COMPLETE"?"ok":"";
+  const circadian=String(s.circadian_state||"AWAKE");
+  const fatigue=Number(s.fatigue||0);
+  const tiredThreshold=Number(s.tired_threshold||0);
+  $("circadian-state").textContent=circadian;
+  $("circadian-state").className=circadian==="TIRED"?"warn":circadian==="POST-SLEEP"?"ok":"";
+  $("circadian-fatigue").textContent=(fatigue*100).toFixed(0)+"%";
+  $("circadian-fatigue").className=fatigue>=tiredThreshold&&tiredThreshold>0?"warn":"";
   $("sleep-quiet").textContent=sessionDuration(s.quiet_for||0);
   $("sleep-cycle").textContent=Number(s.cycle||0)+" / "+Number(s.max_cycles||0);
   $("sleep-episodes").textContent=nfmt(s.episodes_replayed||0);
@@ -3516,6 +3525,8 @@ function renderSleep(s){
     ' • quiet '+sessionDuration(s.quiet_for||0)+
     (state==="AWAKE"&&idle?(' / sleep po '+sessionDuration(idle)):"")+
     (s.active&&next?(' • następny cykl za '+next.toFixed(0)+' s'):"")+
+    (Number(s.post_sleep_remaining||0)>0?(' • post-sleep '+sessionDuration(s.post_sleep_remaining)):"")+
+    ' • fatigue '+(fatigue*100).toFixed(0)+'%'+
     ' • fading synapses '+nfmt(s.fading_synapses||0);
   const last=(s.last||[]);
   $("sleep-last").innerHTML=last.length
