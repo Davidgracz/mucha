@@ -1754,6 +1754,7 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
    <div class="summary"><small>Margin <span class="help" data-tip="Różnica wyniku finalnej konkurencji. Przy tie-break może być 0 mimo wybranego winnera.">?</span></small><strong id="margin">—</strong></div>
    <div class="summary"><small>Tie-break</small><strong id="tie-break">—</strong></div>
    <div class="summary"><small>Prediction source</small><strong id="prediction-source">—</strong></div>
+   <div class="summary"><small>NOOP retry <span class="help" data-tip="Jeżeli autonomia najpierw wybrała NOOP mimo wyraźnej niezaspokojonej potrzeby, One Brain może ponownie podać tę potrzebę do internal-state attractorów i jeszcze raz wykonać normalną konkurencję.">?</span></small><strong id="noop-retry">—</strong></div>
    <div class="summary"><small>External effect</small><strong id="external">—</strong></div>
   </div>
   <div class="cue-list" id="cues"></div>
@@ -1879,6 +1880,13 @@ function render(payload){
  $("margin").textContent=rowSelected?fmt(rowComp.margin):"—";
  $("tie-break").textContent=rowSelected?(rowComp.tie_break||"—"):"—";
  $("prediction-source").textContent=rowSelected?(rowDecision.prediction_source||"—"):"—";
+ const retry=rowDecision.noop_reafference||{};
+ $("noop-retry").textContent=rowSelected
+   ?(retry.triggered
+      ?("TAK • "+displayAction(retry.winner_before)+" → "+displayAction(retry.winner_after)+" • "+String(retry.candidate||"—").toUpperCase())
+      :"NIE")
+   :"—";
+ $("noop-retry").className=rowSelected&&retry.triggered?(retry.winner_after==="stay"?"warn":"good"):"";
  $("external").textContent=rowSelected?(exec.external_effect?"TAK":"NIE"):"—";
  renderCandidates(row,rowDecision);
  renderCues(rowDecision);
