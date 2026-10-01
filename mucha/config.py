@@ -57,6 +57,10 @@ class BrainConfig:
     circadian_sleep_recovery_per_cycle: float = 0.16
     circadian_tired_threshold: float = 0.65
     circadian_post_sleep_seconds: int = 600
+    affective_state_enabled: bool = True
+    affective_state_smoothing: float = 0.96
+    affective_state_feedback_gain: float = 0.18
+    affective_state_reward_gain: float = 0.28
     action_policy_enabled: bool = True
     action_policy_lr: float = 0.06
     action_policy_max_bias: float = 0.55
