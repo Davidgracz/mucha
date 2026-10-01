@@ -9141,6 +9141,12 @@ class FlyBrain:
         if intention_outcome.get("matched"):
             self.last_learning["intention"] = intention_outcome
 
+        personality_outcome = self.register_personality_outcome(
+            action,
+            amount,
+        )
+        self.last_learning["personality"] = personality_outcome
+
         return self.last_learning
 
     def readout(self, key: str, width: int = 96) -> float:
