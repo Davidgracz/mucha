@@ -137,12 +137,16 @@ def main():
             "exploration",
             "caution",
             "boredom",
+            "fatigue",
         }
         social_before = float(
             drives_before["drives"]["social_need"]["value"]
         )
         boredom_before = float(
             drives_before["drives"]["boredom"]["value"]
+        )
+        fatigue_before = float(
+            drives_before["drives"]["fatigue"]["value"]
         )
         drives_idle = b.tick_internal_drives(
             60.0,
@@ -157,6 +161,19 @@ def main():
             drives_idle["drives"]["boredom"]["value"]
             > boredom_before
         )
+        assert (
+            drives_idle["drives"]["fatigue"]["value"]
+            > fatigue_before
+        )
+        fatigue_awake = float(
+            drives_idle["drives"]["fatigue"]["value"]
+        )
+        rest_event = b.register_internal_drive_event(
+            "rest",
+            1.0,
+            inject=False,
+        )
+        assert rest_event["values"]["fatigue"] < fatigue_awake
         contact_before = float(
             drives_idle["drives"]["social_need"]["value"]
         )
@@ -1504,6 +1521,9 @@ def main():
         assert "Sleep / Offline Consolidation" in HTML
         assert "renderSleep" in HTML
         assert 'id="sleep-progress"' in HTML
+        assert 'id="circadian-state"' in HTML
+        assert 'id="circadian-fatigue"' in HTML
+        assert "POST-SLEEP" in HTML
         assert "Credit queue" in HTML
         assert "SIGNAL FLOW" in NEUROMAP_HTML
         assert "FOLLOW DECISION" in NEUROMAP_HTML
@@ -1562,6 +1582,12 @@ def main():
             "autonomous_predicted_reward_gain",
             "autonomous_prediction_steps",
             "autonomous_explore_cooldown_seconds",
+            "circadian_enabled",
+            "circadian_fatigue_per_minute",
+            "circadian_activity_fatigue_per_minute",
+            "circadian_sleep_recovery_per_cycle",
+            "circadian_tired_threshold",
+            "circadian_post_sleep_seconds",
         ):
             assert key in config_source
             assert key in config_toml_source
@@ -1578,6 +1604,10 @@ def main():
         assert "one-brain-predicted-reward:" in brain_source
         assert "predicted_reward_order" in brain_source
         assert "internal_drive_values" in brain_source
+        assert '"fatigue"' in brain_source
+        assert "Backwards compatible" not in brain_source
+        assert "pre-Stage-26 state files" in brain_source
+        assert "def internal_drive_value" in brain_source
         assert "def voice_channel_target_decision" in brain_source
         assert "def inject_voice_target_context" in brain_source
         assert "tie_evidence" in bot_source
@@ -1661,6 +1691,9 @@ def main():
         assert "_maybe_memory_replay" in bot_source
         assert "_sleep_tick" in bot_source
         assert "_note_external_activity" in bot_source
+        assert "_circadian_snapshot" in bot_source
+        assert "circadian:post-sleep:satiety" in bot_source
+        assert '"circadian": self._circadian_snapshot()' in bot_source
         assert "completed_cycle = int(self._sleep_cycle)" in bot_source
         assert "session can begin from cycle 0 after sleep_idle_seconds" in bot_source
         assert "automatycznie uzbroi kolejną sesję" in CONFIG_HTML
