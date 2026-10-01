@@ -300,12 +300,15 @@ def main():
         assert "foresight_cues" in one_brain_decision
         assert one_brain_decision["source"].startswith(
             "one-brain learned-reward + counterfactual-state + "
-            "persistent-intent + multi-step-goal sensory"
+            "persistent-intent + multi-step-goal + emergent-temperament "
+            "sensory"
         )
         assert "intention" in one_brain_decision
         assert "intention_cue" in one_brain_decision
         assert "goal" in one_brain_decision
         assert "goal_cues" in one_brain_decision
+        assert "personality" in one_brain_decision
+        assert "personality_cues" in one_brain_decision
 
         intention = b._update_intention_from_decision(
             "speak",
@@ -396,6 +399,38 @@ def main():
         assert goal_step["steps"][-1]["action"] == "voice_join"
         b._clear_goal("smoke cleanup", status="abandoned")
         assert b.goal_state_diagnostics()["active"] is False
+
+        personality_before = b.personality_state_diagnostics()
+        assert set(personality_before["traits"]) == {
+            "sociability",
+            "curiosity",
+            "caution",
+            "persistence",
+            "expressiveness",
+        }
+        for _ in range(8):
+            b.register_personality_action(
+                "speak",
+                executed=True,
+                success=True,
+            )
+        personality_social = b.register_personality_outcome(
+            "speak",
+            1.0,
+        )
+        assert personality_social["traits"]["sociability"]["value"] > 0.5
+        assert personality_social["traits"]["expressiveness"]["value"] > 0.5
+        personality_cue = b.inject_personality_context("smoke-stage35")
+        assert personality_cue["injected"]
+        assert any(
+            row["trait"] in {"sociability", "expressiveness"}
+            for row in personality_cue["injected"]
+        )
+        personality_after_bad = b.register_personality_outcome(
+            "voice_move",
+            -1.0,
+        )
+        assert personality_after_bad["traits"]["caution"]["value"] > 0.5
 
         unobserved_reward = b.action_reward_prediction("speak")
         assert unobserved_reward["predicted_reward"] == 0.0
@@ -516,11 +551,14 @@ def main():
         assert "intention_cue" in autonomous_decision
         assert "goal" in autonomous_decision
         assert "goal_cues" in autonomous_decision
+        assert "personality" in autonomous_decision
+        assert "personality_cues" in autonomous_decision
         assert (
             autonomous_decision["source"]
             == "one-brain learned-reward + counterfactual-state + "
-            "persistent-intent + multi-step-goal sensory guidance -> "
-            "FAFB propagation -> connectome action competition"
+            "persistent-intent + multi-step-goal + emergent-temperament "
+            "sensory guidance -> FAFB propagation -> "
+            "connectome action competition"
         )
         assert autonomous_decision["decision_context"] == "autonomous-idle"
 
@@ -1810,6 +1848,13 @@ def main():
         assert "Current Intent / Stage 32" in AUTONOMY_HTML
         assert "Stage 33 — Multi-step motivational goals" in CONFIG_HTML
         assert "goal_signal_gain" in CONFIG_HTML
+        assert "Stage 35 — Emergent personality" in CONFIG_HTML
+        assert "personality_learning_rate" in CONFIG_HTML
+        assert "personality_signal_gain" in CONFIG_HTML
+        assert 'id="personality-traits"' in AUTONOMY_HTML
+        assert 'id="personality-dominant"' in AUTONOMY_HTML
+        assert "function renderPersonality" in AUTONOMY_HTML
+        assert "Emergent Personality / Stage 35" in AUTONOMY_HTML
         assert 'id="goal-title"' in AUTONOMY_HTML
         assert 'id="goal-sequence"' in AUTONOMY_HTML
         assert 'id="goal-history"' in AUTONOMY_HTML
@@ -1925,6 +1970,10 @@ def main():
             "goal_max_age_seconds",
             "goal_max_steps",
             "goal_max_failed_steps",
+            "personality_enabled",
+            "personality_learning_rate",
+            "personality_signal_gain",
+            "personality_min_observations",
         ):
             assert key in config_source
             assert key in config_toml_source
@@ -1977,7 +2026,13 @@ def main():
         assert "def register_goal_step" in brain_source
         assert "one-brain-goal:" in brain_source
         assert "goal_motivation_index" in brain_source
-        assert "multi-step-goal sensory guidance" in brain_source
+        assert "def personality_state_diagnostics" in brain_source
+        assert "def register_personality_action" in brain_source
+        assert "def register_personality_outcome" in brain_source
+        assert "def inject_personality_context" in brain_source
+        assert "PERSONALITY_STATE_MAP" in brain_source
+        assert "personality_values" in brain_source
+        assert "emergent-temperament" in brain_source
         assert "value - represented" in brain_source
         assert "one-brain:noop-reafference:" in brain_source
         assert "context_selection_score" in brain_source
@@ -2535,6 +2590,17 @@ def main():
             detail="persisted smoke goal step",
         )
         assert persisted_goal["step_count"] == 1
+        for _ in range(4):
+            b.register_personality_action(
+                "explore",
+                executed=True,
+                success=True,
+            )
+        persisted_personality = b.register_personality_outcome(
+            "explore",
+            0.8,
+        )
+        assert persisted_personality["traits"]["curiosity"]["value"] > 0.5
 
         b.save()
         reloaded = FlyBrain(c, cfg)
@@ -2568,6 +2634,10 @@ def main():
         assert reloaded_goal["step_count"] == 1
         assert reloaded_goal["steps"][0]["action"] == "voice_join"
         assert reloaded_goal["history"][-1]["event"] == "restored"
+        reloaded_personality = reloaded.personality_state_diagnostics()
+        assert reloaded_personality["traits"]["curiosity"]["value"] > 0.5
+        assert reloaded_personality["traits"]["curiosity"]["observations"] >= 5
+        assert reloaded_personality["last_event"]["event"] == "restored"
 
         lang = OnlineLanguage(
             td / "lang.sqlite3",
