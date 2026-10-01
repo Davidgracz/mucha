@@ -542,6 +542,8 @@ Repo zawiera bezpieczny backup stanu do synchronizowanego Google Drive:
 tools/backup_learned_state.py
 tools/backup_state_to_drive.ps1
 tools/install_drive_backup_task.ps1
+BACKUP_NOW.bat
+SETUP_DRIVE_BACKUP.bat
 ```
 
 Backup nie kopiuje działających baz SQLite zwykłym `Copy-Item`. Dla `language.sqlite3` i `voice_episodes.sqlite3` używany jest `sqlite3.backup()`, więc archiwum jest spójne również wtedy, gdy Mucha działa.
@@ -557,13 +559,25 @@ backup_manifest.json
 
 Pliki `.env`, token Discorda, hasła i modele Whisper nie są kopiowane.
 
-Ręczny backup:
+Ręczny backup można uruchomić dwuklikiem:
+
+```text
+BACKUP_NOW.bat
+```
+
+albo z PowerShell:
 
 ```powershell
 .\tools\backup_state_to_drive.ps1
 ```
 
-Instalacja automatycznego zadania Windows co 6 godzin:
+Jednorazowa instalacja automatycznego zadania Windows co 6 godzin:
+
+```text
+SETUP_DRIVE_BACKUP.bat
+```
+
+albo:
 
 ```powershell
 .\tools\install_drive_backup_task.ps1
