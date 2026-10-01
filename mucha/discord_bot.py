@@ -423,6 +423,19 @@ class MuchaClient(discord.Client):
         self._reward_history: list[dict] = []
         self._last_reinforceable: dict[int, tuple[str, tuple]] = {}
         self._guild_learning_context: dict[int, dict] = {}
+        # Dashboard snapshots can be surprisingly expensive because they
+        # inspect the 139k-neuron runtime state and sparse connectivity.
+        # Keep short-lived caches so an open browser tab cannot continuously
+        # monopolize the brain lock.
+        self._connectome_dashboard_cache: dict[
+            bool, tuple[float, dict]
+        ] = {}
+        self._connectome_path_cache: dict[
+            str, tuple[float, dict]
+        ] = {}
+        self._neuromap_dashboard_cache: dict[
+            str, tuple[float, dict]
+        ] = {}
         self.console_ui = ConsoleBrainUI(
             mode=cfg.console_ui.mode,
             top_neurons=cfg.console_ui.top_neurons,
@@ -8248,18 +8261,57 @@ class MuchaClient(discord.Client):
         follow_activity: bool = False,
         action: str | None = None,
     ) -> dict:
-        async with self._brain_lock:
-            snap = self.brain.connectome_visual_snapshot(
-                count=42 if follow_activity else 64,
-                edge_limit=150 if follow_activity else 190,
-                follow_activity=follow_activity,
+        now = time.monotonic()
+        cache_key = bool(follow_activity)
+        cache_ttl = 0.85 if follow_activity else 1.45
+        cached = self._connectome_dashboard_cache.get(cache_key)
+        base_snap = (
+            cached[1]
+            if cached is not None and now - cached[0] < cache_ttl
+            else None
+        )
+
+        action = str(action or "").strip()
+        path_cached = self._connectome_path_cache.get(action)
+        path_snap = (
+            path_cached[1]
+            if (
+                action in self.brain.ACTIONS
+                and path_cached is not None
+                and now - path_cached[0] < 8.0
             )
-            action = str(action or "").strip()
-            if action in self.brain.ACTIONS:
-                snap["action_path"] = (
-                    self.brain.action_path_snapshot(action)
-                )
-            return snap
+            else None
+        )
+
+        need_base = base_snap is None
+        need_path = action in self.brain.ACTIONS and path_snap is None
+        if need_base or need_path:
+            async with self._brain_lock:
+                if need_base:
+                    base_snap = self.brain.connectome_visual_snapshot(
+                        count=38 if follow_activity else 58,
+                        edge_limit=120 if follow_activity else 155,
+                        follow_activity=follow_activity,
+                    )
+                    self._connectome_dashboard_cache[cache_key] = (
+                        now,
+                        base_snap,
+                    )
+                if need_path:
+                    path_snap = self.brain.action_path_snapshot(
+                        action,
+                        max_paths=4,
+                        beam_width=18,
+                    )
+                    self._connectome_path_cache[action] = (
+                        now,
+                        path_snap,
+                    )
+
+        snap = deepcopy(base_snap or {})
+        if path_snap is not None:
+            snap["action_path"] = deepcopy(path_snap)
+        return snap
 
     async def _association_dashboard_snapshot(self) -> dict:
         word_rows = self.language.association_words(limit=28)
@@ -8329,16 +8381,30 @@ class MuchaClient(discord.Client):
         self,
         projection: str = "xy",
     ) -> dict:
+        projection = str(projection or "xy").lower()
+        now = time.monotonic()
+        cached = self._neuromap_dashboard_cache.get(projection)
+        brain_map = (
+            cached[1]
+            if cached is not None and now - cached[0] < 1.35
+            else None
+        )
+
         async with self._brain_lock:
-            brain_map = self.brain.neuro_map_snapshot(
-                count=220,
-                projection=projection,
-            )
+            if brain_map is None:
+                brain_map = self.brain.neuro_map_snapshot(
+                    count=180,
+                    projection=projection,
+                )
+                self._neuromap_dashboard_cache[projection] = (
+                    now,
+                    brain_map,
+                )
             scores = self.brain.action_scores()
 
         language_diag = self.language.diagnostics()
         return {
-            "brain_map": brain_map,
+            "brain_map": deepcopy(brain_map),
             "scores": scores,
             "last_event": self._last_brain_event,
             "last_action": self._last_brain_action,
