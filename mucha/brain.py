@@ -3387,6 +3387,356 @@ class FlyBrain:
         result["cleared"] = self._intention_action is None
         return result
 
+    def _record_goal_event(self, event: dict) -> dict:
+        row = dict(event)
+        self._goal_last_event = row
+        self._goal_history.append(dict(row))
+        return row
+
+    def _goal_current_urgency(self, motivation: str | None) -> float:
+        if motivation not in self.MOTIVATION_NAMES:
+            return 0.0
+        diag = self.motivation_state_diagnostics()
+        return max(
+            0.0,
+            min(
+                1.5,
+                float(
+                    diag.get("motivations", {})
+                    .get(str(motivation), {})
+                    .get("urgency", 0.0)
+                ),
+            ),
+        )
+
+    def _goal_refresh_progress(self) -> None:
+        if self._goal_motivation not in self.MOTIVATION_NAMES:
+            return
+        current = self._goal_current_urgency(self._goal_motivation)
+        baseline = max(0.05, float(self._goal_baseline_urgency))
+        progress = max(
+            0.0,
+            min(1.0, (baseline - current) / baseline),
+        )
+        # Progress is monotonic within one goal. Temporary drive noise can
+        # change current urgency, but already achieved relief remains part of
+        # the completed sequence.
+        self._goal_progress = max(
+            float(self._goal_progress),
+            float(progress),
+        )
+        self._goal_updated_at = time.time()
+
+    def _clear_goal(
+        self,
+        reason: str,
+        *,
+        status: str = "abandoned",
+        now: float | None = None,
+    ) -> dict:
+        now_value = time.time() if now is None else float(now)
+        previous = self._goal_motivation
+        previous_progress = float(self._goal_progress)
+        previous_steps = int(self._goal_step_count)
+        event = self._record_goal_event({
+            "event": str(status),
+            "time": now_value,
+            "motivation": previous,
+            "progress": previous_progress,
+            "step_count": previous_steps,
+            "failed_steps": int(self._goal_failed_steps),
+            "reason": str(reason),
+        })
+        self._goal_motivation = None
+        self._goal_baseline_urgency = 0.0
+        self._goal_progress = 0.0
+        self._goal_created_at = 0.0
+        self._goal_updated_at = now_value
+        self._goal_step_count = 0
+        self._goal_failed_steps = 0
+        self._goal_steps.clear()
+        return event
+
+    def _refresh_goal_lifecycle(self) -> None:
+        if self._goal_motivation not in self.MOTIVATION_NAMES:
+            return
+        now_value = time.time()
+        self._goal_refresh_progress()
+        if self._goal_progress >= max(
+            0.05,
+            min(1.0, float(self.cfg.goal_success_progress)),
+        ):
+            self._clear_goal(
+                "motivational relief target reached",
+                status="completed",
+                now=now_value,
+            )
+            return
+        age = max(
+            0.0,
+            now_value - float(self._goal_created_at or now_value),
+        )
+        if age >= max(1.0, float(self.cfg.goal_max_age_seconds)):
+            self._clear_goal(
+                "goal max age reached",
+                status="abandoned",
+                now=now_value,
+            )
+            return
+        if self._goal_step_count >= max(
+            1,
+            int(self.cfg.goal_max_steps),
+        ):
+            self._clear_goal(
+                "goal max steps reached",
+                status="abandoned",
+                now=now_value,
+            )
+            return
+        if self._goal_failed_steps >= max(
+            1,
+            int(self.cfg.goal_max_failed_steps),
+        ):
+            self._clear_goal(
+                "too many failed execution steps",
+                status="abandoned",
+                now=now_value,
+            )
+
+    def goal_state_diagnostics(self) -> dict:
+        if bool(self.cfg.goal_enabled):
+            self._refresh_goal_lifecycle()
+        elif self._goal_motivation is not None:
+            self._clear_goal("disabled", status="abandoned")
+        now_value = time.time()
+        active = self._goal_motivation in self.MOTIVATION_NAMES
+        current_urgency = (
+            self._goal_current_urgency(self._goal_motivation)
+            if active
+            else 0.0
+        )
+        age = (
+            max(0.0, now_value - float(self._goal_created_at))
+            if active and self._goal_created_at > 0.0
+            else 0.0
+        )
+        max_age = max(1.0, float(self.cfg.goal_max_age_seconds))
+        return {
+            "enabled": bool(self.cfg.goal_enabled),
+            "active": bool(active),
+            "motivation": self._goal_motivation,
+            "baseline_urgency": float(self._goal_baseline_urgency),
+            "current_urgency": float(current_urgency),
+            "progress": float(self._goal_progress),
+            "success_progress": float(self.cfg.goal_success_progress),
+            "age_seconds": float(age),
+            "remaining_seconds": float(
+                max(0.0, max_age - age) if active else 0.0
+            ),
+            "step_count": int(self._goal_step_count),
+            "max_steps": int(self.cfg.goal_max_steps),
+            "failed_steps": int(self._goal_failed_steps),
+            "steps": [
+                dict(row)
+                for row in list(self._goal_steps)
+            ],
+            "last_event": dict(self._goal_last_event),
+            "history": [
+                dict(row)
+                for row in list(self._goal_history)[-48:]
+            ],
+            "method": (
+                "persistent motivational target -> Stage-31 candidate relief "
+                "-> action-guided sensory cues -> FAFB competition -> "
+                "executed step -> measured motivational progress"
+            ),
+        }
+
+    def _goal_target_from_simulation(
+        self,
+        action: str,
+        foresight: dict,
+    ) -> tuple[str | None, float]:
+        simulation = dict(
+            dict(foresight.get("simulations", {})).get(str(action), {})
+        )
+        changes = dict(simulation.get("motivation_changes", {}))
+        ranked = sorted(
+            (
+                (
+                    max(0.0, float(row.get("relief", 0.0))),
+                    str(name),
+                )
+                for name, row in changes.items()
+                if str(name) in self.MOTIVATION_NAMES
+            ),
+            reverse=True,
+        )
+        if not ranked:
+            return None, 0.0
+        relief, motivation = ranked[0]
+        return motivation, float(relief)
+
+    def _update_goal_from_decision(
+        self,
+        winner: str,
+        *,
+        foresight: dict,
+        intention: dict,
+        decision_context: str,
+    ) -> dict:
+        if (
+            not bool(self.cfg.goal_enabled)
+            or str(decision_context) != "autonomous-idle"
+        ):
+            return self.goal_state_diagnostics()
+
+        self._refresh_goal_lifecycle()
+        if self._goal_motivation is not None:
+            return self.goal_state_diagnostics()
+
+        winner = str(winner)
+        if winner == "stay" or not bool(intention.get("active")):
+            return self.goal_state_diagnostics()
+
+        target, simulated_relief = self._goal_target_from_simulation(
+            winner,
+            foresight,
+        )
+        if target is None:
+            return self.goal_state_diagnostics()
+
+        current_urgency = self._goal_current_urgency(target)
+        if current_urgency < max(
+            0.0,
+            min(1.5, float(self.cfg.goal_min_start_urgency)),
+        ):
+            return self.goal_state_diagnostics()
+        if simulated_relief < max(
+            0.0,
+            min(1.0, float(self.cfg.goal_min_relief)),
+        ):
+            return self.goal_state_diagnostics()
+
+        now_value = time.time()
+        self._goal_motivation = target
+        self._goal_baseline_urgency = max(0.05, current_urgency)
+        self._goal_progress = 0.0
+        self._goal_created_at = now_value
+        self._goal_updated_at = now_value
+        self._goal_step_count = 0
+        self._goal_failed_steps = 0
+        self._goal_steps.clear()
+        self._record_goal_event({
+            "event": "formed",
+            "time": now_value,
+            "motivation": target,
+            "progress": 0.0,
+            "step_count": 0,
+            "failed_steps": 0,
+            "starter_action": winner,
+            "starter_relief": float(simulated_relief),
+            "intention_strength": float(intention.get("strength", 0.0)),
+            "reason": "persistent intent exposed a multi-step motivational target",
+        })
+        return self.goal_state_diagnostics()
+
+    def _goal_candidate_signal(
+        self,
+        action: str,
+        simulation: dict,
+    ) -> dict:
+        target = self._goal_motivation
+        if target not in self.MOTIVATION_NAMES:
+            return {
+                "action": str(action),
+                "target": None,
+                "relief": 0.0,
+                "relief_fraction": 0.0,
+                "signal": 0.0,
+            }
+        change = dict(
+            dict(simulation.get("motivation_changes", {})).get(target, {})
+        )
+        relief = max(0.0, float(change.get("relief", 0.0)))
+        baseline = max(0.05, float(self._goal_baseline_urgency))
+        relief_fraction = max(
+            0.0,
+            min(1.0, relief / baseline),
+        )
+        confidence = max(
+            0.0,
+            min(
+                1.0,
+                float(simulation.get("simulation_confidence", 0.0)),
+            ),
+        )
+        remaining = max(0.0, 1.0 - float(self._goal_progress))
+        signal = (
+            relief_fraction
+            * confidence
+            * remaining
+            * max(0.0, min(2.0, float(self.cfg.goal_signal_gain)))
+        )
+        return {
+            "action": str(action),
+            "target": str(target),
+            "relief": float(relief),
+            "relief_fraction": float(relief_fraction),
+            "confidence": float(confidence),
+            "remaining": float(remaining),
+            "signal": float(signal),
+        }
+
+    def register_goal_step(
+        self,
+        action: str,
+        *,
+        executed: bool,
+        success: bool,
+        detail: str = "",
+    ) -> dict:
+        self._refresh_goal_lifecycle()
+        if self._goal_motivation not in self.MOTIVATION_NAMES:
+            return self.goal_state_diagnostics()
+
+        now_value = time.time()
+        action = str(action)
+        row = {
+            "time": now_value,
+            "index": int(self._goal_step_count + 1),
+            "action": action,
+            "executed": bool(executed),
+            "success": bool(success),
+            "detail": str(detail),
+            "motivation": self._goal_motivation,
+            "progress_before": float(self._goal_progress),
+        }
+        self._goal_step_count += 1
+        if not executed or not success:
+            self._goal_failed_steps += 1
+
+        self._goal_refresh_progress()
+        row["progress_after"] = float(self._goal_progress)
+        row["urgency_after"] = float(
+            self._goal_current_urgency(self._goal_motivation)
+        )
+        self._goal_steps.append(dict(row))
+        self._record_goal_event({
+            "event": "step",
+            "time": now_value,
+            "motivation": self._goal_motivation,
+            "progress": float(self._goal_progress),
+            "step_count": int(self._goal_step_count),
+            "failed_steps": int(self._goal_failed_steps),
+            "action": action,
+            "executed": bool(executed),
+            "success": bool(success),
+            "reason": str(detail or "autonomous goal step"),
+        })
+        self._refresh_goal_lifecycle()
+        return self.goal_state_diagnostics()
+
     def action_reward_prediction(
         self,
         action: str,
