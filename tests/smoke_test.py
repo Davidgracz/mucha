@@ -300,10 +300,12 @@ def main():
         assert "foresight_cues" in one_brain_decision
         assert one_brain_decision["source"].startswith(
             "one-brain learned-reward + counterfactual-state + "
-            "persistent-intent sensory"
+            "persistent-intent + multi-step-goal sensory"
         )
         assert "intention" in one_brain_decision
         assert "intention_cue" in one_brain_decision
+        assert "goal" in one_brain_decision
+        assert "goal_cues" in one_brain_decision
 
         intention = b._update_intention_from_decision(
             "speak",
@@ -342,6 +344,58 @@ def main():
         assert punished["matched"] is True
         assert punished["cleared"] is True
         assert b.intention_state_diagnostics()["active"] is False
+
+        b._internal_drive_values["social_need"] = 0.90
+        b.tick_motivation_state(0.0)
+        goal = b._update_goal_from_decision(
+            "voice_join",
+            foresight={
+                "simulations": {
+                    "voice_join": {
+                        "simulation_confidence": 0.90,
+                        "motivation_changes": {
+                            "social": {
+                                "relief": 0.18,
+                            },
+                            "novelty": {
+                                "relief": 0.01,
+                            },
+                        },
+                    },
+                },
+            },
+            intention={
+                "active": True,
+                "action": "voice_join",
+                "strength": 0.70,
+            },
+            decision_context="autonomous-idle",
+        )
+        assert goal["active"] is True
+        assert goal["motivation"] == "social"
+        assert goal["progress"] == 0.0
+        goal_signal = b._goal_candidate_signal(
+            "voice_join",
+            {
+                "simulation_confidence": 0.90,
+                "motivation_changes": {
+                    "social": {"relief": 0.18},
+                },
+            },
+        )
+        assert goal_signal["target"] == "social"
+        assert goal_signal["signal"] > 0.0
+        goal_step = b.register_goal_step(
+            "voice_join",
+            executed=True,
+            success=True,
+            detail="smoke autonomous join",
+        )
+        assert goal_step["active"] is True
+        assert goal_step["step_count"] == 1
+        assert goal_step["steps"][-1]["action"] == "voice_join"
+        b._clear_goal("smoke cleanup", status="abandoned")
+        assert b.goal_state_diagnostics()["active"] is False
 
         unobserved_reward = b.action_reward_prediction("speak")
         assert unobserved_reward["predicted_reward"] == 0.0
@@ -460,11 +514,13 @@ def main():
         assert isinstance(autonomous_decision["foresight_cues"], dict)
         assert "intention" in autonomous_decision
         assert "intention_cue" in autonomous_decision
+        assert "goal" in autonomous_decision
+        assert "goal_cues" in autonomous_decision
         assert (
             autonomous_decision["source"]
             == "one-brain learned-reward + counterfactual-state + "
-            "persistent-intent sensory guidance -> FAFB propagation -> "
-            "connectome action competition"
+            "persistent-intent + multi-step-goal sensory guidance -> "
+            "FAFB propagation -> connectome action competition"
         )
         assert autonomous_decision["decision_context"] == "autonomous-idle"
 
@@ -1752,6 +1808,13 @@ def main():
         assert 'id="intent-history"' in AUTONOMY_HTML
         assert "function renderIntent" in AUTONOMY_HTML
         assert "Current Intent / Stage 32" in AUTONOMY_HTML
+        assert "Stage 33 — Multi-step motivational goals" in CONFIG_HTML
+        assert "goal_signal_gain" in CONFIG_HTML
+        assert 'id="goal-title"' in AUTONOMY_HTML
+        assert 'id="goal-sequence"' in AUTONOMY_HTML
+        assert 'id="goal-history"' in AUTONOMY_HTML
+        assert "function renderGoal" in AUTONOMY_HTML
+        assert "Active Goal / Stage 33" in AUTONOMY_HTML
         assert "Credit queue" in HTML
         assert "SIGNAL FLOW" in NEUROMAP_HTML
         assert "FOLLOW DECISION" in NEUROMAP_HTML
@@ -1845,6 +1908,14 @@ def main():
             "intention_switch_margin",
             "intention_min_evidence",
             "intention_outcome_gain",
+            "goal_enabled",
+            "goal_signal_gain",
+            "goal_min_relief",
+            "goal_min_start_urgency",
+            "goal_success_progress",
+            "goal_max_age_seconds",
+            "goal_max_steps",
+            "goal_max_failed_steps",
         ):
             assert key in config_source
             assert key in config_toml_source
@@ -1891,6 +1962,13 @@ def main():
         assert "one-brain-intention:" in brain_source
         assert "persistent-intent sensory guidance" in brain_source
         assert "intention_action_index" in brain_source
+        assert "def goal_state_diagnostics" in brain_source
+        assert "def _update_goal_from_decision" in brain_source
+        assert "def _goal_candidate_signal" in brain_source
+        assert "def register_goal_step" in brain_source
+        assert "one-brain-goal:" in brain_source
+        assert "goal_motivation_index" in brain_source
+        assert "multi-step-goal sensory guidance" in brain_source
         assert "value - represented" in brain_source
         assert "one-brain:noop-reafference:" in brain_source
         assert "context_selection_score" in brain_source
