@@ -4877,6 +4877,15 @@ class MuchaClient(discord.Client):
             self.voice_episodes.observe_person_contact(
                 message.author.id,
                 "text",
+                user_name=message.author.display_name,
+                guild_id=message.guild.id,
+                channel_id=message.channel.id,
+                channel_name=getattr(
+                    message.channel,
+                    "name",
+                    str(message.channel.id),
+                ),
+                context=message.content[:160],
             )
         user_affinity = self._user_affinity(message.author.id)
         person_profile = (
@@ -9955,6 +9964,11 @@ class MuchaClient(discord.Client):
             self.voice_episodes.observe_person_contact(
                 member.id,
                 "voice_speech",
+                user_name=member.display_name,
+                guild_id=guild.id,
+                channel_id=getattr(channel, "id", None),
+                channel_name=channel_name,
+                context=text[:160],
             )
         if self.cfg.behavior.channel_model_enabled:
             sensory = dict(

@@ -2096,6 +2096,11 @@ class VoiceEpisodicMemory:
         user_id: int,
         source: str,
         *,
+        user_name: str = "",
+        guild_id: int | None = None,
+        channel_id: int | None = None,
+        channel_name: str = "",
+        context: str = "",
         now: float | None = None,
     ) -> dict:
         """Persist that a known person interacted with Mucha.
@@ -2120,6 +2125,11 @@ class VoiceEpisodicMemory:
             kind="contact",
             source=str(source or "unknown"),
             amount=0.0,
+            user_name=str(user_name or ""),
+            guild_id=guild_id,
+            channel_id=channel_id,
+            channel_name=str(channel_name or ""),
+            context=str(context or ""),
             now=event_time,
         )
         if self.db is not None:
