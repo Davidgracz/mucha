@@ -302,6 +302,9 @@ def main():
             >= 0.0
         )
         assert "predicted_reward_order" in autonomous_outside
+        assert "context_selection_score" in autonomous_outside
+        assert "best_non_noop_preview_score" in autonomous_outside
+        assert autonomous_outside["context_selection_score"] >= 0.0
         assert (
             autonomous_outside["predicted_reward_winner"]
             in autonomous_outside["candidate_actions"]
@@ -350,6 +353,8 @@ def main():
         )
         assert autonomous_decision["executed"] is False
         assert autonomous_decision["propagation_steps"] == 2
+        assert "noop_reafference" in autonomous_decision
+        assert "triggered" in autonomous_decision["noop_reafference"]
         assert "voice_join" in autonomous_decision["prediction_cues"]
         assert (
             autonomous_decision["source"]
@@ -1696,6 +1701,10 @@ def main():
             "affective_state_smoothing",
             "affective_state_feedback_gain",
             "affective_state_reward_gain",
+            "one_brain_noop_reafference_enabled",
+            "one_brain_noop_reafference_min_support",
+            "one_brain_noop_reafference_gain",
+            "one_brain_noop_reafference_steps",
         ):
             assert key in config_source
             assert key in config_toml_source
@@ -1720,6 +1729,10 @@ def main():
         assert "def affective_state_diagnostics" in brain_source
         assert "affective_state_values" in brain_source
         assert "AFFECTIVE_STATE_NEURAL_MAP" in brain_source
+        assert "value - represented" in brain_source
+        assert "one-brain:noop-reafference:" in brain_source
+        assert "context_selection_score" in brain_source
+        assert "one_brain_noop_reafference_enabled" in brain_source
         assert "def voice_channel_target_decision" in brain_source
         assert "def inject_voice_target_context" in brain_source
         assert "tie_evidence" in bot_source
@@ -1734,6 +1747,7 @@ def main():
         assert "deque(maxlen=48)" in bot_source
         assert "_text_decision_debug" in bot_source
         assert "_autonomous_candidate_contexts" in bot_source
+        assert '"context_selection_score"' in bot_source
         assert "_autonomous_candidate_debug" in bot_source
         assert "_autonomous_history" in bot_source
         assert "_one_brain_history" in bot_source
