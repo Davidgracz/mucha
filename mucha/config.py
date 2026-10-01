@@ -78,6 +78,14 @@ class BrainConfig:
     foresight_state_signal_gain: float = 0.65
     foresight_base_confidence: float = 0.55
     foresight_uncertainty_weight: float = 0.35
+    intention_enabled: bool = True
+    intention_half_life_seconds: float = 90.0
+    intention_max_age_seconds: float = 300.0
+    intention_signal_gain: float = 0.45
+    intention_reinforcement_gain: float = 0.30
+    intention_switch_margin: float = 0.10
+    intention_min_evidence: float = 0.10
+    intention_outcome_gain: float = 0.75
     action_policy_enabled: bool = True
     action_policy_lr: float = 0.06
     action_policy_max_bias: float = 0.55
