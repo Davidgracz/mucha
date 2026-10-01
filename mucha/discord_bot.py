@@ -511,6 +511,10 @@ class MuchaClient(discord.Client):
             "circadian_sleep_recovery_per_cycle",
             "circadian_tired_threshold",
             "circadian_post_sleep_seconds",
+            "affective_state_enabled",
+            "affective_state_smoothing",
+            "affective_state_feedback_gain",
+            "affective_state_reward_gain",
             "action_policy_enabled",
             "action_policy_lr",
             "action_policy_max_bias",
@@ -8009,6 +8013,9 @@ class MuchaClient(discord.Client):
                 external_stimulation=recent_external,
                 social_contact=social_contact,
             )
+            self.brain.tick_affective_state(
+                float(self.cfg.behavior.idle_tick_seconds)
+            )
             self.brain.inject("internal:time", 0.035, 32)
             self.brain.step(self.cfg.brain.idle_steps)
 
@@ -9252,6 +9259,7 @@ class MuchaClient(discord.Client):
             "memory_replay": dict(self._memory_replay_debug),
             "sleep": dict(self._sleep_debug),
             "circadian": self._circadian_snapshot(),
+            "affective_state": self.brain.affective_state_diagnostics(),
             "audio_debug": dict(self._audio_debug),
             "stt_debug": dict(self._stt_debug),
             "reaction_debug": reaction_debug,
