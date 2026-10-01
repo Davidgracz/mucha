@@ -2458,7 +2458,7 @@ def main():
         b._clear_goal("persistence smoke reset", status="abandoned")
         b._internal_drive_values["social_need"] = 0.90
         b._internal_drive_values["boredom"] = 0.20
-        b._motivation_satiation["social"] = 0.0
+        b._motivation_satiation["social"] = 0.01
         b._motivation_frustration["social"] = 0.0
         b._affective_values["social_longing"] = 0.0
         b.tick_motivation_state(0.0)
