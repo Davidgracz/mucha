@@ -2223,3 +2223,79 @@ foresight_uncertainty_weight = 0.35
 Panel `/autonomy` pokazuje dla kandydatów foresight relief, risk, forecast, simulation confidence i przewidywane zmiany drives. Pokazuje też osobno `Foresight winner` oraz `Foresight margin`.
 
 Stage 31 nie dodaje nowego trwałego pliku. Korzysta z istniejących drives, motivation, affect oraz learned reward memory, które już są objęte backupem.
+
+
+---
+
+# Stage 32 — Persistent Intent / Goal Holding
+
+Stage 32 dodaje krótkotrwałą pamięć zamiaru dla autonomii. Zamiar nie jest osobnym systemem decyzyjnym i nie nadpisuje wyniku One Brain.
+
+Pipeline:
+
+```text
+finalny winner FAFB
++ neural margin
++ Stage 31 foresight
++ learned reward confidence
+        ↓
+intention evidence
+        ↓
+decaying persistent intent
+        ↓
+action-guided sensory cue przy kolejnym autonomous ticku
+        ↓
+FAFB propagation
+        ↓
+świeże action_competition()
+```
+
+## Najważniejsza zasada
+
+Intencja **nie dodaje punktów bezpośrednio do action score**.
+
+Jeżeli np. wcześniejsza decyzja utworzyła zamiar `VOICE_JOIN`, kolejny tick nie wykonuje JOIN automatycznie. Stage 32 podaje jedynie dodatni sensory cue do istniejących ścieżek `VOICE_JOIN`. Dopiero bieżący stan connectomu może ponownie wybrać tę akcję albo ją przegłosować.
+
+Intencja działa tylko dla kontekstu autonomicznego `autonomous-idle`, więc nie wymusza kolejnych odpowiedzi tekstowych, reakcji ani TTS po pojedynczym zdarzeniu.
+
+## Formowanie i utrzymanie
+
+Evidence intencji powstaje z:
+
+```text
+siła finalnego neuronalnego winnera
++ margin nad runner-upem
++ zgodny przewidywany state relief z Stage 31
++ dodatni learned reward przy istniejącej confidence
+```
+
+Jeżeli kolejny finalny winner jest taki sam, intencja jest wzmacniana. Jeżeli winner się zmienia, nowa intencja zastępuje starą dopiero wtedy, gdy jej evidence przekroczy aktualną siłę o `intention_switch_margin`. Dzięki temu pojedyncze małe wahanie sieci nie powoduje ciągłego przeskakiwania zamiaru.
+
+NOOP nie kasuje intencji automatycznie. Zamiar może przeżyć chwilowy `STAY`, ale cały czas naturalnie słabnie.
+
+## Wygaszanie i outcome
+
+Siła intencji ma half-life i maksymalny wiek.
+
+Dodatni reward dla tej samej akcji wzmacnia intencję. Ujemny reward ją osłabia, a silny punish może ją natychmiast wyczyścić.
+
+Jeżeli zamierzona akcja przestaje być technicznie możliwa w bieżącym kontekście, intencja jest usuwana zamiast omijać feasibility.
+
+## Persistence
+
+Akcja intencji, jej siła i timestamps są zapisywane w `state/brain_state.npz`. Po restarcie zostaje odtworzona z uwzględnieniem czasu, który upłynął — stary zamiar może więc wygasnąć podczas wyłączenia procesu.
+
+## Ustawienia
+
+```toml
+intention_enabled = true
+intention_half_life_seconds = 90.0
+intention_max_age_seconds = 300.0
+intention_signal_gain = 0.45
+intention_reinforcement_gain = 0.30
+intention_switch_margin = 0.10
+intention_min_evidence = 0.10
+intention_outcome_gain = 0.75
+```
+
+Dashboard `/autonomy` pokazuje teraz `Active intent` oraz `Intent strength`, a `/config` pozwala edytować parametry Stage 32.
