@@ -65,6 +65,14 @@ class BrainConfig:
     one_brain_noop_reafference_min_support: float = 0.18
     one_brain_noop_reafference_gain: float = 0.45
     one_brain_noop_reafference_steps: int = 1
+    motivation_enabled: bool = True
+    motivation_frustration_threshold: float = 0.42
+    motivation_frustration_per_minute: float = 0.035
+    motivation_frustration_decay_per_minute: float = 0.08
+    motivation_satiation_decay_per_minute: float = 0.10
+    motivation_frustration_gain: float = 0.60
+    motivation_satiation_gain: float = 0.70
+    motivation_neural_gain: float = 0.55
     action_policy_enabled: bool = True
     action_policy_lr: float = 0.06
     action_policy_max_bias: float = 0.55
