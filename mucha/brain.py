@@ -2685,6 +2685,300 @@ class FlyBrain:
         }
 
 
+    def _motivation_pressures_for_values(
+        self,
+        drive_values: dict[str, float],
+        affect_values: dict[str, float] | None = None,
+    ) -> dict[str, float]:
+        """Pure pressure calculation used by Stage 31 counterfactuals."""
+        affects = (
+            self._affective_values
+            if affect_values is None
+            else affect_values
+        )
+        pressures: dict[str, float] = {}
+        for name in self.MOTIVATION_NAMES:
+            weighted = 0.0
+            weight_total = 0.0
+            for drive, weight in self.MOTIVATION_DRIVE_WEIGHTS.get(
+                name,
+                (),
+            ):
+                w = max(0.0, float(weight))
+                weighted += float(drive_values.get(drive, 0.0)) * w
+                weight_total += w
+            for affect, weight in self.MOTIVATION_AFFECT_WEIGHTS.get(
+                name,
+                (),
+            ):
+                w = max(0.0, float(weight))
+                weighted += float(affects.get(affect, 0.0)) * w
+                weight_total += w
+            pressures[name] = max(
+                0.0,
+                min(
+                    1.0,
+                    weighted / weight_total
+                    if weight_total > 1e-9
+                    else 0.0,
+                ),
+            )
+        return pressures
+
+    def _simulated_motivation_urgency(
+        self,
+        name: str,
+        pressure: float,
+    ) -> float:
+        pressure = max(0.0, min(1.0, float(pressure)))
+        frustration = max(
+            0.0,
+            min(
+                1.0,
+                float(self._motivation_frustration.get(name, 0.0)),
+            ),
+        )
+        satiation = max(
+            0.0,
+            min(
+                1.0,
+                float(self._motivation_satiation.get(name, 0.0)),
+            ),
+        )
+        frustration_gain = max(
+            0.0,
+            float(self.cfg.motivation_frustration_gain),
+        )
+        satiation_gain = max(
+            0.0,
+            min(1.0, float(self.cfg.motivation_satiation_gain)),
+        )
+        return max(
+            0.0,
+            min(
+                1.5,
+                pressure
+                * (1.0 + frustration_gain * frustration)
+                * max(0.12, 1.0 - satiation_gain * satiation),
+            ),
+        )
+
+    def _action_drive_relief_alignment(
+        self,
+        action: str,
+    ) -> dict[str, float]:
+        """Derive possible need relief from existing drive/state/action maps."""
+        action = str(action)
+        result: dict[str, float] = {}
+        for drive in self.INTERNAL_DRIVE_NAMES:
+            alignment = 0.0
+            for state_name, state_weight in (
+                self.INTERNAL_DRIVE_STATE_MAP.get(drive, ())
+            ):
+                if action not in self.INTERNAL_STATE_TARGET_ACTIONS.get(
+                    state_name,
+                    (),
+                ):
+                    continue
+                alignment += max(0.0, float(state_weight))
+            if alignment > 0.0:
+                result[drive] = max(0.0, min(1.5, alignment))
+        return result
+
+    def simulate_action_outcome(
+        self,
+        action: str,
+        reward_prediction: dict | None = None,
+    ) -> dict:
+        """Stage 31 counterfactual simulation without mutating live state."""
+        action = str(action)
+        if action not in self.ACTIONS:
+            raise ValueError(f"unknown action: {action}")
+
+        if reward_prediction is None:
+            reward_prediction = self.action_reward_prediction(action)
+
+        current_drives = {
+            name: float(self._internal_drive_values.get(name, 0.0))
+            for name in self.INTERNAL_DRIVE_NAMES
+        }
+        simulated_drives = dict(current_drives)
+        alignments = self._action_drive_relief_alignment(action)
+        relief_scale = max(
+            0.0,
+            min(1.0, float(self.cfg.foresight_drive_relief_scale)),
+        )
+
+        drive_changes: dict[str, dict[str, float]] = {}
+        for drive, alignment in alignments.items():
+            before = float(current_drives.get(drive, 0.0))
+            relief_fraction = max(
+                0.0,
+                min(0.85, relief_scale * float(alignment)),
+            )
+            after = max(0.0, before * (1.0 - relief_fraction))
+            simulated_drives[drive] = after
+            drive_changes[drive] = {
+                "before": before,
+                "after": after,
+                "delta": after - before,
+                "alignment": float(alignment),
+                "relief_fraction": float(relief_fraction),
+            }
+
+        before_pressures = self._motivation_pressures_for_values(
+            current_drives
+        )
+        after_pressures = self._motivation_pressures_for_values(
+            simulated_drives
+        )
+        motivation_changes: dict[str, dict[str, float]] = {}
+        total_before = 0.0
+        total_after = 0.0
+        for name in self.MOTIVATION_NAMES:
+            pressure_before = float(before_pressures.get(name, 0.0))
+            pressure_after = float(after_pressures.get(name, 0.0))
+            urgency_before = self._simulated_motivation_urgency(
+                name,
+                pressure_before,
+            )
+            urgency_after = self._simulated_motivation_urgency(
+                name,
+                pressure_after,
+            )
+            total_before += urgency_before
+            total_after += urgency_after
+            motivation_changes[name] = {
+                "pressure_before": pressure_before,
+                "pressure_after": pressure_after,
+                "urgency_before": urgency_before,
+                "urgency_after": urgency_after,
+                "relief": max(0.0, urgency_before - urgency_after),
+            }
+
+        state_relief = max(
+            0.0,
+            min(
+                1.0,
+                (total_before - total_after)
+                / max(1.0, total_before),
+            ),
+        )
+        predicted_reward = max(
+            -1.0,
+            min(
+                1.0,
+                float(reward_prediction.get("predicted_reward", 0.0)),
+            ),
+        )
+        reward_confidence = max(
+            0.0,
+            min(
+                1.0,
+                float(reward_prediction.get("confidence", 0.0)),
+            ),
+        )
+        base_confidence = max(
+            0.0,
+            min(1.0, float(self.cfg.foresight_base_confidence)),
+        )
+        simulation_confidence = (
+            base_confidence
+            + (1.0 - base_confidence) * reward_confidence
+        )
+        uncertainty_weight = max(
+            0.0,
+            min(1.0, float(self.cfg.foresight_uncertainty_weight)),
+        )
+        risk = max(
+            0.0,
+            min(
+                1.0,
+                uncertainty_weight * (1.0 - reward_confidence)
+                + max(0.0, -predicted_reward) * reward_confidence,
+            ),
+        )
+        forecast_value = max(
+            -1.5,
+            min(
+                1.5,
+                state_relief * simulation_confidence
+                + predicted_reward * reward_confidence,
+            ),
+        )
+        state_signal = (
+            state_relief
+            * simulation_confidence
+            * max(
+                0.0,
+                min(2.0, float(self.cfg.foresight_state_signal_gain)),
+            )
+        )
+
+        return {
+            "enabled": bool(self.cfg.foresight_enabled),
+            "action": action,
+            "drive_alignment": alignments,
+            "drive_changes": drive_changes,
+            "motivation_changes": motivation_changes,
+            "state_relief": float(state_relief),
+            "predicted_reward": float(predicted_reward),
+            "reward_confidence": float(reward_confidence),
+            "simulation_confidence": float(simulation_confidence),
+            "risk": float(risk),
+            "forecast_value": float(forecast_value),
+            "state_signal": float(state_signal),
+            "mutated_live_state": False,
+            "method": (
+                "copy current drives -> derive action-aligned relief from "
+                "existing drive/state/action maps -> recompute motivational "
+                "pressure/urgency -> combine with learned reward diagnostics"
+            ),
+        }
+
+    def simulate_candidate_outcomes(
+        self,
+        actions: list[str] | tuple[str, ...],
+        rows: dict[str, dict],
+    ) -> dict:
+        simulations: dict[str, dict] = {}
+        for action in actions:
+            row = dict(rows.get(str(action), {}))
+            simulations[str(action)] = self.simulate_action_outcome(
+                str(action),
+                row.get("reward_prediction"),
+            )
+        ranked = sorted(
+            simulations,
+            key=lambda action: (
+                float(simulations[action]["forecast_value"]),
+                float(simulations[action]["simulation_confidence"]),
+                float(simulations[action]["state_relief"]),
+            ),
+            reverse=True,
+        )
+        winner = ranked[0] if ranked else "stay"
+        runner_up = ranked[1] if len(ranked) > 1 else None
+        margin = (
+            float(simulations[winner]["forecast_value"])
+            - float(simulations[runner_up]["forecast_value"])
+            if runner_up is not None
+            else float(simulations.get(winner, {}).get("forecast_value", 0.0))
+        )
+        return {
+            "enabled": bool(self.cfg.foresight_enabled),
+            "simulations": simulations,
+            "order": ranked,
+            "winner": winner,
+            "runner_up": runner_up,
+            "margin": float(margin),
+            "method": (
+                "counterfactual internal-state relief + learned reward; "
+                "diagnostic ranking only, final winner remains FAFB competition"
+            ),
+        }
+
+
     def action_reward_prediction(
         self,
         action: str,
@@ -3005,6 +3299,17 @@ class FlyBrain:
         if "stay" not in candidates:
             candidates.insert(0, "stay")
 
+        foresight = self.simulate_candidate_outcomes(
+            candidates,
+            rows,
+        )
+        for action, simulation in foresight.get(
+            "simulations",
+            {},
+        ).items():
+            if action in rows:
+                rows[action]["foresight"] = simulation
+
         competition = self.action_competition(candidates)
         ranked = sorted(
             candidates,
@@ -3075,11 +3380,17 @@ class FlyBrain:
             "can_explore": bool(can_explore),
             "can_voice_move": bool(can_voice_move),
             "motivation_state": motivation,
+            "foresight": foresight,
+            "foresight_order": list(foresight.get("order", [])),
+            "foresight_winner": str(
+                foresight.get("winner", "stay")
+            ),
             "executed": False,
             "source": (
                 "technical-feasibility + Stage-30 motivational urgency + "
                 "homeostatic drives + FAFB internal-state attractors + "
-                "learned reward prediction + neural competition preview"
+                "learned reward prediction + Stage-31 counterfactual "
+                "foresight + neural competition preview"
             ),
             "prediction_executed": False,
         }
@@ -3149,6 +3460,17 @@ class FlyBrain:
         if "stay" not in candidates:
             candidates.append("stay")
 
+        foresight = self.simulate_candidate_outcomes(
+            candidates,
+            rows,
+        )
+        for action, simulation in foresight.get(
+            "simulations",
+            {},
+        ).items():
+            if action in rows:
+                rows[action]["foresight"] = simulation
+
         return {
             "candidate_actions": candidates,
             "display_candidates": [
@@ -3157,8 +3479,16 @@ class FlyBrain:
             ],
             "rows": rows,
             "competition_preview": self.action_competition(candidates),
+            "foresight": foresight,
+            "foresight_order": list(foresight.get("order", [])),
+            "foresight_winner": str(
+                foresight.get("winner", "stay")
+            ),
             "executed": False,
-            "source": "one-brain generic feasibility + learned reward",
+            "source": (
+                "one-brain generic feasibility + learned reward + "
+                "Stage-31 counterfactual foresight"
+            ),
         }
 
     def one_brain_action_decision(
@@ -3196,6 +3526,13 @@ class FlyBrain:
         )[:80] or "generic"
 
         cues: dict[str, dict] = {}
+        foresight_cues: dict[str, dict] = {}
+        foresight = dict(
+            candidate_set.get("foresight")
+            or self.simulate_candidate_outcomes(actions, rows)
+        )
+        simulations = dict(foresight.get("simulations", {}))
+
         for action in actions:
             row = dict(rows.get(action, {}))
             predicted = max(
@@ -3222,6 +3559,25 @@ class FlyBrain:
                 width=192,
                 hops=3,
             )
+
+        if bool(self.cfg.foresight_enabled):
+            for action in actions:
+                simulation = dict(simulations.get(action, {}))
+                state_signal = max(
+                    0.0,
+                    float(simulation.get("state_signal", 0.0)),
+                )
+                if state_signal <= 1e-6:
+                    continue
+                foresight_cues[action] = (
+                    self.inject_action_guided_signed_sensory(
+                        action,
+                        f"one-brain-foresight-state:{context_key}:{action}",
+                        state_signal,
+                        width=192,
+                        hops=3,
+                    )
+                )
 
         steps = max(0, min(8, int(propagation_steps)))
         if steps > 0:
@@ -3358,6 +3714,8 @@ class FlyBrain:
             "competition": competition,
             "candidate_actions": actions,
             "prediction_cues": cues,
+            "foresight": foresight,
+            "foresight_cues": foresight_cues,
             "noop_reafference": noop_reafference,
             "prediction_gain": float(gain),
             "propagation_steps": int(steps),
@@ -3374,8 +3732,8 @@ class FlyBrain:
                 )
             ),
             "source": (
-                "one-brain predicted-reward sensory guidance -> "
-                "FAFB propagation -> connectome action competition"
+                "one-brain learned-reward + counterfactual-state sensory "
+                "guidance -> FAFB propagation -> connectome action competition"
             ),
             "executed": False,
         }
