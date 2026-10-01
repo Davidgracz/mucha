@@ -2117,3 +2117,109 @@ motivation_neural_gain = 0.55
 Dashboard `/details` pokazuje dla każdego motywu pressure, frustration, satiation i finalne urgency. Te same parametry są dostępne w edytorze konfiguracji.
 
 Stage 30 współpracuje z mechanizmem NOOP anti-lock: przy autonomii `drive_support` jest teraz liczony z uwzględnieniem aktualnej motywacyjnej urgency, więc drugi neuronalny przebieg po NOOP bierze pod uwagę nie tylko surową wartość drive, ale również historię niezaspokojenia i chwilowe nasycenie.
+
+
+---
+
+# Stage 31 — Internal Counterfactual Foresight
+
+Stage 31 rozbudowuje istniejące learned reward prediction o wewnętrzną symulację kandydatów przed finalną decyzją.
+
+Mucha nie próbuje przewidywać całego Discorda ani zachowania konkretnych ludzi. Symuluje tylko ten fragment przyszłości, który może oszacować z własnego stanu:
+
+```text
+bieżące drives
++ bieżąca motivation
++ action ↔ internal-state alignment
++ learned expected reward
+        ↓
+counterfactual copy
+        ↓
+przewidywany relief drives
+        ↓
+przewidywane SOCIAL / NOVELTY / SAFETY / REST
+        ↓
+state relief + risk + confidence
+        ↓
+foresight sensory cue
+        ↓
+FAFB propagation
+        ↓
+One Brain final competition
+```
+
+## Brak mutacji live state
+
+Symulacja działa na kopii wartości. Samo „wyobrażenie” `VOICE_JOIN`, `EXPLORE`, `SPEAK` itd. nie zmniejsza prawdziwego `social_need`, `curiosity`, `fatigue` ani innych drives.
+
+Realny stan zmienia się dopiero po rzeczywistym zdarzeniu i jego outcome.
+
+## Skąd bierze się przewidywany relief
+
+Stage 31 nie ma tabeli typu „VOICE_JOIN = +0.5”.
+
+Możliwy relief jest wyprowadzany z istniejących map:
+
+```text
+homeostatic drive
+→ internal-state attractor
+→ akcje wspierane przez attractor
+```
+
+Przykładowo `social_need` prowadzi do SOCIAL_NEED/AROUSAL, a te już wcześniej były powiązane z odpowiednimi readoutami. Foresight tylko sprawdza, jak hipotetyczne rozładowanie zgodnego drive zmieniłoby późniejszą motivational urgency.
+
+## Dane dla każdego kandydata
+
+Każda symulowana akcja dostaje:
+
+```text
+drive_alignment
+drive_changes
+motivation_changes
+state_relief
+predicted_reward
+reward_confidence
+simulation_confidence
+risk
+forecast_value
+state_signal
+```
+
+`risk` łączy niepewność historii z przewidywanym negatywnym rewardem. Jest przede wszystkim diagnostyką.
+
+`forecast_value` służy do pokazania kontrfaktycznego rankingu, ale **nie jest finalnym action score**.
+
+Finalny winner nadal pochodzi z:
+
+```text
+foresight sensory cue
++ learned reward sensory cue
++ cały bieżący stan sieci
+→ FAFB propagation
+→ action_competition()
+```
+
+## Foresight ranking vs final winner
+
+Dashboard może pokazać np.:
+
+```text
+Foresight winner: VOICE_JOIN
+Final winner: EXPLORE
+```
+
+To jest prawidłowe. Foresight jest jednym z wejść, a nie osobnym arbitrem.
+
+## Ustawienia
+
+```toml
+foresight_enabled = true
+foresight_drive_relief_scale = 0.38
+foresight_state_signal_gain = 0.65
+foresight_base_confidence = 0.55
+foresight_uncertainty_weight = 0.35
+```
+
+Panel `/autonomy` pokazuje dla kandydatów foresight relief, risk, forecast, simulation confidence i przewidywane zmiany drives. Pokazuje też osobno `Foresight winner` oraz `Foresight margin`.
+
+Stage 31 nie dodaje nowego trwałego pliku. Korzysta z istniejących drives, motivation, affect oraz learned reward memory, które już są objęte backupem.
