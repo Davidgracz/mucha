@@ -79,6 +79,33 @@ class FlyBrain:
         "arousal": ("react", "speak", "explore"),
     }
 
+    AFFECTIVE_STATE_NAMES = (
+        "contentment",
+        "tension",
+        "curiosity",
+        "social_longing",
+        "activation",
+    )
+    AFFECTIVE_STATE_NEURAL_MAP = {
+        "contentment": (("satiety", 1.00),),
+        "tension": (
+            ("stress", 0.82),
+            ("arousal", 0.18),
+        ),
+        "curiosity": (
+            ("curiosity", 0.85),
+            ("arousal", 0.15),
+        ),
+        "social_longing": (
+            ("social_need", 0.88),
+            ("arousal", 0.12),
+        ),
+        "activation": (
+            ("arousal", 0.82),
+            ("curiosity", 0.18),
+        ),
+    }
+
     ACTION_BIOLOGICAL_SEEDS = {
         "speak": (),
         "react": (
@@ -191,6 +218,15 @@ class FlyBrain:
             "fatigue": 0.0,
         })
         self._internal_drive_last_tick = time.monotonic()
+        self._affective_values: dict[str, float] = {
+            name: 0.0
+            for name in self.AFFECTIVE_STATE_NAMES
+        }
+        self._affective_last_tick = time.monotonic()
+        self._affective_last_target: dict[str, float] = {
+            name: 0.0
+            for name in self.AFFECTIVE_STATE_NAMES
+        }
         self._internal_drive_last_event: dict = {
             "event": "startup",
             "intensity": 0.0,
@@ -1677,6 +1713,7 @@ class FlyBrain:
             "dominant_level": dominant_level,
             "states": states,
             "homeostatic_drives": self.internal_drive_diagnostics(),
+            "affective_state": self.affective_state_diagnostics(),
             "method": (
                 "sensory entry pools → real FAFB paths → internal assemblies; "
                 "persistence amplifies only existing recurrent FAFB edges"
@@ -2054,6 +2091,155 @@ class FlyBrain:
         return float(
             self._internal_drive_values.get(str(drive), 0.0)
         )
+
+    def tick_affective_state(
+        self,
+        elapsed_seconds: float | None = None,
+    ) -> dict:
+        """Update slow affect from neural attractors and feed it back neurally."""
+        now = time.monotonic()
+        if elapsed_seconds is None:
+            elapsed = max(
+                0.0,
+                now - float(self._affective_last_tick),
+            )
+        else:
+            elapsed = max(0.0, float(elapsed_seconds))
+        self._affective_last_tick = now
+
+        if not self.cfg.affective_state_enabled:
+            return self.affective_state_diagnostics()
+
+        states = self._internal_state_levels()
+        drives = self._internal_drive_values
+        reward = max(-1.0, min(1.0, float(self.reward_trace)))
+        reward_gain = max(
+            0.0,
+            min(1.0, float(self.cfg.affective_state_reward_gain)),
+        )
+
+        def level(name: str) -> float:
+            return float(states.get(name, {}).get("level", 0.0))
+
+        targets = {
+            "contentment": max(
+                0.0,
+                min(
+                    1.0,
+                    0.78 * level("satiety")
+                    + reward_gain * max(0.0, reward),
+                ),
+            ),
+            "tension": max(
+                0.0,
+                min(
+                    1.0,
+                    0.72 * level("stress")
+                    + 0.18 * float(drives.get("caution", 0.0))
+                    + reward_gain * max(0.0, -reward),
+                ),
+            ),
+            "curiosity": max(
+                0.0,
+                min(
+                    1.0,
+                    0.72 * level("curiosity")
+                    + 0.18 * float(drives.get("curiosity", 0.0))
+                    + 0.10 * float(drives.get("exploration", 0.0)),
+                ),
+            ),
+            "social_longing": max(
+                0.0,
+                min(
+                    1.0,
+                    0.70 * level("social_need")
+                    + 0.30 * float(drives.get("social_need", 0.0)),
+                ),
+            ),
+            "activation": max(
+                0.0,
+                min(
+                    1.0,
+                    0.74 * level("arousal")
+                    + 0.16 * level("curiosity")
+                    + 0.10 * abs(reward),
+                ),
+            ),
+        }
+
+        base_smoothing = max(
+            0.0,
+            min(0.9999, float(self.cfg.affective_state_smoothing)),
+        )
+        # Configured smoothing is expressed per normal 5 s runtime tick.
+        retention = base_smoothing ** max(0.05, elapsed / 5.0)
+        for name in self.AFFECTIVE_STATE_NAMES:
+            previous = float(self._affective_values.get(name, 0.0))
+            target = float(targets.get(name, 0.0))
+            self._affective_values[name] = max(
+                0.0,
+                min(
+                    1.0,
+                    retention * previous
+                    + (1.0 - retention) * target,
+                ),
+            )
+        self._affective_last_target = dict(targets)
+
+        feedback_gain = max(
+            0.0,
+            min(
+                1.0,
+                float(self.cfg.affective_state_feedback_gain),
+            ),
+        )
+        if feedback_gain > 0.0:
+            for affect, mapped in self.AFFECTIVE_STATE_NEURAL_MAP.items():
+                value = float(self._affective_values.get(affect, 0.0))
+                if value <= 0.001:
+                    continue
+                for state_name, weight in mapped:
+                    self.inject_internal_state_cue(
+                        state_name,
+                        feedback_gain * value * float(weight),
+                        key=f"affective:{affect}:{state_name}",
+                    )
+
+        result = self.affective_state_diagnostics()
+        result["elapsed_seconds"] = float(elapsed)
+        return result
+
+    def affective_state_diagnostics(self) -> dict:
+        dominant = max(
+            self.AFFECTIVE_STATE_NAMES,
+            key=lambda name: float(
+                self._affective_values.get(name, 0.0)
+            ),
+        )
+        return {
+            "enabled": bool(self.cfg.affective_state_enabled),
+            "dominant": dominant,
+            "dominant_value": float(
+                self._affective_values.get(dominant, 0.0)
+            ),
+            "values": {
+                name: float(self._affective_values.get(name, 0.0))
+                for name in self.AFFECTIVE_STATE_NAMES
+            },
+            "targets": {
+                name: float(self._affective_last_target.get(name, 0.0))
+                for name in self.AFFECTIVE_STATE_NAMES
+            },
+            "feedback_gain": float(
+                self.cfg.affective_state_feedback_gain
+            ),
+            "reward_trace": float(self.reward_trace),
+            "method": (
+                "slow EMA of FAFB internal attractors + reward trace -> "
+                "affective persistence -> sensory feedback into the same "
+                "internal attractors -> One Brain"
+            ),
+        }
 
     def internal_drive_diagnostics(self) -> dict:
         neural_states = self._internal_state_levels()
@@ -2918,6 +3104,19 @@ class FlyBrain:
                 self._internal_drive_values[drive] = (
                     self._clip_internal_drive(float(value))
                 )
+        if "affective_state_values" in data:
+            values = np.asarray(
+                data["affective_state_values"],
+                dtype=np.float32,
+            ).ravel()
+            for name, value in zip(
+                self.AFFECTIVE_STATE_NAMES,
+                values,
+            ):
+                self._affective_values[name] = max(
+                    0.0,
+                    min(1.0, float(value)),
+                )
 
     def save(self) -> None:
         p = self.cfg.state_file
@@ -3016,6 +3215,13 @@ class FlyBrain:
                 [
                     self._internal_drive_values[drive]
                     for drive in self.INTERNAL_DRIVE_NAMES
+                ],
+                dtype=np.float32,
+            ),
+            affective_state_values=np.asarray(
+                [
+                    self._affective_values[name]
+                    for name in self.AFFECTIVE_STATE_NAMES
                 ],
                 dtype=np.float32,
             ),
