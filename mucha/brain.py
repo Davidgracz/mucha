@@ -4144,12 +4144,14 @@ class FlyBrain:
                 foresight.get("winner", "stay")
             ),
             "intention_state": self.intention_state_diagnostics(),
+            "goal_state": self.goal_state_diagnostics(),
             "executed": False,
             "source": (
                 "technical-feasibility + Stage-30 motivational urgency + "
                 "homeostatic drives + FAFB internal-state attractors + "
                 "learned reward prediction + Stage-31 counterfactual "
-                "foresight + neural competition preview"
+                "foresight + Stage-32 intent + Stage-33 goal context + "
+                "neural competition preview"
             ),
             "prediction_executed": False,
         }
@@ -4244,11 +4246,12 @@ class FlyBrain:
                 foresight.get("winner", "stay")
             ),
             "intention_state": self.intention_state_diagnostics(),
+            "goal_state": self.goal_state_diagnostics(),
             "executed": False,
             "source": (
                 "one-brain generic feasibility + learned reward + "
                 "Stage-31 counterfactual foresight + "
-                "Stage-32 persistent intent"
+                "Stage-32 persistent intent + Stage-33 multi-step goals"
             ),
         }
 
@@ -4294,6 +4297,8 @@ class FlyBrain:
         )
         simulations = dict(foresight.get("simulations", {}))
         intention_before = self.intention_state_diagnostics()
+        goal_before = self.goal_state_diagnostics()
+        goal_cues: dict[str, dict] = {}
         intention_cue: dict = {
             "enabled": bool(self.cfg.intention_enabled),
             "active": False,
@@ -4350,6 +4355,38 @@ class FlyBrain:
                     ),
                     "signal": float(intention_signal),
                     "reason": "persistent-intent-sensory-guidance",
+                    "cue": cue,
+                }
+
+        if (
+            bool(self.cfg.goal_enabled)
+            and str(decision_context) == "autonomous-idle"
+            and goal_before.get("active")
+        ):
+            for action in actions:
+                simulation = dict(simulations.get(action, {}))
+                goal_signal = self._goal_candidate_signal(
+                    action,
+                    simulation,
+                )
+                signal = max(
+                    0.0,
+                    float(goal_signal.get("signal", 0.0)),
+                )
+                if signal <= 1e-6:
+                    continue
+                cue = self.inject_action_guided_signed_sensory(
+                    action,
+                    (
+                        f"one-brain-goal:{context_key}:"
+                        f"{goal_signal.get('target')}:{action}"
+                    ),
+                    signal,
+                    width=192,
+                    hops=3,
+                )
+                goal_cues[action] = {
+                    **goal_signal,
                     "cue": cue,
                 }
 
@@ -4533,6 +4570,12 @@ class FlyBrain:
             rows=rows,
             decision_context=str(decision_context),
         )
+        goal = self._update_goal_from_decision(
+            winner,
+            foresight=foresight,
+            intention=intention,
+            decision_context=str(decision_context),
+        )
         winner_row = dict(rows.get(winner, {}))
         return {
             "action": winner,
@@ -4546,6 +4589,9 @@ class FlyBrain:
             "intention_before": intention_before,
             "intention_cue": intention_cue,
             "intention": intention,
+            "goal_before": goal_before,
+            "goal_cues": goal_cues,
+            "goal": goal,
             "noop_reafference": noop_reafference,
             "prediction_gain": float(gain),
             "propagation_steps": int(steps),
@@ -4563,8 +4609,8 @@ class FlyBrain:
             ),
             "source": (
                 "one-brain learned-reward + counterfactual-state + "
-                "persistent-intent sensory guidance -> FAFB propagation -> "
-                "connectome action competition"
+                "persistent-intent + multi-step-goal sensory guidance -> "
+                "FAFB propagation -> connectome action competition"
             ),
             "executed": False,
         }
