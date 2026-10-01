@@ -4941,8 +4941,96 @@ class FlyBrain:
             ).ravel()
             if len(values):
                 self._intention_updated_at = max(0.0, float(values[0]))
+        if "goal_motivation_index" in data:
+            values = np.asarray(
+                data["goal_motivation_index"],
+                dtype=np.int16,
+            ).ravel()
+            if len(values):
+                goal_index = int(values[0])
+                if 0 <= goal_index < len(self.MOTIVATION_NAMES):
+                    self._goal_motivation = self.MOTIVATION_NAMES[goal_index]
+        if "goal_baseline_urgency" in data:
+            values = np.asarray(
+                data["goal_baseline_urgency"],
+                dtype=np.float32,
+            ).ravel()
+            if len(values):
+                self._goal_baseline_urgency = max(
+                    0.0,
+                    min(1.5, float(values[0])),
+                )
+        if "goal_progress" in data:
+            values = np.asarray(
+                data["goal_progress"],
+                dtype=np.float32,
+            ).ravel()
+            if len(values):
+                self._goal_progress = max(
+                    0.0,
+                    min(1.0, float(values[0])),
+                )
+        for key, attr in (
+            ("goal_created_at", "_goal_created_at"),
+            ("goal_updated_at", "_goal_updated_at"),
+        ):
+            if key in data:
+                values = np.asarray(data[key], dtype=np.float64).ravel()
+                if len(values):
+                    setattr(self, attr, max(0.0, float(values[0])))
+        if "goal_step_count" in data:
+            values = np.asarray(data["goal_step_count"], dtype=np.int32).ravel()
+            if len(values):
+                self._goal_step_count = max(0, int(values[0]))
+        if "goal_failed_steps" in data:
+            values = np.asarray(data["goal_failed_steps"], dtype=np.int32).ravel()
+            if len(values):
+                self._goal_failed_steps = max(0, int(values[0]))
+        if (
+            "goal_step_action_indices" in data
+            and "goal_step_times" in data
+            and "goal_step_success" in data
+            and "goal_step_executed" in data
+        ):
+            action_indices = np.asarray(
+                data["goal_step_action_indices"],
+                dtype=np.int16,
+            ).ravel()
+            step_times = np.asarray(
+                data["goal_step_times"],
+                dtype=np.float64,
+            ).ravel()
+            step_success = np.asarray(
+                data["goal_step_success"],
+                dtype=np.int8,
+            ).ravel()
+            step_executed = np.asarray(
+                data["goal_step_executed"],
+                dtype=np.int8,
+            ).ravel()
+            n_steps = min(
+                len(action_indices),
+                len(step_times),
+                len(step_success),
+                len(step_executed),
+                32,
+            )
+            for i in range(n_steps):
+                action_index = int(action_indices[i])
+                if not 0 <= action_index < len(self.ACTIONS):
+                    continue
+                self._goal_steps.append({
+                    "time": float(step_times[i]),
+                    "index": int(i + 1),
+                    "action": self.ACTIONS[action_index],
+                    "executed": bool(step_executed[i]),
+                    "success": bool(step_success[i]),
+                    "detail": "restored from brain_state.npz",
+                    "motivation": self._goal_motivation,
+                })
         self.tick_motivation_state(0.0)
         self._decay_intention()
+        self._refresh_goal_lifecycle()
 
     def save(self) -> None:
         p = self.cfg.state_file
@@ -5073,6 +5161,49 @@ class FlyBrain:
             intention_strength=np.float32(self._intention_strength),
             intention_created_at=np.float64(self._intention_created_at),
             intention_updated_at=np.float64(self._intention_updated_at),
+            goal_motivation_index=np.int16(
+                self.MOTIVATION_NAMES.index(self._goal_motivation)
+                if self._goal_motivation in self.MOTIVATION_NAMES
+                else -1
+            ),
+            goal_baseline_urgency=np.float32(
+                self._goal_baseline_urgency
+            ),
+            goal_progress=np.float32(self._goal_progress),
+            goal_created_at=np.float64(self._goal_created_at),
+            goal_updated_at=np.float64(self._goal_updated_at),
+            goal_step_count=np.int32(self._goal_step_count),
+            goal_failed_steps=np.int32(self._goal_failed_steps),
+            goal_step_action_indices=np.asarray(
+                [
+                    self.ACTIONS.index(str(row.get("action")))
+                    if str(row.get("action")) in self.ACTIONS
+                    else -1
+                    for row in list(self._goal_steps)
+                ],
+                dtype=np.int16,
+            ),
+            goal_step_times=np.asarray(
+                [
+                    float(row.get("time", 0.0))
+                    for row in list(self._goal_steps)
+                ],
+                dtype=np.float64,
+            ),
+            goal_step_success=np.asarray(
+                [
+                    1 if bool(row.get("success")) else 0
+                    for row in list(self._goal_steps)
+                ],
+                dtype=np.int8,
+            ),
+            goal_step_executed=np.asarray(
+                [
+                    1 if bool(row.get("executed")) else 0
+                    for row in list(self._goal_steps)
+                ],
+                dtype=np.int8,
+            ),
         )
         tmp.replace(p)
 
