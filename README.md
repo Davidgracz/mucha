@@ -2299,3 +2299,154 @@ intention_outcome_gain = 0.75
 ```
 
 Dashboard `/autonomy` pokazuje teraz `Active intent` oraz `Intent strength`, a `/config` pozwala edytować parametry Stage 32.
+
+
+---
+
+# Stage 33 — Multi-step Motivational Goals
+
+Stage 33 rozwija Stage 32 z krótkiego zamiaru do celu, który może przeżyć wiele kolejnych autonomicznych ticków i kilka różnych wykonanych działań.
+
+Cel nie jest listą ręcznie narzuconych komend. Reprezentuje jedną aktualną potrzebę:
+
+```text
+SOCIAL
+NOVELTY
+SAFETY
+REST
+```
+
+Pipeline:
+
+```text
+Stage 32 persistent intent
++ Stage 31 counterfactual relief
++ aktualna motivational urgency
+        ↓
+utworzenie celu
+        ↓
+persistent target motivation
+        ↓
+dla każdego kandydata:
+przewidywany relief celu
+        ↓
+goal sensory cue
+        ↓
+FAFB propagation
+        ↓
+fresh action_competition()
+        ↓
+wykonany krok
+        ↓
+realna zmiana drives / motivation
+        ↓
+progress / success / abandon
+```
+
+## Dynamiczna sekwencja zamiast skryptu
+
+Stage 33 nie posiada tabeli w rodzaju:
+
+```text
+SOCIAL = VOICE_JOIN -> SPEAK -> STAY
+```
+
+Jeżeli aktywny jest cel `SOCIAL`, każdy bieżący kandydat jest oceniany przez już istniejący Stage 31 pod kątem tego, ile może zmniejszyć urgency SOCIAL.
+
+Dlatego rzeczywista sekwencja może wyglądać np.:
+
+```text
+VOICE_JOIN
+→ STAY
+→ SPEAK
+→ VOICE_MOVE
+```
+
+albo zupełnie inaczej. Każdy krok nadal musi wygrać w normalnym FAFB `action_competition()`.
+
+## Tworzenie celu
+
+Nowy cel może powstać tylko podczas autonomii, gdy:
+
+- istnieje aktywna intencja Stage 32,
+- finalny winner nie jest NOOP,
+- Stage 31 przewiduje wystarczający relief jednej z motywacji,
+- aktualna urgency tej motywacji jest wystarczająco wysoka.
+
+Motywacja o największym przewidywanym reliefie staje się targetem celu.
+
+## Progress
+
+Przy starcie zapisywana jest początkowa urgency celu.
+
+Progress jest liczony z realnego spadku urgency względem tego punktu:
+
+```text
+progress = (baseline urgency - current urgency) / baseline urgency
+```
+
+Progress jest monotoniczny w obrębie jednego celu, żeby krótkotrwały szum drives nie kasował już osiągniętego postępu.
+
+Cel kończy się sukcesem, gdy progress osiągnie `goal_success_progress`.
+
+## Kroki i porzucenie celu
+
+Każde rzeczywiste wykonanie autonomicznego winnera jest rejestrowane jako kolejny krok:
+
+```text
+index
+action
+executed
+success
+detail
+progress before
+progress after
+urgency after
+```
+
+Cel może zostać porzucony po:
+
+- przekroczeniu maksymalnego wieku,
+- przekroczeniu maksymalnej liczby kroków,
+- zbyt wielu nieudanych wykonaniach,
+- ręcznym wyłączeniu Stage 33.
+
+## Persistence
+
+Aktywny target, baseline urgency, progress, timestamps, liczniki oraz ostatnia sekwencja kroków są zapisywane w `state/brain_state.npz`.
+
+Po restarcie Mucha może kontynuować niedokończony cel, o ile nie wygasł przez limit wieku.
+
+## Ustawienia
+
+```toml
+goal_enabled = true
+goal_signal_gain = 0.40
+goal_min_relief = 0.01
+goal_min_start_urgency = 0.20
+goal_success_progress = 0.45
+goal_max_age_seconds = 900.0
+goal_max_steps = 12
+goal_max_failed_steps = 3
+```
+
+## Dashboard
+
+`/autonomy` pokazuje teraz dwa osobne poziomy pamięci:
+
+```text
+CURRENT INTENT
+  konkretna akcja, np. VOICE_JOIN
+  strength / age / sensory cue
+  historia FORMED / REINFORCED / SWITCHED / CLEARED
+
+ACTIVE GOAL
+  target, np. SOCIAL
+  baseline urgency -> current urgency
+  progress
+  liczba kroków / failed steps
+  sekwencja wykonanych akcji
+  historia FORMED / STEP / COMPLETED / ABANDONED
+```
+
+Dzięki temu można odróżnić krótkie „co chcę zrobić teraz” od dłuższego „jaką potrzebę próbuję rozwiązać”.
