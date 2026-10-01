@@ -1429,7 +1429,7 @@ h1{margin:0;font-size:24px}.sub{color:var(--muted);font-size:12px;margin-top:4px
 </head>
 <body><main>
 <div class="top">
- <div class="brand"><div class="logo">🧠</div><div><h1>Fly Brain Neuro-map</h1><div class="sub">Neuro-map 2.0: aktywność przestrzenna, realny przepływ po krawędziach FAFB, plastyczność i runtime korelacje z zachowaniem Muchy.</div></div></div>
+ <div class="brand"><div class="logo">🧠</div><div><h1>Fly Brain Neuro-map • Stage 34</h1><div class="sub">Neuro-map 2.0: klikalne neurony i regiony, frame-by-frame replay, realny przepływ po krawędziach FAFB oraz signed attribution bieżącej decyzji.</div></div></div>
  <div class="nav"><a href="/">🏠 Przegląd</a><a href="/autonomy">🧭 Autonomia</a><a href="/details">📋 Szczegóły</a><a href="/connectome">🧬 Connectome</a><a class="active" href="/neuromap">🧠 Neuro-map</a><a href="/associations">🗣 Mowa</a><a href="/affinity">🤝 Affinity</a><a href="/config">⚙ Konfiguracja</a><a href="/logout">Wyloguj</a></div>
 </div>
 
