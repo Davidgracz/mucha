@@ -1444,12 +1444,14 @@ const colors={sensory:"#55ead0",internal:"#6ba6ff",modulatory:"#b68bff",output:"
 const actionColors={speak:"#b68bff",react:"#ff9f6b",voice_join:"#55ead0",voice_move:"#6ba6ff",voice_leave:"#ff77b7",explore:"#7fd1ff",stay:"#ffd166"};
 const stateColors={social_need:"#55ead0",curiosity:"#6ba6ff",stress:"#ff77b7",satiety:"#ffd166",arousal:"#b68bff"};
 let projection="xy",roleFilter="all",showRegions=true,showTrail=true,showFlow=true,showLearned=true,showAttractors=true,followDecision=true,flowReplayTick=null,data=null,hover=null,selected=null,selectedRegion="",lastFetch=0;
+let mapCanvasW=1,mapCanvasH=1,mapLastFrameTs=0,mapUpdating=false,mapMaxActivation=.0001,mapNodeLookup=new Map(),mapFlowFocus=new Set();
+const NEUROMAP_FRAME_MS=1000/24;
 const trail=new Map(),mouse={x:0,y:0,inside:false};
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),nfmt=n=>Number(n||0).toLocaleString("pl-PL");
 const esc=v=>String(v??"").replace(/[&<>"']/g,m=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[m]));
 function axes(p){return p==="xy"?["x","y"]:p==="xz"?["x","z"]:["y","z"]}
 function point(o,w,h,pad=30){const [a,b]=axes(projection);return {x:pad+clamp(Number(o[a]||0),0,1)*(w-pad*2),y:pad+(1-clamp(Number(o[b]||0),0,1))*(h-pad*2)}}
-function resize(){const r=wrap.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1);canvas.width=Math.max(1,Math.floor(r.width*dpr));canvas.height=Math.max(1,Math.floor(r.height*dpr));canvas.style.width=r.width+"px";canvas.style.height=r.height+"px";ctx.setTransform(dpr,0,0,dpr,0,0)}
+function resize(){const r=wrap.getBoundingClientRect(),dpr=Math.min(1.5,window.devicePixelRatio||1);mapCanvasW=Math.max(1,r.width);mapCanvasH=Math.max(1,r.height);canvas.width=Math.max(1,Math.floor(mapCanvasW*dpr));canvas.height=Math.max(1,Math.floor(mapCanvasH*dpr));canvas.style.width=mapCanvasW+"px";canvas.style.height=mapCanvasH+"px";ctx.setTransform(dpr,0,0,dpr,0,0)}
 function roleVisible(n){return roleFilter==="all"||n.role===roleFilter}
 function regionOf(n){if(!data)return "";return data.region_source==="neuropil"?(n.primary_neuropil||"").trim():(n.cell_class||n.super_class||"").trim()}
 function drawReference(w,h){
@@ -1505,20 +1507,19 @@ function renderInternalStates(){
 }
 function drawLearnedSynapses(w,h){
  if(!data||!showLearned)return;const learned=data.learned_synapses||{},rows=learned.edges||[];if(!rows.length)return;
- const nodes=new Map((data.nodes||[]).map(n=>[String(n.id),n])),maxD=Math.max(.000001,...rows.map(e=>Math.abs(Number(e.learned_delta||0))));
+ const maxD=Math.max(.000001,...rows.map(e=>Math.abs(Number(e.learned_delta||0))));
  ctx.save();ctx.globalCompositeOperation="source-over";
- for(const e of rows.slice(0,160)){const a=nodes.get(String(e.source))||e.source_position,b=nodes.get(String(e.target))||e.target_position;if(!a||!b)continue;const p1=point(a,w,h,26),p2=point(b,w,h,26),q=clamp(Math.abs(Number(e.learned_delta||0))/maxD,0,1),status=String(e.status||"fading"),tone=status==="consolidated"?"#55ead0":status==="fresh"?"#ffd166":"#ff77b7";
+ for(const e of rows.slice(0,120)){const a=mapNodeLookup.get(String(e.source))||e.source_position,b=mapNodeLookup.get(String(e.target))||e.target_position;if(!a||!b)continue;const p1=point(a,w,h,26),p2=point(b,w,h,26),q=clamp(Math.abs(Number(e.learned_delta||0))/maxD,0,1),status=String(e.status||"fading"),tone=status==="consolidated"?"#55ead0":status==="fresh"?"#ffd166":"#ff77b7";
   ctx.strokeStyle=tone;ctx.globalAlpha=status==="fading"?.12:(.18+q*.38);ctx.lineWidth=.45+q*1.45;ctx.setLineDash(status==="fading"?[2,5]:[]);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke()
  }
  ctx.setLineDash([]);ctx.globalAlpha=1;ctx.restore()
 }
 function drawSignalFlow(w,h){
  if(!data||!showFlow)return;const f=currentFlow();if(!f||!(f.edges||[]).length)return;
- const nodes=new Map((data.nodes||[]).map(n=>[String(n.id),n]));
  const edges=(f.edges||[]).map(e=>({
   e,
-  a:nodes.get(String(e.source))||e.source_position,
-  b:nodes.get(String(e.target))||e.target_position
+  a:mapNodeLookup.get(String(e.source))||e.source_position,
+  b:mapNodeLookup.get(String(e.target))||e.target_position
  })).filter(x=>x.a&&x.b);
  if(!edges.length)return;const maxC=Math.max(.000001,...edges.map(x=>Math.abs(Number(x.e.contribution||0)))),tone=actionColors[f.winner]||"#55ead0",phase=(performance.now()%1100)/1100;
  ctx.save();ctx.globalCompositeOperation="lighter";
@@ -1531,7 +1532,7 @@ function drawSignalFlow(w,h){
  const learning=(data.signal_flow&&data.signal_flow.learning||[]).slice(-1)[0]||null;
  if(learning){
   ctx.globalCompositeOperation="source-over";
-  for(const e of (learning.top_synapses||[]).slice(0,20)){const a=nodes.get(String(e.source))||e.source_position,b=nodes.get(String(e.target))||e.target_position;if(!a||!b)continue;const p1=point(a,w,h,26),p2=point(b,w,h,26),chg=Number(e.change||0);ctx.strokeStyle=chg>=0?"#ffd166":"#ff77b7";ctx.globalAlpha=.60;ctx.lineWidth=1.6;ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke()}
+  for(const e of (learning.top_synapses||[]).slice(0,16)){const a=mapNodeLookup.get(String(e.source))||e.source_position,b=mapNodeLookup.get(String(e.target))||e.target_position;if(!a||!b)continue;const p1=point(a,w,h,26),p2=point(b,w,h,26),chg=Number(e.change||0);ctx.strokeStyle=chg>=0?"#ffd166":"#ff77b7";ctx.globalAlpha=.60;ctx.lineWidth=1.6;ctx.setLineDash([2,3]);ctx.beginPath();ctx.moveTo(p1.x,p1.y);ctx.lineTo(p2.x,p2.y);ctx.stroke()}
  }
  ctx.setLineDash([]);ctx.globalAlpha=1;ctx.restore()
 }
@@ -1552,22 +1553,24 @@ function renderSignalFlow(){
  const learnHtml=learning?'<div class="learn-row"><b>Ostatnia plastyczność:</b> reward '+(Number(learning.amount||0)>=0?"+":"")+Number(learning.amount||0).toFixed(3)+' • '+nfmt(learning.changed_neurons)+' neuronów • '+nfmt(learning.changed_synapses)+' synaps'+((learning.top_synapses||[]).length?' • top Δ '+Number(learning.top_synapses[0].change||0).toExponential(2):'')+'</div>':'<div class="learn-row">Brak reward/punish od startu tej sesji.</div>';
  const learnedHtml='<div class="learn-row"><b>Learned synapses:</b> '+nfmt(learned.total||0)+' • <span style="color:#ffd166">FRESH '+nfmt(learned.fresh||0)+'</span> • <span style="color:#55ead0">CONSOLIDATED '+nfmt(learned.consolidated||0)+'</span> • <span style="color:#ff77b7">FADING '+nfmt(learned.fading||0)+'</span></div>';
  root.className="";root.innerHTML='<div class="signal-summary"><div><small>readout</small><b style="color:'+(actionColors[f.winner]||"#fff")+'">'+esc(f.winner||"—")+'</b></div><div><small>gain</small><b>'+Number(f.propagation_gain||0).toFixed(3)+'</b></div><div><small>edges</small><b>'+nfmt(edges.length)+'</b></div></div><div>'+cueHtml+'</div><div class="flow-note">'+esc(snap.method||"")+'</div><div class="signal-list" style="margin-top:8px">'+edgeHtml+'</div>'+learnHtml+learnedHtml+'<div class="effects"><small>Historia — kliknij, aby odtworzyć przepływ</small><div class="signal-list">'+histHtml+'</div></div>';
- root.querySelectorAll("[data-flow-tick]").forEach(el=>el.onclick=()=>{flowReplayTick=Number(el.dataset.flowTick);renderSignalFlow()})
+ root.querySelectorAll("[data-flow-tick]").forEach(el=>el.onclick=()=>{flowReplayTick=Number(el.dataset.flowTick);mapFlowFocus=flowNodeSet();renderSignalFlow()})
 }
 function drawNodes(w,h){
- if(!data)return;hover=null;const nodes=(data.nodes||[]);let maxA=.0001;for(const n of nodes)maxA=Math.max(maxA,Math.abs(Number(n.activation||0)));
- const focus=followDecision?flowNodeSet():null;
- for(const n of nodes){if(!roleVisible(n))continue;if(selectedRegion&&regionOf(n)!==selectedRegion)continue;const p=point(n,w,h,26),a=Math.abs(Number(n.activation||0)),q=clamp(a/maxA,0,1),hist=showTrail?(trail.get(n.id)||a):a,c=colors[n.role]||colors.internal,dim=followDecision&&focus&&focus.size&&!focus.has(String(n.id));
-  if(showTrail&&hist>a+.015){ctx.strokeStyle=c;ctx.globalAlpha=clamp(hist*.34,0,.28);ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.x,p.y,6+hist*24,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
-  ctx.shadowColor=c;ctx.shadowBlur=4+q*22;ctx.fillStyle=c;ctx.globalAlpha=dim?.10:(.25+q*.75);ctx.beginPath();ctx.arc(p.x,p.y,2.1+q*5.4,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;
-  if(n.decision_output){const f=currentFlow(),tone=actionColors[(f||{}).winner]||"#fff";ctx.strokeStyle=tone;ctx.lineWidth=1.5;ctx.globalAlpha=.85;ctx.beginPath();ctx.arc(p.x,p.y,9+q*6,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
-  if(!n.real_position){ctx.strokeStyle="rgba(255,209,102,.45)";ctx.lineWidth=.6;ctx.beginPath();ctx.arc(p.x,p.y,4+q*5.6,0,Math.PI*2);ctx.stroke()}
-  if(mouse.inside){const dx=mouse.x-p.x,dy=mouse.y-p.y;if(dx*dx+dy*dy<120)hover=n}
-  if(selected&&selected.id===n.id){ctx.strokeStyle="#fff";ctx.lineWidth=1.2;ctx.globalAlpha=.9;ctx.beginPath();ctx.arc(p.x,p.y,11+q*8,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
+ if(!data)return;hover=null;const nodes=(data.nodes||[]),focus=followDecision?mapFlowFocus:null;
+ for(const n of nodes){if(!roleVisible(n))continue;if(selectedRegion&&regionOf(n)!==selectedRegion)continue;const p=point(n,w,h,26),a=Math.abs(Number(n.activation||0)),q=clamp(a/mapMaxActivation,0,1),hist=showTrail?(trail.get(n.id)||a):a,c=colors[n.role]||colors.internal,dim=followDecision&&focus&&focus.size&&!focus.has(String(n.id));
+  if(showTrail&&hist>a+.02){ctx.strokeStyle=c;ctx.globalAlpha=clamp(hist*.28,0,.22);ctx.lineWidth=1;ctx.beginPath();ctx.arc(p.x,p.y,6+hist*20,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
+  const glow=!dim&&(q>.28||n.decision_output||selected&&selected.id===n.id);
+  ctx.shadowColor=c;ctx.shadowBlur=glow?4+q*10:0;ctx.fillStyle=c;ctx.globalAlpha=dim?.09:(.24+q*.72);ctx.beginPath();ctx.arc(p.x,p.y,2.0+q*5.0,0,Math.PI*2);ctx.fill();ctx.globalAlpha=1;ctx.shadowBlur=0;
+  if(n.decision_output){const f=currentFlow(),tone=actionColors[(f||{}).winner]||"#fff";ctx.strokeStyle=tone;ctx.lineWidth=1.4;ctx.globalAlpha=.82;ctx.beginPath();ctx.arc(p.x,p.y,9+q*5,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
+  if(!n.real_position){ctx.strokeStyle="rgba(255,209,102,.38)";ctx.lineWidth=.6;ctx.beginPath();ctx.arc(p.x,p.y,4+q*5.0,0,Math.PI*2);ctx.stroke()}
+  if(mouse.inside){const dx=mouse.x-p.x,dy=mouse.y-p.y;if(dx*dx+dy*dy<110)hover=n}
+  if(selected&&selected.id===n.id){ctx.strokeStyle="#fff";ctx.lineWidth=1.2;ctx.globalAlpha=.9;ctx.beginPath();ctx.arc(p.x,p.y,11+q*7,0,Math.PI*2);ctx.stroke();ctx.globalAlpha=1}
  }
 }
-function draw(){
- requestAnimationFrame(draw);const r=wrap.getBoundingClientRect(),w=r.width,h=r.height;ctx.clearRect(0,0,w,h);
+function draw(ts=0){
+ requestAnimationFrame(draw);
+ if(document.hidden||ts-mapLastFrameTs<NEUROMAP_FRAME_MS)return;
+ mapLastFrameTs=ts;const w=mapCanvasW,h=mapCanvasH;ctx.clearRect(0,0,w,h);
  const grad=ctx.createRadialGradient(w*.5,h*.5,20,w*.5,h*.5,Math.max(w,h)*.55);grad.addColorStop(0,"rgba(34,67,91,.07)");grad.addColorStop(1,"rgba(0,0,0,0)");ctx.fillStyle=grad;ctx.fillRect(0,0,w,h);
  drawReference(w,h);drawRegions(w,h);drawAttractors(w,h);drawLearnedSynapses(w,h);drawSignalFlow(w,h);drawNodes(w,h)
 }
@@ -1577,7 +1580,7 @@ function renderActions(scores){
  const best=order.map(k=>[k,Number(scores[k]||0)]).sort((a,b)=>b[1]-a[1])[0]||["—",0];$("dominant").textContent=best[0];$("dominant-score").textContent="score "+best[1].toFixed(3)
 }
 function sparkline(canvasEl,values){
- const r=canvasEl.getBoundingClientRect(),dpr=Math.min(2,window.devicePixelRatio||1);canvasEl.width=Math.max(1,Math.floor(r.width*dpr));canvasEl.height=Math.max(1,Math.floor(r.height*dpr));const c=canvasEl.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);const w=r.width,h=r.height;c.clearRect(0,0,w,h);
+ const r=canvasEl.getBoundingClientRect(),dpr=Math.min(1.5,window.devicePixelRatio||1);canvasEl.width=Math.max(1,Math.floor(r.width*dpr));canvasEl.height=Math.max(1,Math.floor(r.height*dpr));const c=canvasEl.getContext("2d");c.setTransform(dpr,0,0,dpr,0,0);const w=r.width,h=r.height;c.clearRect(0,0,w,h);
  if(!values||values.length<2)return;const min=Math.min(...values),max=Math.max(...values),span=Math.max(.000001,max-min);
  c.strokeStyle="rgba(85,234,208,.92)";c.lineWidth=1.4;c.shadowColor="rgba(85,234,208,.45)";c.shadowBlur=7;c.beginPath();
  values.forEach((v,i)=>{const x=i/(values.length-1)*w,y=h-5-((v-min)/span)*(h-10);if(i===0)c.moveTo(x,y);else c.lineTo(x,y)});c.stroke();c.shadowBlur=0
@@ -1639,10 +1642,10 @@ $("flow-btn").onclick=()=>{showFlow=!showFlow;$("flow-btn").classList.toggle("on
 $("learned-btn").onclick=()=>{showLearned=!showLearned;$("learned-btn").classList.toggle("on",showLearned)};
 $("attractor-btn").onclick=()=>{showAttractors=!showAttractors;$("attractor-btn").classList.toggle("on",showAttractors)};
 $("follow-btn").onclick=()=>{followDecision=!followDecision;$("follow-btn").classList.toggle("on",followDecision)};
-$("flow-live-btn").onclick=()=>{flowReplayTick=null;renderSignalFlow()};
+$("flow-live-btn").onclick=()=>{flowReplayTick=null;mapFlowFocus=flowNodeSet();renderSignalFlow()};
 
 function render(payload){
- const m=payload.brain_map||{};data=m;updateTrail();const scores=payload.scores||{};
+ const m=payload.brain_map||{};data=m;mapNodeLookup=new Map((m.nodes||[]).map(n=>[String(n.id),n]));mapMaxActivation=.0001;for(const n of (m.nodes||[]))mapMaxActivation=Math.max(mapMaxActivation,Math.abs(Number(n.activation||0)));mapFlowFocus=flowNodeSet();updateTrail();const scores=payload.scores||{};
  const coverage=Number(m.coordinate_coverage||0);$("coverage").textContent=(coverage*100).toFixed(1)+"%";$("coord-count").textContent=nfmt(m.coordinate_neurons)+" / "+nfmt(m.total_neurons)+" neurons";
  $("neuropil-coverage").textContent=(Number(m.neuropil_coverage||0)*100).toFixed(1)+"%";$("neuropil-count").textContent=nfmt(m.neuropil_labels)+" nazwanych neuropili";
  $("active").textContent=nfmt(m.active_abs_gt_0_1);
@@ -1654,10 +1657,14 @@ function render(payload){
  $("live").textContent="LIVE";lastFetch=Date.now()
 }
 async function update(){
+ if(mapUpdating||document.hidden)return;
+ mapUpdating=true;
  try{const r=await fetch("/api/neuromap?projection="+projection,{cache:"no-store"});if(r.status===401){location="/login";return}if(!r.ok)throw new Error("HTTP "+r.status);render(await r.json())}
  catch(e){$("live").textContent="ROZŁĄCZONO";console.error(e)}
+ finally{mapUpdating=false}
 }
-window.addEventListener("resize",resize);resize();draw();setInterval(update,1100);update();
+document.addEventListener("visibilitychange",()=>{if(!document.hidden){mapLastFrameTs=0;update()}});
+window.addEventListener("resize",resize);resize();draw();setInterval(update,1800);update();
 </script>
 </body></html>"""
 PUBLIC_OVERVIEW_HTML = r"""<!doctype html>
