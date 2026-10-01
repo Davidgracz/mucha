@@ -2523,3 +2523,86 @@ Kliknięcie neuronu z listy SUPPORT / OPPOSE otwiera ten sam Neuron Inspector.
 ## Coverage
 
 Dashboard zwiększa interaktywny snapshot z 220 do 320 neuronów i dodatkowo próbuje zachować wysoko aktywne neurony reprezentujące nazwane regiony, żeby drill-down region → neuron działał możliwie stabilnie.
+
+---
+
+# Stage 35 — Emergent Personality / Temperament
+
+Stage 35 dodaje Musze trwały temperament bez ręcznego ustawiania charakteru i bez bezpośrednich bonusów do action score.
+
+Każda cecha startuje neutralnie przy 0.50: SOCIABILITY, CURIOSITY, CAUTION, PERSISTENCE i EXPRESSIVENESS.
+
+Wartości przesuwają się bardzo wolno na podstawie realnej historii: powtarzających się zachowań, reward/punish, sukcesów i porażek działań oraz ukończonych lub porzuconych multi-step goals.
+
+## Cechy
+
+**SOCIABILITY** uczy się głównie z VOICE_JOIN, SPEAK i REACT oraz ich signed outcome'ów.
+
+**CURIOSITY** uczy się z EXPLORE, VOICE_MOVE i ich późniejszych outcome'ów.
+
+**CAUTION** silniej rośnie po negatywnych outcome'ach. Pozytywne doświadczenia mogą ją powoli obniżać.
+
+**PERSISTENCE** uczy się przede wszystkim z Stage 33: successful goal step, completed goal, failed goal step i abandoned goal.
+
+**EXPRESSIVENESS** powstaje z historii SPEAK / REACT i ich signed outcome'ów.
+
+## Uczenie
+
+Pipeline:
+
+    experience / outcome
+            ↓
+    signed evidence -1..+1
+            ↓
+    slow personality EMA
+            ↓
+    persistent trait value 0..1
+            ↓
+    confidence from observation count
+
+Domyślne ustawienia:
+
+    personality_enabled = true
+    personality_learning_rate = 0.03
+    personality_signal_gain = 0.18
+    personality_min_observations = 6
+
+personality_min_observations nie jest twardym progiem. Kontroluje, jak szybko rośnie confidence danej cechy.
+
+## Wpływ na mózg
+
+Personality nie wykonuje bezpośredniego score[action] += trait.
+
+Zamiast tego część cechy powyżej neutralnego 0.50 może zostać wyrażona neuronalnie:
+
+    persistent trait
+        × confidence
+        × personality_signal_gain
+            ↓
+    existing internal-state sensory entry
+            ↓
+    FAFB propagation
+            ↓
+    normal One Brain action_competition
+
+Przykładowe ścieżki:
+
+    SOCIABILITY → SOCIAL_NEED + AROUSAL
+    CURIOSITY → CURIOSITY + AROUSAL
+    CAUTION → STRESS + AROUSAL
+    PERSISTENCE → AROUSAL + CURIOSITY + SOCIAL_NEED
+    EXPRESSIVENESS → AROUSAL + SOCIAL_NEED
+
+Personality jest podawana jako sensory context we wszystkich decyzjach One Brain — autonomia, TEXT, REACT i TTS — ale finalny winner nadal pochodzi z propagacji FAFB i action_competition().
+
+## Persistence
+
+Do brain_state.npz zapisywane są personality_values i personality_observations. Po restarcie wyuczone cechy nie wracają do 0.50.
+
+## Dashboard
+
+Na /autonomy znajduje się panel Emergent Personality / Stage 35. Każda karta pokazuje aktualną wartość, confidence, liczbę obserwacji i neural expression.
+
+Panel pokazuje też dominującą cechę, ostatnią zmianę oraz aktywne sensory paths, np. SOCIABILITY → SOCIAL_NEED albo EXPRESSIVENESS → AROUSAL.
+
+W /config można zmieniać tempo uczenia i siłę neuronalnego wpływu, ale nie wpisuje się ręcznie wartości cech. Charakter ma powstawać z historii Muchy.
