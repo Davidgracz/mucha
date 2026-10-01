@@ -4467,6 +4467,120 @@ class FlyBrain:
                 96,
             )
 
+        # Stage 28: durable relationship chronology becomes sensory context.
+        # None of these cues writes directly into an action score.
+        history_observations = max(
+            0,
+            int(profile.get("history_observations", 0) or 0),
+        )
+        if history_observations > 0:
+            history_bucket = min(
+                7,
+                max(1, int(math.log2(history_observations)) + 1),
+            )
+            cue(
+                f"social:person-history:density:{history_bucket}",
+                base * min(
+                    1.0,
+                    0.16 + 0.11 * math.log1p(history_observations),
+                ),
+                88,
+            )
+
+        trend = str(
+            profile.get("relationship_trend") or "stable"
+        )
+        trend_delta = max(
+            -1.0,
+            min(
+                1.0,
+                float(profile.get("relationship_trend_delta", 0.0)),
+            ),
+        )
+        cue(
+            f"social:person-history:trend:{trend}",
+            base * (0.16 + 0.70 * abs(trend_delta)),
+            104,
+        )
+
+        recent_valence = max(
+            -1.0,
+            min(
+                1.0,
+                float(profile.get("recent_valence", 0.0)),
+            ),
+        )
+        if abs(recent_valence) >= 0.02:
+            recent_sign = (
+                "positive"
+                if recent_valence > 0.0
+                else "negative"
+            )
+            cue(
+                f"social:person-history:recent:{recent_sign}",
+                base * (0.18 + 0.72 * abs(recent_valence)),
+                112,
+            )
+
+        stability = max(
+            0.0,
+            min(
+                1.0,
+                float(profile.get("relationship_stability", 0.0)),
+            ),
+        )
+        stability_label = (
+            "stable"
+            if stability >= 0.70
+            else (
+                "variable"
+                if stability >= 0.35
+                else "volatile"
+            )
+        )
+        cue(
+            f"social:person-history:stability:{stability_label}",
+            base * (0.12 + 0.52 * stability),
+            88,
+        )
+
+        last_seen = float(profile.get("last_seen", 0.0) or 0.0)
+        if last_seen > 0.0:
+            age_seconds = max(0.0, time.time() - last_seen)
+            recency = math.exp(
+                -age_seconds / max(1.0, 7.0 * 86400.0)
+            )
+            cue(
+                "social:person-history:recent-contact",
+                base * (0.10 + 0.48 * recency),
+                80,
+            )
+
+        for row in list(profile.get("action_outcomes") or [])[:4]:
+            action = str(row.get("action") or "unknown")
+            mean_reward = max(
+                -1.0,
+                min(1.0, float(row.get("mean_reward", 0.0))),
+            )
+            action_obs = max(
+                0,
+                int(row.get("observations", 0) or 0),
+            )
+            if action_obs <= 0 or abs(mean_reward) < 0.02:
+                continue
+            sign = "positive" if mean_reward > 0.0 else "negative"
+            evidence = min(
+                1.0,
+                1.0 - math.exp(-action_obs / 4.0),
+            )
+            cue(
+                f"social:person-history:action-outcome:{action}:{sign}",
+                base
+                * (0.14 + 0.62 * abs(mean_reward))
+                * (0.45 + 0.55 * evidence),
+                104,
+            )
+
         if current_channel_id is not None:
             current_channel_id = int(current_channel_id)
             channel_match = next(
@@ -4513,6 +4627,18 @@ class FlyBrain:
             ),
             "social_observations": int(
                 profile.get("social_observations", 0)
+            ),
+            "history_observations": int(
+                profile.get("history_observations", 0)
+            ),
+            "recent_valence": float(
+                profile.get("recent_valence", 0.0)
+            ),
+            "relationship_trend": str(
+                profile.get("relationship_trend", "stable")
+            ),
+            "relationship_stability": float(
+                profile.get("relationship_stability", 0.0)
             ),
             "cue_count": len(cues),
             "cues": cues[:24],
