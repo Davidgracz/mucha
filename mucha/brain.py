@@ -179,12 +179,17 @@ class FlyBrain:
             "delta": 0.0,
         }
         self._internal_drive_values: dict[str, float] = {
+            drive: 0.0
+            for drive in self.INTERNAL_DRIVE_NAMES
+        }
+        self._internal_drive_values.update({
             "social_need": 0.18,
             "curiosity": 0.24,
             "exploration": 0.14,
             "caution": 0.08,
             "boredom": 0.12,
-        }
+            "fatigue": 0.0,
+        })
         self._internal_drive_last_tick = time.monotonic()
         self._internal_drive_last_event: dict = {
             "event": "startup",
