@@ -540,6 +540,14 @@ class MuchaClient(discord.Client):
             "intention_switch_margin",
             "intention_min_evidence",
             "intention_outcome_gain",
+            "goal_enabled",
+            "goal_signal_gain",
+            "goal_min_relief",
+            "goal_min_start_urgency",
+            "goal_success_progress",
+            "goal_max_age_seconds",
+            "goal_max_steps",
+            "goal_max_failed_steps",
             "action_policy_enabled",
             "action_policy_lr",
             "action_policy_max_bias",
@@ -930,6 +938,30 @@ class MuchaClient(discord.Client):
             ),
             ("brain", "intention_outcome_gain"): (
                 float, 0.0, 1.0
+            ),
+            ("brain", "goal_enabled"): (
+                bool, None, None
+            ),
+            ("brain", "goal_signal_gain"): (
+                float, 0.0, 2.0
+            ),
+            ("brain", "goal_min_relief"): (
+                float, 0.0, 1.0
+            ),
+            ("brain", "goal_min_start_urgency"): (
+                float, 0.0, 1.5
+            ),
+            ("brain", "goal_success_progress"): (
+                float, 0.05, 1.0
+            ),
+            ("brain", "goal_max_age_seconds"): (
+                float, 1.0, 604800.0
+            ),
+            ("brain", "goal_max_steps"): (
+                int, 1, 100
+            ),
+            ("brain", "goal_max_failed_steps"): (
+                int, 1, 50
             ),
             ("brain", "action_policy_enabled"): (
                 bool, None, None
@@ -8306,6 +8338,24 @@ class MuchaClient(discord.Client):
                 self._autonomous_candidate_debug[
                     "last_execution"
                 ] = dict(execution)
+                async with self._brain_lock:
+                    goal_state = self.brain.register_goal_step(
+                        str(autonomous_decision.get("action", "stay")),
+                        executed=bool(
+                            execution.get("executed", False)
+                        ),
+                        success=bool(
+                            execution.get("success", False)
+                        ),
+                        detail=str(execution.get("detail", "")),
+                    )
+                autonomous_decision["goal"] = dict(goal_state)
+                selected_plan["candidate_set"]["goal_state"] = dict(
+                    goal_state
+                )
+                self._autonomous_candidate_debug["goal_state"] = dict(
+                    goal_state
+                )
                 self._remember_autonomous_execution(
                     selected_plan,
                     autonomous_decision,
@@ -9323,6 +9373,7 @@ class MuchaClient(discord.Client):
             "affective_state": self.brain.affective_state_diagnostics(),
             "motivation_state": self.brain.motivation_state_diagnostics(),
             "intention_state": self.brain.intention_state_diagnostics(),
+            "goal_state": self.brain.goal_state_diagnostics(),
             "audio_debug": dict(self._audio_debug),
             "stt_debug": dict(self._stt_debug),
             "reaction_debug": reaction_debug,
