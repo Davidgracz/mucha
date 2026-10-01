@@ -1921,6 +1921,7 @@ class VoiceEpisodicMemory:
         channel_name: str = "",
         context: str = "",
         now: float | None = None,
+        prune: bool = True,
     ) -> None:
         if self.db is None:
             return
@@ -1950,17 +1951,18 @@ class VoiceEpisodicMemory:
                 str(context or ""),
             ),
         )
-        self.db.execute(
-            """
-            DELETE FROM person_interaction_history
-            WHERE id NOT IN (
-                SELECT id FROM person_interaction_history
-                ORDER BY id DESC
-                LIMIT ?
+        if prune:
+            self.db.execute(
+                """
+                DELETE FROM person_interaction_history
+                WHERE id NOT IN (
+                    SELECT id FROM person_interaction_history
+                    ORDER BY id DESC
+                    LIMIT ?
+                )
+                """,
+                (max(1000, self.max_persisted_events * 3),),
             )
-            """,
-            (max(1000, self.max_persisted_events * 3),),
-        )
         self._person_profile_cache.pop(user_id, None)
 
     def _person_history_rows(
@@ -2074,7 +2076,19 @@ class VoiceEpisodicMemory:
                     channel_name=str(channel_name or ""),
                     context=str(context or ""),
                     now=float(created_at),
+                    prune=False,
                 )
+        self.db.execute(
+            """
+            DELETE FROM person_interaction_history
+            WHERE id NOT IN (
+                SELECT id FROM person_interaction_history
+                ORDER BY id DESC
+                LIMIT ?
+            )
+            """,
+            (max(1000, self.max_persisted_events * 3),),
+        )
         self.db.commit()
 
     def observe_person_contact(
