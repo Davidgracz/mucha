@@ -119,6 +119,13 @@ const groups=[
   ["motivation_satiation_gain","Satiation → inhibition","number",0.05,0,1,"Jak mocno chwilowe nasycenie osłabia urgency."],
   ["motivation_neural_gain","Urgency → neural input","number",0.05,0,1.5,"Jak mocno urgency skaluje istniejące wejścia homeostatic drive do neuronalnych attractorów."]
  ]},
+ {id:"foresight",title:"Stage 31 — Internal foresight",desc:"Przed finalną konkurencją Mucha symuluje na kopii swojego stanu, które potrzeby każdy kandydat może rozładować. Symulacja nie zmienia live state i nie wybiera akcji bezpośrednio; jej wynik wraca jako sensory evidence do FAFB.",section:"brain",open:true,fields:[
+  ["foresight_enabled","Internal foresight","bool",0,0,0,"Włącza kontrfaktyczną symulację kandydatów Stage 31."],
+  ["foresight_drive_relief_scale","Skala przewidywanego reliefu","number",0.02,0,1,"Jak duży hipotetyczny spadek zgodnego drive może zasymulować jedna akcja."],
+  ["foresight_state_signal_gain","Relief → sensory signal","number",0.05,0,2,"Jak mocno przewidywana poprawa stanu wraca jako sensory evidence dla kandydata."],
+  ["foresight_base_confidence","Bazowa pewność modelu","number",0.05,0,1,"Pewność strukturalnej części symulacji przed uwzględnieniem historii rewardu."],
+  ["foresight_uncertainty_weight","Waga niepewności","number",0.05,0,1,"Ile niepewność historii rewardu wnosi do diagnostycznego risk." ]
+ ]},
  {id:"action-policy",title:"Learned Action Policy",desc:"Reward i punish uczą osobny bias każdej akcji. Connectome nadal daje surowy readout, a policy tylko przesuwa jego skuteczną wartość w ograniczonym zakresie.",section:"brain",open:true,fields:[
   ["action_policy_enabled","Learned action policy","bool",0,0,0,"Włącza trwałe uczenie preferencji akcji na podstawie reward/punish."],
   ["action_policy_lr","Policy learning rate","number",0.005,0,1,"Jak szybko reward zmienia bias wybranej akcji."],
@@ -1764,6 +1771,8 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
    <div class="summary"><small>Margin <span class="help" data-tip="Różnica wyniku finalnej konkurencji. Przy tie-break może być 0 mimo wybranego winnera.">?</span></small><strong id="margin">—</strong></div>
    <div class="summary"><small>Tie-break</small><strong id="tie-break">—</strong></div>
    <div class="summary"><small>Prediction source</small><strong id="prediction-source">—</strong></div>
+   <div class="summary"><small>Foresight winner <span class="help" data-tip="Diagnostyczny ranking kontrfaktycznej symulacji. Nie jest finalnym wyborem — finalny winner nadal pochodzi z FAFB competition.">?</span></small><strong id="foresight-winner">—</strong></div>
+   <div class="summary"><small>Foresight margin</small><strong id="foresight-margin">—</strong></div>
    <div class="summary"><small>NOOP retry <span class="help" data-tip="Jeżeli autonomia najpierw wybrała NOOP mimo wyraźnej niezaspokojonej potrzeby, One Brain może ponownie podać tę potrzebę do internal-state attractorów i jeszcze raz wykonać normalną konkurencję.">?</span></small><strong id="noop-retry">—</strong></div>
    <div class="summary"><small>External effect</small><strong id="external">—</strong></div>
   </div>
@@ -1779,7 +1788,7 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
   <div class="history" id="history"><div class="muted">Brak historii.</div></div>
  </div>
 </section>
-<div class="foot">Stage 25 One Brain + 24E • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
+<div class="foot">Stage 31 Foresight + Stage 30 Motivation + Stage 25 One Brain • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
 
 <script>
 const LIVE_REFRESH_MS=250;
@@ -1814,6 +1823,8 @@ function renderCandidates(row,decision){
  const winner=String(decision?.action||"");
  root.innerHTML=names.map(name=>{
    const x=rows[name]||{},pred=Number(x.predicted_reward||0),conf=Number(x.prediction_confidence||0),score=Number(x.effective_score||0);
+   const sim=x.foresight||{},relief=Number(sim.state_relief||0),risk=Number(sim.risk||0),forecast=Number(sim.forecast_value||0),simConf=Number(sim.simulation_confidence||0);
+   const driveChanges=Object.entries(sim.drive_changes||{}).filter(([k,v])=>Number(v.delta||0)<-0.0001).slice(0,3).map(([k,v])=>k+" "+(Number(v.delta||0)*100).toFixed(0)+"pp").join(" • ");
    const predCls=pred>0?"pos":pred<0?"neg":"";
    return '<div class="candidate '+(name===winner?"winner ":"")+(x.feasible===false?"disabled":"")+'">'+
      '<div><div class="action-name">'+(name===winner?'▶ ':'')+esc(displayAction(name))+'</div><div style="margin-top:5px">'+(name===winner?'<span class="pill win">WINNER</span> ':'')+'<span class="pill '+(x.feasible!==false?"ok":"no")+'">'+(x.feasible!==false?"FEASIBLE":"BLOCKED")+'</span></div></div>'+
@@ -1823,14 +1834,22 @@ function renderCandidates(row,decision){
      '<div class="metric"><small>state support</small><b>'+fmt(x.state_support)+'</b><div class="bar"><i style="width:'+pct(x.state_support)+'%"></i></div></div>'+
      '<div class="metric optional"><small>predicted reward <span class="help" data-tip="Nauczona prognoza rewardu w zakresie około -1..+1.">?</span></small><b class="'+(pred>0?"good":pred<0?"bad":"")+'">'+(pred>=0?"+":"")+fmt(pred)+'</b><div class="bar reward"><i class="'+predCls+'" style="width:'+signedWidth(pred)+'%"></i></div></div>'+
      '<div class="metric optional"><small>confidence</small><b>'+fmt(conf,2)+'</b><div class="bar"><i style="width:'+pct(conf)+'%"></i></div></div>'+
+     '<div class="metric optional"><small>foresight relief <span class="help" data-tip="Przewidywany spadek łącznej motivational urgency po hipotetycznym wykonaniu akcji. Symulacja nie zmienia live state.">?</span></small><b>'+fmt(relief,3)+'</b><div class="bar"><i style="width:'+pct(relief)+'%"></i></div></div>'+
+     '<div class="metric optional"><small>foresight risk</small><b class="'+(risk>.55?"bad":"")+'">'+fmt(risk,3)+'</b><div class="bar"><i style="width:'+pct(risk)+'%"></i></div></div>'+
+     '<div class="metric optional"><small>forecast / sim conf</small><b class="'+(forecast>0?"good":forecast<0?"bad":"")+'">'+(forecast>=0?"+":"")+fmt(forecast)+' / '+fmt(simConf,2)+'</b></div>'+
+     '<div class="reason optional">predicted drives: '+esc(driveChanges||"brak istotnego reliefu")+'</div>'+
    '</div>';
  }).join("");
 }
 function renderCues(decision){
- const cues=decision?.prediction_cues||{},root=$("cues"),entries=Object.entries(cues);
- if(!entries.length){root.innerHTML='<div class="muted" style="font-size:10px;margin-top:10px">Brak signed reward cue — prediction była neutralna albo confidence = 0.</div>';return}
- root.innerHTML='<div class="muted" style="font-size:10px">Prediction cues → sensory paths</div>'+entries.map(([action,x])=>
-   '<div class="cue"><b>'+esc(displayAction(action))+'</b><span>'+esc(x.mode||"sensory")+' • '+Number(x.neurons||0)+' neuronów • reach '+fmt(x.reach_max)+'</span><strong>'+fmt(x.magnitude)+'</strong></div>'
+ const rewardCues=decision?.prediction_cues||{},foresightCues=decision?.foresight_cues||{},root=$("cues");
+ const entries=[
+   ...Object.entries(rewardCues).map(([action,x])=>({action,x,kind:"reward"})),
+   ...Object.entries(foresightCues).map(([action,x])=>({action,x,kind:"foresight"}))
+ ];
+ if(!entries.length){root.innerHTML='<div class="muted" style="font-size:10px;margin-top:10px">Brak reward/foresight sensory cue w tej decyzji.</div>';return}
+ root.innerHTML='<div class="muted" style="font-size:10px">Prediction + foresight cues → sensory paths</div>'+entries.map(row=>
+   '<div class="cue"><b>'+esc(displayAction(row.action))+'</b><span>'+esc(row.kind.toUpperCase())+' • '+esc(row.x.mode||"sensory")+' • '+Number(row.x.neurons||0)+' neuronów • reach '+fmt(row.x.reach_max)+'</span><strong>'+fmt(row.x.magnitude)+'</strong></div>'
  ).join("");
 }
 function renderOneBrainHistory(items){
@@ -1890,6 +1909,9 @@ function render(payload){
  $("margin").textContent=rowSelected?fmt(rowComp.margin):"—";
  $("tie-break").textContent=rowSelected?(rowComp.tie_break||"—"):"—";
  $("prediction-source").textContent=rowSelected?(rowDecision.prediction_source||"—"):"—";
+ const foresight=rowDecision.foresight||row?.candidate_set?.foresight||{};
+ $("foresight-winner").textContent=rowSelected?displayAction(foresight.winner):"—";
+ $("foresight-margin").textContent=rowSelected?fmt(foresight.margin):"—";
  const retry=rowDecision.noop_reafference||{};
  $("noop-retry").textContent=rowSelected
    ?(retry.triggered
