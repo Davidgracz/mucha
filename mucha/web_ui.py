@@ -109,6 +109,16 @@ const groups=[
   ["internal_state_stress_gain","STRESS → propagation","number",0.01,0,1.5,"Jak mocno neuronalny STRESS zwiększa propagation gain i pobudzenie."],
   ["internal_state_satiety_stability_gain","SATIETY → stabilność","number",0.01,0,0.5,"Jak mocno neuronalny SATIETY zwiększa leak/stabilność stanu sieci."]
  ]},
+ {id:"motivation",title:"Stage 30 — Natural motivation",desc:"SOCIAL, NOVELTY, SAFETY i REST powstają z homeostatic drives oraz affectu. Frustracja rośnie przy długo niezaspokojonej potrzebie, a satiation chwilowo tłumi motyw po sukcesie. Urgency skaluje wyłącznie wejście drive → attractor → FAFB.",section:"brain",open:true,fields:[
+  ["motivation_enabled","Natural motivation","bool",0,0,0,"Włącza wspólny układ motywacyjny Stage 30."],
+  ["motivation_frustration_threshold","Próg frustracji","number",0.01,0,0.95,"Powyżej jakiego pressure niezaspokojony motyw zaczyna gromadzić frustrację."],
+  ["motivation_frustration_per_minute","Narastanie frustracji / min","number",0.005,0,1,"Tempo wzrostu frustracji przy utrzymującej się potrzebie."],
+  ["motivation_frustration_decay_per_minute","Spadek frustracji / min","number",0.005,0,1,"Tempo wygaszania frustracji, gdy pressure spadnie."],
+  ["motivation_satiation_decay_per_minute","Spadek satiation / min","number",0.005,0,1,"Jak szybko po zaspokojeniu potrzeba odzyskuje zdolność do ponownego motywowania."],
+  ["motivation_frustration_gain","Frustration → urgency","number",0.05,0,3,"Jak mocno skumulowana frustracja wzmacnia urgency."],
+  ["motivation_satiation_gain","Satiation → inhibition","number",0.05,0,1,"Jak mocno chwilowe nasycenie osłabia urgency."],
+  ["motivation_neural_gain","Urgency → neural input","number",0.05,0,1.5,"Jak mocno urgency skaluje istniejące wejścia homeostatic drive do neuronalnych attractorów."]
+ ]},
  {id:"action-policy",title:"Learned Action Policy",desc:"Reward i punish uczą osobny bias każdej akcji. Connectome nadal daje surowy readout, a policy tylko przesuwa jego skuteczną wartość w ograniczonym zakresie.",section:"brain",open:true,fields:[
   ["action_policy_enabled","Learned action policy","bool",0,0,0,"Włącza trwałe uczenie preferencji akcji na podstawie reward/punish."],
   ["action_policy_lr","Policy learning rate","number",0.005,0,1,"Jak szybko reward zmienia bias wybranej akcji."],
@@ -2458,6 +2468,12 @@ main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template
       <div class="learning-grid" id="affective-state-grid" style="grid-template-columns:repeat(5,minmax(0,1fr));margin-top:10px"></div>
     </div>
 
+    <div class="card span3 focus-card">
+      <h2>🔥 Natural Motivation / Stage 30 <span class="help-dot" data-help-key="motivation-state" tabindex="0">?</span></h2>
+      <div class="reason" id="motivation-summary">Czekam na pierwszy tick motywacji…</div>
+      <div class="learning-grid" id="motivation-state-grid" style="grid-template-columns:repeat(4,minmax(0,1fr));margin-top:10px"></div>
+    </div>
+
     <div class="section-heading" id="voice-section"><div><span class="section-no">02 / VOICE</span><h2>Voice i decyzje</h2><p>Najpierw decyzja, potem jej przyczyna: readouty, potrzeby, pamięć, reward i zagrożenia.</p></div></div>
 
     <div class="card span3 focus-card">
@@ -2743,6 +2759,7 @@ const HELP={
   "attention-score":{title:"Attention score",body:"Połączenie świeżości krótkotrwałego śladu z neuronalnym attention_score odczytanym z connectomu.",read:"Wyższy score = większa aktualna dominacja tego elementu w kontekście. To nie jest reward."},
   "action-policy":{title:"Learned Action Policy",body:"Warstwa ucząca się na reward/punish, która przesuwa efektywne readouty. Przy Connectome behavior competition SPEAK/REACT nie przechodzą już przez ręczny próg — konkurują ze STAY.",read:"raw = sam connectome, bias = doświadczenie, effective = raw po policy. W trybie competition patrz na winner/runner-up i margin. Progi są tylko legacy fallback."},
   "affective-state":{title:"Affective State / Stage 27",body:"Wolnozmienny stan afektywny wyliczany z realnej aktywności attractorów FAFB, homeostatic drives i reward trace. Nie jest osobnym systemem decyzji. Jego pamięć jest zapisywana w brain_state.npz i wraca jako delikatny sensory feedback do tych samych attractorów.",read:"value = utrwalony stan, target = to, do czego pcha go bieżąca aktywność neuronalna. CONTENTMENT, TENSION, CURIOSITY, SOCIAL_LONGING i ACTIVATION mogą utrzymywać się między eventami, ale każda akcja nadal wygrywa w One Brain."},
+  "motivation-state":{title:"Natural Motivation / Stage 30",body:"Cztery wspólne motywy — SOCIAL, NOVELTY, SAFETY i REST — łączą surowe homeostatic drives z wolnym affectem. Jeśli potrzeba długo pozostaje wysoka, rośnie frustration. Po zaspokojeniu rośnie satiation, która chwilowo tłumi ponowną presję.",read:"Pressure = bieżąca potrzeba. Frustration = historia niezaspokojenia. Satiation = chwilowe nasycenie po sukcesie. Urgency = wynik tych trzech. Urgency nie dodaje punktów do akcji; tylko skaluje drive sensory input do attractorów FAFB."},
   "brain-state":{title:"Stan connectomu",body:"Bieżąca aktywność całej sieci po bodźcach, propagacji, plastyczności i internal states. Stan nie resetuje się po każdym evencie.",read:"Globalna aktywność mówi jak mocno sieć pracuje, ale do konkretnej decyzji patrz na readouty."},
   "readout":{title:"Readout",body:"Wartość 0–1 z populacji neuronów wyjściowych przypisanej do akcji speak/react/join/move/leave/explore/stay.",read:"Najsilniejszy readout jest kandydatem. Wykonanie może być zablokowane przez cooldown, permissions albo warunki bezpieczeństwa."},
   "last-action":{title:"Faktyczna akcja",body:"Ostatnie zachowanie naprawdę wykonane przez bota, a nie sam zamiar connectomu.",read:"Porównaj ją z najsilniejszym readoutem i z polem 'powód decyzji'."},
@@ -3536,6 +3553,30 @@ function renderAffective(a){
       '<div class="footer">target '+(target*100).toFixed(0)+'% • Δ '+(delta>=0?"+":"")+(delta*100).toFixed(0)+' pp</div></div>';
   }).join("");
 }
+function renderMotivation(m){
+  m=m||{};
+  const rows=m.motivations||{};
+  const order=["social","novelty","safety","rest"];
+  const labels={social:"SOCIAL",novelty:"NOVELTY",safety:"SAFETY",rest:"REST"};
+  const dominant=String(m.dominant||"—");
+  const urgency=Number(m.dominant_urgency||0);
+  const last=m.last_event||{};
+  $("motivation-summary").innerHTML=
+    '<b>'+esc(dominant.toUpperCase())+'</b> • urgency '+(urgency*100).toFixed(0)+'%'+
+    ' • neural gain '+Number(m.neural_gain||0).toFixed(2)+
+    (last.event&&last.event!=="startup"?' • last '+esc(last.event):'');
+  $("motivation-state-grid").innerHTML=order.map(key=>{
+    const x=rows[key]||{};
+    const pressure=Math.max(0,Math.min(1,Number(x.pressure||0)));
+    const frustration=Math.max(0,Math.min(1,Number(x.frustration||0)));
+    const satiation=Math.max(0,Math.min(1,Number(x.satiation||0)));
+    const u=Math.max(0,Math.min(1.5,Number(x.urgency||0)));
+    return '<div class="kpi"><small>'+esc(labels[key]||key)+'</small>'+
+      '<strong>'+(u*100).toFixed(0)+'%</strong>'+
+      '<div class="track" style="margin-top:7px"><div class="fill" style="width:'+Math.min(100,u*100).toFixed(1)+'%"></div></div>'+
+      '<div class="footer">pressure '+(pressure*100).toFixed(0)+'% • frustration '+(frustration*100).toFixed(0)+'% • satiation '+(satiation*100).toFixed(0)+'%</div></div>';
+  }).join("");
+}
 function renderSleep(s){
   s=s||{};
   const state=String(s.state||"AWAKE");
@@ -4050,6 +4091,7 @@ async function update(){
     renderLearning(s.learning_debug||{});
     renderSleep(s.sleep||{});
     renderAffective(s.affective_state||{});
+    renderMotivation(s.motivation_state||{});
     renderLearningSinceStart(s.learning_since_start||{});
     renderSocialScenes(s.social_scene_profiles||[]);
     renderVoiceDynamicsProfiles(s.voice_dynamics_profiles||[]);
