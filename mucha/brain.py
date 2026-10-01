@@ -3702,6 +3702,21 @@ class FlyBrain:
 
         now_value = time.time()
         action = str(action)
+        if action == "stay":
+            self._record_goal_event({
+                "event": "paused",
+                "time": now_value,
+                "motivation": self._goal_motivation,
+                "progress": float(self._goal_progress),
+                "step_count": int(self._goal_step_count),
+                "failed_steps": int(self._goal_failed_steps),
+                "action": action,
+                "executed": bool(executed),
+                "success": bool(success),
+                "reason": str(detail or "NOOP while goal remains active"),
+            })
+            return self.goal_state_diagnostics()
+
         row = {
             "time": now_value,
             "index": int(self._goal_step_count + 1),
