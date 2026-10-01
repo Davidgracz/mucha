@@ -4,13 +4,16 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
 $ProjectRoot = (Resolve-Path (Join-Path $PSScriptRoot "..")).Path
 $LogPath = Join-Path $ProjectRoot "state\drive_backup.log"
 
 function Write-BackupLog {
     param([string]$Message)
+
     $line = "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss')  $Message"
     $dir = Split-Path -Parent $LogPath
+
     New-Item -ItemType Directory -Force -Path $dir | Out-Null
     Add-Content -LiteralPath $LogPath -Value $line -Encoding UTF8
     Write-Host $line
@@ -25,18 +28,19 @@ function Resolve-BackupDestination {
         return $env:MUCHA_BACKUP_DRIVE_DIR
     }
 
+    $polishDriveName = "M$([char]0x00F3)j dysk"
     $candidates = New-Object System.Collections.Generic.List[string]
 
     if ($env:USERPROFILE) {
         $candidates.Add((Join-Path $env:USERPROFILE "My Drive"))
-        $candidates.Add((Join-Path $env:USERPROFILE "Mój dysk"))
+        $candidates.Add((Join-Path $env:USERPROFILE $polishDriveName))
         $candidates.Add((Join-Path $env:USERPROFILE "Google Drive\My Drive"))
-        $candidates.Add((Join-Path $env:USERPROFILE "Google Drive\Mój dysk"))
+        $candidates.Add((Join-Path (Join-Path $env:USERPROFILE "Google Drive") $polishDriveName))
     }
 
     foreach ($drive in (Get-PSDrive -PSProvider FileSystem -ErrorAction SilentlyContinue)) {
         $candidates.Add((Join-Path $drive.Root "My Drive"))
-        $candidates.Add((Join-Path $drive.Root "Mój dysk"))
+        $candidates.Add((Join-Path $drive.Root $polishDriveName))
     }
 
     foreach ($candidate in ($candidates | Select-Object -Unique)) {
@@ -45,16 +49,7 @@ function Resolve-BackupDestination {
         }
     }
 
-    throw @"
-Nie znaleziono lokalnego folderu Google Drive.
-Zainstaluj Google Drive for desktop albo ustaw raz docelową ścieżkę:
-[Environment]::SetEnvironmentVariable(
-  'MUCHA_BACKUP_DRIVE_DIR',
-  'G:\My Drive\ChatGPT\Mucha\Backups',
-  'User'
-)
-Potem uruchom ten skrypt ponownie.
-"@
+    throw "Google Drive folder was not found. Set MUCHA_BACKUP_DRIVE_DIR to your local synchronized Backups folder."
 }
 
 try {
@@ -79,21 +74,24 @@ try {
     Write-BackupLog "START -> $TargetArchive"
 
     & $Python (Join-Path $ProjectRoot "tools\backup_learned_state.py") --output $TempArchive
+
     if ($LASTEXITCODE -ne 0) {
-        throw "backup_learned_state.py zakończył się kodem $LASTEXITCODE"
+        throw "backup_learned_state.py failed with exit code $LASTEXITCODE"
     }
 
     Copy-Item -LiteralPath $TempArchive -Destination $TargetArchive -Force
 
     $SourceHash = (Get-FileHash -LiteralPath $TempArchive -Algorithm SHA256).Hash
     $TargetHash = (Get-FileHash -LiteralPath $TargetArchive -Algorithm SHA256).Hash
+
     if ($SourceHash -ne $TargetHash) {
-        throw "SHA256 kopii na Drive nie zgadza się z lokalnym archiwum."
+        throw "SHA256 mismatch after copying backup to Google Drive."
     }
 
     Remove-Item -LiteralPath $TempArchive -Force -ErrorAction SilentlyContinue
 
     $Keep = [Math]::Max(3, $Keep)
+
     $OldBackups = Get-ChildItem -LiteralPath $BackupDestination -Filter "mucha_state_*.zip" -File |
         Sort-Object LastWriteTime -Descending |
         Select-Object -Skip $Keep
@@ -103,6 +101,7 @@ try {
     }
 
     $SizeMb = [Math]::Round((Get-Item -LiteralPath $TargetArchive).Length / 1MB, 2)
+
     Write-BackupLog "OK -> $FileName ($SizeMb MB), SHA256 $TargetHash"
     exit 0
 }
