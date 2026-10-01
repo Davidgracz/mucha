@@ -1960,7 +1960,7 @@ def main():
         assert "def _update_intention_from_decision" in brain_source
         assert "def register_intention_outcome" in brain_source
         assert "one-brain-intention:" in brain_source
-        assert "persistent-intent sensory guidance" in brain_source
+        assert "persistent-intent + multi-step-goal sensory guidance" in brain_source
         assert "intention_action_index" in brain_source
         assert "def goal_state_diagnostics" in brain_source
         assert "def _update_goal_from_decision" in brain_source
