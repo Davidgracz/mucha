@@ -526,9 +526,64 @@ state/language.sqlite3
 state/voice_episodes.sqlite3
 ```
 
-To właśnie te pliki zawierają dużą część indywidualnego doświadczenia konkretnej instancji Muchy.
+To właśnie te pliki zawierają dużą część indywidualnego doświadczenia konkretnej instancji Muchy:
+
+- `brain_state.npz` — trwały stan mózgu, plastic bias, learned synapses, konsolidacja, action policy i internal drives,
+- `language.sqlite3` — wyuczony język, skojarzenia, social learning i affinity,
+- `voice_episodes.sqlite3` — pamięć epizodyczna, prediction error, replay, osoby/miejsca/sytuacje i długoterminowe outcome.
 
 Dwie instancje uruchomione z osobnymi katalogami `state/` mogą z czasem wykształcić różne zachowania mimo identycznego kodu i bazowego connectome.
+
+## Automatyczny backup wyuczonego stanu
+
+Repo zawiera bezpieczny backup stanu do synchronizowanego Google Drive:
+
+```text
+tools/backup_learned_state.py
+tools/backup_state_to_drive.ps1
+tools/install_drive_backup_task.ps1
+```
+
+Backup nie kopiuje działających baz SQLite zwykłym `Copy-Item`. Dla `language.sqlite3` i `voice_episodes.sqlite3` używany jest `sqlite3.backup()`, więc archiwum jest spójne również wtedy, gdy Mucha działa.
+
+Archiwum zawiera tylko dane potrzebne do zachowania wyuczonego charakteru instancji:
+
+```text
+state/brain_state.npz
+state/language.sqlite3
+state/voice_episodes.sqlite3
+backup_manifest.json
+```
+
+Pliki `.env`, token Discorda, hasła i modele Whisper nie są kopiowane.
+
+Ręczny backup:
+
+```powershell
+.\tools\backup_state_to_drive.ps1
+```
+
+Instalacja automatycznego zadania Windows co 6 godzin:
+
+```powershell
+.\tools\install_drive_backup_task.ps1
+```
+
+Skrypt próbuje automatycznie znaleźć Google Drive for desktop. Jeżeli folder synchronizowany jest w niestandardowym miejscu, ustaw go raz:
+
+```powershell
+[Environment]::SetEnvironmentVariable(
+  "MUCHA_BACKUP_DRIVE_DIR",
+  "G:\My Drive\ChatGPT\Mucha\Backups",
+  "User"
+)
+```
+
+Domyślnie zachowywanych jest 40 najnowszych archiwów. Każda kopia ma manifest i sumę SHA-256, a wynik wykonywania jest dopisywany do:
+
+```text
+state/drive_backup.log
+```
 
 ---
 
