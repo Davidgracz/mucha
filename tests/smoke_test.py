@@ -299,8 +299,47 @@ def main():
         assert "foresight" in one_brain_decision
         assert "foresight_cues" in one_brain_decision
         assert one_brain_decision["source"].startswith(
-            "one-brain learned-reward + counterfactual-state sensory"
+            "one-brain learned-reward + counterfactual-state + "
+            "persistent-intent sensory"
         )
+        assert "intention" in one_brain_decision
+        assert "intention_cue" in one_brain_decision
+
+        intention = b._update_intention_from_decision(
+            "speak",
+            competition={
+                "action": "speak",
+                "candidates": {
+                    "speak": 0.90,
+                    "stay": 0.20,
+                },
+            },
+            foresight={
+                "simulations": {
+                    "speak": {
+                        "state_relief": 0.50,
+                        "simulation_confidence": 0.80,
+                    },
+                },
+            },
+            rows={
+                "speak": {
+                    "predicted_reward": 0.40,
+                    "prediction_confidence": 0.80,
+                },
+            },
+            decision_context="autonomous-idle",
+        )
+        assert intention["active"] is True
+        assert intention["action"] == "speak"
+        assert intention["strength"] > 0.0
+        reinforced = b.register_intention_outcome("speak", 0.5)
+        assert reinforced["matched"] is True
+        assert reinforced["after"] >= reinforced["before"]
+        punished = b.register_intention_outcome("speak", -1.0)
+        assert punished["matched"] is True
+        assert punished["cleared"] is True
+        assert b.intention_state_diagnostics()["active"] is False
 
         unobserved_reward = b.action_reward_prediction("speak")
         assert unobserved_reward["predicted_reward"] == 0.0
@@ -417,10 +456,13 @@ def main():
             autonomous_rewarded["candidate_actions"]
         )
         assert isinstance(autonomous_decision["foresight_cues"], dict)
+        assert "intention" in autonomous_decision
+        assert "intention_cue" in autonomous_decision
         assert (
             autonomous_decision["source"]
-            == "one-brain learned-reward + counterfactual-state sensory "
-            "guidance -> FAFB propagation -> connectome action competition"
+            == "one-brain learned-reward + counterfactual-state + "
+            "persistent-intent sensory guidance -> FAFB propagation -> "
+            "connectome action competition"
         )
         assert autonomous_decision["decision_context"] == "autonomous-idle"
 
@@ -1700,6 +1742,10 @@ def main():
         assert "motivation_frustration_threshold" in CONFIG_HTML
         assert "Stage 31 — Internal foresight" in CONFIG_HTML
         assert "foresight_drive_relief_scale" in CONFIG_HTML
+        assert "Stage 32 — Persistent intent" in CONFIG_HTML
+        assert "intention_signal_gain" in CONFIG_HTML
+        assert 'id="active-intent"' in AUTONOMY_HTML
+        assert 'id="intent-strength"' in AUTONOMY_HTML
         assert "Credit queue" in HTML
         assert "SIGNAL FLOW" in NEUROMAP_HTML
         assert "FOLLOW DECISION" in NEUROMAP_HTML
@@ -1785,6 +1831,14 @@ def main():
             "foresight_state_signal_gain",
             "foresight_base_confidence",
             "foresight_uncertainty_weight",
+            "intention_enabled",
+            "intention_half_life_seconds",
+            "intention_max_age_seconds",
+            "intention_signal_gain",
+            "intention_reinforcement_gain",
+            "intention_switch_margin",
+            "intention_min_evidence",
+            "intention_outcome_gain",
         ):
             assert key in config_source
             assert key in config_toml_source
@@ -1823,6 +1877,12 @@ def main():
         assert "one-brain-foresight-state:" in brain_source
         assert "foresight_cues" in brain_source
         assert "Stage-31 counterfactual foresight" in brain_source
+        assert "def intention_state_diagnostics" in brain_source
+        assert "def _update_intention_from_decision" in brain_source
+        assert "def register_intention_outcome" in brain_source
+        assert "one-brain-intention:" in brain_source
+        assert "persistent-intent sensory guidance" in brain_source
+        assert "intention_action_index" in brain_source
         assert "value - represented" in brain_source
         assert "one-brain:noop-reafference:" in brain_source
         assert "context_selection_score" in brain_source
