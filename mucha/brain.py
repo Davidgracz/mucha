@@ -33,6 +33,7 @@ class FlyBrain:
         "exploration",
         "caution",
         "boredom",
+        "fatigue",
     )
     INTERNAL_DRIVE_STATE_MAP = {
         # Social isolation should be able to motivate either joining voice or
@@ -56,6 +57,13 @@ class FlyBrain:
             ("curiosity", 0.45),
             ("arousal", 0.35),
             ("social_need", 0.20),
+        ),
+        # Stage 26: fatigue is a persistent homeostatic drive. It does not
+        # choose an action directly; it excites existing FAFB attractors that
+        # already support rest/stay or disengagement/movement.
+        "fatigue": (
+            ("satiety", 0.65),
+            ("stress", 0.35),
         ),
     }
 
@@ -1894,6 +1902,22 @@ class FlyBrain:
             * minutes
         )
 
+        if bool(self.cfg.circadian_enabled):
+            fatigue_gain = float(
+                self.cfg.circadian_fatigue_per_minute
+            )
+            if external_stimulation:
+                fatigue_gain += float(
+                    self.cfg.circadian_activity_fatigue_per_minute
+                )
+            if social_contact:
+                fatigue_gain += 0.5 * float(
+                    self.cfg.circadian_activity_fatigue_per_minute
+                )
+            values["fatigue"] = self._clip_internal_drive(
+                values["fatigue"] + fatigue_gain * minutes
+            )
+
         if external_stimulation:
             values["boredom"] = self._clip_internal_drive(
                 values["boredom"] - 0.18 * minutes
@@ -1976,6 +2000,9 @@ class FlyBrain:
             "rest": {
                 "caution": -0.08,
                 "exploration": -0.06,
+                "fatigue": -float(
+                    self.cfg.circadian_sleep_recovery_per_cycle
+                ),
             },
         }
         selected = effects.get(event, {})
@@ -2017,6 +2044,11 @@ class FlyBrain:
                 for name in self.INTERNAL_DRIVE_NAMES
             },
         }
+
+    def internal_drive_value(self, drive: str) -> float:
+        return float(
+            self._internal_drive_values.get(str(drive), 0.0)
+        )
 
     def internal_drive_diagnostics(self) -> dict:
         neural_states = self._internal_state_levels()
@@ -2872,14 +2904,15 @@ class FlyBrain:
                 data["internal_drive_values"],
                 dtype=np.float32,
             ).ravel()
-            if len(values) == len(self.INTERNAL_DRIVE_NAMES):
-                for drive, value in zip(
-                    self.INTERNAL_DRIVE_NAMES,
-                    values,
-                ):
-                    self._internal_drive_values[drive] = (
-                        self._clip_internal_drive(float(value))
-                    )
+            # Backward compatible with pre-Stage-26 state files that contain
+            # five drives and no persisted fatigue value.
+            for drive, value in zip(
+                self.INTERNAL_DRIVE_NAMES,
+                values,
+            ):
+                self._internal_drive_values[drive] = (
+                    self._clip_internal_drive(float(value))
+                )
 
     def save(self) -> None:
         p = self.cfg.state_file
