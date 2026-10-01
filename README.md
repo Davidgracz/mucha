@@ -2032,3 +2032,88 @@ Dopiero potem sygnał propaguje się przez connectome i uczestniczy w One Brain.
 Dashboard `/details` pokazuje teraz chronologię miejsca, recent valence, trend, stability, recent occupancy, wiek miejsca i historyczne outcome akcji.
 
 Nowa tabela jest częścią `voice_episodes.sqlite3`, więc istniejący automatyczny backup Google Drive zabezpiecza ją bez dodatkowej konfiguracji.
+
+
+---
+
+# Stage 30 — Natural Drives and Motivation
+
+Stage 30 łączy pojedyncze homeostatic drives w cztery wspólne motywy:
+
+```text
+SOCIAL
+NOVELTY
+SAFETY
+REST
+```
+
+Motywy nie są nowymi akcjami i nie dodają punktów bezpośrednio do `SPEAK`, `VOICE_JOIN`, `VOICE_MOVE`, `EXPLORE` ani `STAY`.
+
+Pipeline:
+
+```text
+homeostatic drives
++ slow affect
+      ↓
+motivation pressure
+      ↓
+frustration / satiation
+      ↓
+urgency
+      ↓
+skalowanie istniejących drive sensory inputs
+      ↓
+internal-state attractors
+      ↓
+FAFB propagation
+      ↓
+One Brain
+```
+
+## Motywy
+
+`SOCIAL` korzysta głównie z `social_need`, części `boredom` i `social_longing`.
+
+`NOVELTY` korzysta z `curiosity`, `exploration`, `boredom` oraz affective curiosity/activation.
+
+`SAFETY` korzysta z `caution` oraz `tension`.
+
+`REST` korzysta z `fatigue`.
+
+## Pressure, frustration i satiation
+
+Każdy motyw ma trzy ważne składniki:
+
+- **pressure** — aktualna potrzeba wynikająca z drives i affectu,
+- **frustration** — rośnie, gdy pressure długo pozostaje powyżej progu bez zaspokojenia,
+- **satiation** — rośnie po realnym zaspokojeniu potrzeby i z czasem zanika.
+
+Urgency powstaje z tych trzech wartości. Wysoka frustracja wzmacnia urgency, a wysokie satiation chwilowo ją tłumi.
+
+Przykładowe zdarzenia:
+
+```text
+social_contact / social_success → SOCIAL satiation
+novelty / exploration_complete → NOVELTY satiation
+threat / negative_reward → SAFETY frustration
+rest → REST satiation
+```
+
+Frustration i satiation są zapisywane w `state/brain_state.npz`, więc stan motywacyjny przeżywa restart.
+
+Nowe ustawienia:
+
+```toml
+motivation_enabled = true
+motivation_frustration_threshold = 0.42
+motivation_frustration_per_minute = 0.035
+motivation_frustration_decay_per_minute = 0.08
+motivation_satiation_decay_per_minute = 0.10
+motivation_frustration_gain = 0.60
+motivation_satiation_gain = 0.70
+motivation_neural_gain = 0.55
+```
+
+Dashboard `/details` pokazuje dla każdego motywu pressure, frustration, satiation i finalne urgency. Te same parametry są dostępne w edytorze konfiguracji.
+
+Stage 30 współpracuje z mechanizmem NOOP anti-lock: przy autonomii `drive_support` jest teraz liczony z uwzględnieniem aktualnej motywacyjnej urgency, więc drugi neuronalny przebieg po NOOP bierze pod uwagę nie tylko surową wartość drive, ale również historię niezaspokojenia i chwilowe nasycenie.
