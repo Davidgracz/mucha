@@ -1907,6 +1907,101 @@ class VoiceEpisodicMemory:
         )
         return rows[:limit]
 
+    def _record_person_history(
+        self,
+        user_id: int,
+        *,
+        kind: str,
+        source: str = "",
+        action: str = "",
+        amount: float = 0.0,
+        user_name: str = "",
+        guild_id: int | None = None,
+        channel_id: int | None = None,
+        channel_name: str = "",
+        context: str = "",
+        now: float | None = None,
+    ) -> None:
+        if self.db is None:
+            return
+        user_id = int(user_id)
+        if user_id <= 0:
+            return
+        created_at = float(time.time() if now is None else now)
+        self.db.execute(
+            """
+            INSERT INTO person_interaction_history(
+                created_at, user_id, user_name, kind, source,
+                action, amount, guild_id, channel_id,
+                channel_name, context
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                created_at,
+                user_id,
+                str(user_name or ""),
+                str(kind or "event"),
+                str(source or ""),
+                str(action or ""),
+                max(-1.0, min(1.0, float(amount))),
+                int(guild_id) if guild_id is not None else None,
+                int(channel_id) if channel_id is not None else None,
+                str(channel_name or ""),
+                str(context or ""),
+            ),
+        )
+        self.db.execute(
+            """
+            DELETE FROM person_interaction_history
+            WHERE id NOT IN (
+                SELECT id FROM person_interaction_history
+                ORDER BY id DESC
+                LIMIT ?
+            )
+            """,
+            (max(1000, self.max_persisted_events * 3),),
+        )
+        self._person_profile_cache.pop(user_id, None)
+
+    def _person_history_rows(
+        self,
+        user_id: int,
+        limit: int = 48,
+    ) -> list[dict]:
+        if self.db is None:
+            return []
+        limit = max(1, min(200, int(limit)))
+        rows = self.db.execute(
+            """
+            SELECT created_at, user_name, kind, source, action,
+                   amount, guild_id, channel_id, channel_name, context
+            FROM person_interaction_history
+            WHERE user_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (int(user_id), limit),
+        ).fetchall()
+        return [
+            {
+                "time": float(row[0]),
+                "user_name": str(row[1] or ""),
+                "kind": str(row[2] or ""),
+                "source": str(row[3] or ""),
+                "action": str(row[4] or ""),
+                "amount": float(row[5] or 0.0),
+                "guild_id": (
+                    int(row[6]) if row[6] is not None else None
+                ),
+                "channel_id": (
+                    int(row[7]) if row[7] is not None else None
+                ),
+                "channel_name": str(row[8] or ""),
+                "context": str(row[9] or ""),
+            }
+            for row in rows
+        ]
+
     def observe_person_contact(
         self,
         user_id: int,
@@ -1922,13 +2017,21 @@ class VoiceEpisodicMemory:
         user_id = int(user_id)
         if user_id <= 0 or not self.semantic_memory_enabled:
             return {}
+        event_time = float(time.time() if now is None else now)
         result = self._update_semantic_entry(
             concept_type="person_contact",
             concept_key=str(user_id),
             action=str(source or "unknown"),
             actual_reward=0.0,
-            now=float(time.time() if now is None else now),
+            now=event_time,
             persist=True,
+        )
+        self._record_person_history(
+            user_id,
+            kind="contact",
+            source=str(source or "unknown"),
+            amount=0.0,
+            now=event_time,
         )
         if self.db is not None:
             self.db.commit()
@@ -1946,13 +2049,23 @@ class VoiceEpisodicMemory:
         user_id = int(user_id)
         if user_id <= 0 or not self.semantic_memory_enabled:
             return {}
+        event_time = float(time.time() if now is None else now)
+        signed_amount = max(-1.0, min(1.0, float(amount)))
         result = self._update_semantic_entry(
             concept_type="person_social",
             concept_key=str(user_id),
             action=str(event or "social"),
-            actual_reward=max(-1.0, min(1.0, float(amount))),
-            now=float(time.time() if now is None else now),
+            actual_reward=signed_amount,
+            now=event_time,
             persist=True,
+        )
+        self._record_person_history(
+            user_id,
+            kind="social",
+            source=str(event or "social"),
+            action=str(event or "social"),
+            amount=signed_amount,
+            now=event_time,
         )
         if self.db is not None:
             self.db.commit()
@@ -2504,6 +2617,24 @@ class VoiceEpisodicMemory:
 
             CREATE INDEX IF NOT EXISTS idx_voice_semantic_strength
             ON voice_semantic_memory(observations DESC, updated_at DESC);
+
+            CREATE TABLE IF NOT EXISTS person_interaction_history(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at REAL NOT NULL,
+                user_id INTEGER NOT NULL,
+                user_name TEXT NOT NULL DEFAULT '',
+                kind TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT '',
+                action TEXT NOT NULL DEFAULT '',
+                amount REAL NOT NULL DEFAULT 0,
+                guild_id INTEGER,
+                channel_id INTEGER,
+                channel_name TEXT NOT NULL DEFAULT '',
+                context TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_person_history_user_time
+            ON person_interaction_history(user_id, created_at DESC);
             """
         )
         self.db.commit()
@@ -3359,6 +3490,25 @@ class VoiceEpisodicMemory:
                 """,
                 (self.max_persisted_events,),
             )
+            for pos, user_id in enumerate(episode.user_ids):
+                user_name = (
+                    episode.user_names[pos]
+                    if pos < len(episode.user_names)
+                    else ""
+                )
+                self._record_person_history(
+                    int(user_id),
+                    kind="episode",
+                    source=episode.source,
+                    action=episode.action,
+                    amount=episode.actual_reward,
+                    user_name=str(user_name),
+                    guild_id=episode.guild_id,
+                    channel_id=episode.channel_id,
+                    channel_name=episode.channel_name,
+                    context=episode.context,
+                    now=episode.time,
+                )
             self.db.commit()
 
         return {
