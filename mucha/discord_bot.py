@@ -548,6 +548,10 @@ class MuchaClient(discord.Client):
             "goal_max_age_seconds",
             "goal_max_steps",
             "goal_max_failed_steps",
+            "personality_enabled",
+            "personality_learning_rate",
+            "personality_signal_gain",
+            "personality_min_observations",
             "action_policy_enabled",
             "action_policy_lr",
             "action_policy_max_bias",
@@ -962,6 +966,18 @@ class MuchaClient(discord.Client):
             ),
             ("brain", "goal_max_failed_steps"): (
                 int, 1, 50
+            ),
+            ("brain", "personality_enabled"): (
+                bool, None, None
+            ),
+            ("brain", "personality_learning_rate"): (
+                float, 0.0001, 0.5
+            ),
+            ("brain", "personality_signal_gain"): (
+                float, 0.0, 1.5
+            ),
+            ("brain", "personality_min_observations"): (
+                int, 1, 1000
             ),
             ("brain", "action_policy_enabled"): (
                 bool, None, None
@@ -8350,8 +8366,19 @@ class MuchaClient(discord.Client):
                         detail=str(execution.get("detail", "")),
                     )
                 autonomous_decision["goal"] = dict(goal_state)
+                personality_state = self.brain.register_personality_action(
+                    str(autonomous_decision.get("action", "stay")),
+                    executed=bool(execution.get("executed", False)),
+                    success=bool(execution.get("success", False)),
+                )
+                autonomous_decision["personality"] = dict(
+                    personality_state
+                )
                 selected_plan["candidate_set"]["goal_state"] = dict(
                     goal_state
+                )
+                selected_plan["candidate_set"]["personality_state"] = dict(
+                    personality_state
                 )
                 self._autonomous_candidate_debug["goal_state"] = dict(
                     goal_state
@@ -9374,6 +9401,7 @@ class MuchaClient(discord.Client):
             "motivation_state": self.brain.motivation_state_diagnostics(),
             "intention_state": self.brain.intention_state_diagnostics(),
             "goal_state": self.brain.goal_state_diagnostics(),
+            "personality_state": self.brain.personality_state_diagnostics(),
             "audio_debug": dict(self._audio_debug),
             "stt_debug": dict(self._stt_debug),
             "reaction_debug": reaction_debug,
