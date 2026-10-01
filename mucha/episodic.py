@@ -1461,6 +1461,201 @@ class VoiceEpisodicMemory:
             "concepts": rows,
         }
 
+    def _record_channel_history(
+        self,
+        channel_id: int,
+        *,
+        channel_name: str = "",
+        kind: str,
+        source: str = "",
+        action: str = "",
+        amount: float = 0.0,
+        human_count: int = 0,
+        user_ids: list[int] | tuple[int, ...] = (),
+        conversation_mode: str = "",
+        intensity: float = 0.0,
+        speech_ratio: float = 0.0,
+        context: str = "",
+        now: float | None = None,
+        prune: bool = True,
+    ) -> None:
+        if self.db is None:
+            return
+        channel_id = int(channel_id)
+        if channel_id <= 0:
+            return
+        created_at = float(time.time() if now is None else now)
+        clean_users = sorted(set(
+            int(x) for x in user_ids if int(x) > 0
+        ))
+        self.db.execute(
+            """
+            INSERT INTO channel_interaction_history(
+                created_at, channel_id, channel_name, kind, source,
+                action, amount, human_count, user_ids_json,
+                conversation_mode, intensity, speech_ratio, context
+            ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
+            """,
+            (
+                created_at,
+                channel_id,
+                str(channel_name or ""),
+                str(kind or "event"),
+                str(source or ""),
+                str(action or ""),
+                max(-1.0, min(1.0, float(amount))),
+                max(0, int(human_count)),
+                json.dumps(clean_users),
+                str(conversation_mode or ""),
+                max(0.0, min(1.0, float(intensity))),
+                max(0.0, min(1.0, float(speech_ratio))),
+                str(context or ""),
+            ),
+        )
+        if prune:
+            self.db.execute(
+                """
+                DELETE FROM channel_interaction_history
+                WHERE id NOT IN (
+                    SELECT id FROM channel_interaction_history
+                    ORDER BY id DESC
+                    LIMIT ?
+                )
+                """,
+                (max(1000, self.max_persisted_events * 3),),
+            )
+        self._channel_profile_cache.pop(channel_id, None)
+
+    def _channel_history_rows(
+        self,
+        channel_id: int,
+        limit: int = 64,
+    ) -> list[dict]:
+        if self.db is None:
+            return []
+        limit = max(1, min(200, int(limit)))
+        rows = self.db.execute(
+            """
+            SELECT created_at, channel_name, kind, source, action,
+                   amount, human_count, user_ids_json,
+                   conversation_mode, intensity, speech_ratio, context
+            FROM channel_interaction_history
+            WHERE channel_id = ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (int(channel_id), limit),
+        ).fetchall()
+        result = []
+        for row in rows:
+            try:
+                user_ids = [
+                    int(x)
+                    for x in json.loads(row[7] or "[]")
+                ]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                user_ids = []
+            result.append({
+                "time": float(row[0]),
+                "channel_name": str(row[1] or ""),
+                "kind": str(row[2] or ""),
+                "source": str(row[3] or ""),
+                "action": str(row[4] or ""),
+                "amount": float(row[5] or 0.0),
+                "human_count": int(row[6] or 0),
+                "user_ids": user_ids,
+                "conversation_mode": str(row[8] or ""),
+                "intensity": float(row[9] or 0.0),
+                "speech_ratio": float(row[10] or 0.0),
+                "context": str(row[11] or ""),
+            })
+        return result
+
+    def _channel_history_summary(self, channel_id: int) -> dict:
+        if self.db is None:
+            return {
+                "observations": 0,
+                "first_seen": 0.0,
+                "last_seen": 0.0,
+            }
+        row = self.db.execute(
+            """
+            SELECT COUNT(*), MIN(created_at), MAX(created_at)
+            FROM channel_interaction_history
+            WHERE channel_id = ?
+            """,
+            (int(channel_id),),
+        ).fetchone()
+        return {
+            "observations": int(row[0] or 0),
+            "first_seen": float(row[1] or 0.0),
+            "last_seen": float(row[2] or 0.0),
+        }
+
+    def _backfill_channel_history_from_db(self) -> None:
+        """Seed Stage 29 place chronology from persisted voice episodes."""
+        if self.db is None:
+            return
+        existing = int(
+            self.db.execute(
+                "SELECT COUNT(*) FROM channel_interaction_history"
+            ).fetchone()[0]
+        )
+        if existing > 0:
+            return
+        rows = self.db.execute(
+            """
+            SELECT created_at, channel_id, channel_name,
+                   user_ids_json, context, action,
+                   actual_reward, source
+            FROM voice_episodes
+            WHERE channel_id IS NOT NULL
+            ORDER BY id ASC
+            """
+        ).fetchall()
+        for (
+            created_at,
+            channel_id,
+            channel_name,
+            user_ids_json,
+            context,
+            action,
+            actual_reward,
+            source,
+        ) in rows:
+            try:
+                user_ids = [
+                    int(x)
+                    for x in json.loads(user_ids_json or "[]")
+                ]
+            except (TypeError, ValueError, json.JSONDecodeError):
+                user_ids = []
+            self._record_channel_history(
+                int(channel_id),
+                channel_name=str(channel_name or ""),
+                kind="episode",
+                source=str(source or ""),
+                action=str(action or ""),
+                amount=float(actual_reward or 0.0),
+                human_count=len(user_ids),
+                user_ids=user_ids,
+                context=str(context or ""),
+                now=float(created_at),
+                prune=False,
+            )
+        self.db.execute(
+            """
+            DELETE FROM channel_interaction_history
+            WHERE id NOT IN (
+                SELECT id FROM channel_interaction_history
+                ORDER BY id DESC
+                LIMIT ?
+            )
+            """,
+            (max(1000, self.max_persisted_events * 3),),
+        )
+        self.db.commit()
+
     def observe_channel_visit(
         self,
         channel_id: int,
@@ -1495,9 +1690,10 @@ class VoiceEpisodicMemory:
                 now=now_value,
                 persist=True,
             )
-        for user_id in sorted(set(int(x) for x in user_ids)):
-            if user_id <= 0:
-                continue
+        clean_users = sorted(set(
+            int(x) for x in user_ids if int(x) > 0
+        ))
+        for user_id in clean_users:
             self._update_semantic_entry(
                 concept_type="channel_people",
                 concept_key=channel_key,
@@ -1506,6 +1702,15 @@ class VoiceEpisodicMemory:
                 now=now_value,
                 persist=True,
             )
+        self._record_channel_history(
+            channel_id,
+            channel_name=clean_name,
+            kind="visit",
+            source=str(source or "visit"),
+            human_count=len(clean_users),
+            user_ids=clean_users,
+            now=now_value,
+        )
         if self.db is not None:
             self.db.commit()
         return visit
@@ -1583,7 +1788,9 @@ class VoiceEpisodicMemory:
                 now=now_value,
                 persist=True,
             )
+        speaker_ids: list[int] = []
         if speaker_user_id is not None and int(speaker_user_id) > 0:
+            speaker_ids.append(int(speaker_user_id))
             self._update_semantic_entry(
                 concept_type="channel_people",
                 concept_key=channel_key,
@@ -1592,6 +1799,18 @@ class VoiceEpisodicMemory:
                 now=now_value,
                 persist=True,
             )
+        self._record_channel_history(
+            channel_id,
+            channel_name=clean_name,
+            kind="dynamics",
+            source="voice_dynamics",
+            human_count=max(0, int(human_count)),
+            user_ids=speaker_ids,
+            conversation_mode=mode,
+            intensity=float(intensity),
+            speech_ratio=float(speech_ratio),
+            now=now_value,
+        )
         if self.db is not None:
             self.db.commit()
         return rows
@@ -2904,6 +3123,26 @@ class VoiceEpisodicMemory:
 
             CREATE INDEX IF NOT EXISTS idx_person_history_user_time
             ON person_interaction_history(user_id, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS channel_interaction_history(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at REAL NOT NULL,
+                channel_id INTEGER NOT NULL,
+                channel_name TEXT NOT NULL DEFAULT '',
+                kind TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT '',
+                action TEXT NOT NULL DEFAULT '',
+                amount REAL NOT NULL DEFAULT 0,
+                human_count INTEGER NOT NULL DEFAULT 0,
+                user_ids_json TEXT NOT NULL DEFAULT '[]',
+                conversation_mode TEXT NOT NULL DEFAULT '',
+                intensity REAL NOT NULL DEFAULT 0,
+                speech_ratio REAL NOT NULL DEFAULT 0,
+                context TEXT NOT NULL DEFAULT ''
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_channel_history_channel_time
+            ON channel_interaction_history(channel_id, created_at DESC);
             """
         )
         self.db.commit()
@@ -3014,6 +3253,7 @@ class VoiceEpisodicMemory:
             )
 
         self._backfill_person_history_from_db()
+        self._backfill_channel_history_from_db()
 
         if (
             self.semantic_memory_enabled
@@ -3777,6 +4017,19 @@ class VoiceEpisodicMemory:
                     guild_id=episode.guild_id,
                     channel_id=episode.channel_id,
                     channel_name=episode.channel_name,
+                    context=episode.context,
+                    now=episode.time,
+                )
+            if episode.channel_id is not None:
+                self._record_channel_history(
+                    int(episode.channel_id),
+                    channel_name=episode.channel_name,
+                    kind="episode",
+                    source=episode.source,
+                    action=episode.action,
+                    amount=episode.actual_reward,
+                    human_count=len(episode.user_ids),
+                    user_ids=episode.user_ids,
                     context=episode.context,
                     now=episode.time,
                 )
