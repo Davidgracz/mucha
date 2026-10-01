@@ -94,6 +94,10 @@ class BrainConfig:
     goal_max_age_seconds: float = 900.0
     goal_max_steps: int = 12
     goal_max_failed_steps: int = 3
+    personality_enabled: bool = True
+    personality_learning_rate: float = 0.03
+    personality_signal_gain: float = 0.18
+    personality_min_observations: int = 6
     action_policy_enabled: bool = True
     action_policy_lr: float = 0.06
     action_policy_max_bias: float = 0.55
