@@ -249,6 +249,7 @@ class MuchaClient(discord.Client):
         self._sleep_started = 0.0
         self._sleep_last_cycle = 0.0
         self._sleep_cycle = 0
+        self._post_sleep_until = 0.0
         self._sleep_debug: dict = {
             "enabled": bool(cfg.voice.sleep_enabled),
             "active": False,
@@ -273,6 +274,12 @@ class MuchaClient(discord.Client):
             "consolidated_synapses": 0,
             "fading_synapses": 0,
             "last": [],
+            "circadian_state": "AWAKE",
+            "fatigue": 0.0,
+            "tired_threshold": float(
+                cfg.brain.circadian_tired_threshold
+            ),
+            "post_sleep_remaining": 0.0,
         }
         self.last_reply: dict[int, float] = {}
         self.last_spontaneous: dict[int, float] = {}
@@ -491,6 +498,19 @@ class MuchaClient(discord.Client):
             "internal_state_arousal_gain",
             "internal_state_stress_gain",
             "internal_state_satiety_stability_gain",
+            "internal_drives_enabled",
+            "internal_drive_neural_gain",
+            "internal_drive_social_need_per_minute",
+            "internal_drive_curiosity_per_minute",
+            "internal_drive_exploration_per_minute",
+            "internal_drive_boredom_per_minute",
+            "internal_drive_caution_decay_per_minute",
+            "circadian_enabled",
+            "circadian_fatigue_per_minute",
+            "circadian_activity_fatigue_per_minute",
+            "circadian_sleep_recovery_per_cycle",
+            "circadian_tired_threshold",
+            "circadian_post_sleep_seconds",
             "action_policy_enabled",
             "action_policy_lr",
             "action_policy_max_bias",
@@ -6145,6 +6165,54 @@ class MuchaClient(discord.Client):
             )
             self._ensure_chaser_scream_loop(member.guild)
 
+    def _circadian_snapshot(
+        self,
+        now: float | None = None,
+    ) -> dict:
+        now = time.monotonic() if now is None else float(now)
+        enabled = bool(self.cfg.brain.circadian_enabled)
+        fatigue = (
+            self.brain.internal_drive_value("fatigue")
+            if enabled
+            else 0.0
+        )
+        tired_threshold = max(
+            0.0,
+            min(
+                1.0,
+                float(self.cfg.brain.circadian_tired_threshold),
+            ),
+        )
+        post_sleep_remaining = max(
+            0.0,
+            float(self._post_sleep_until) - now,
+        )
+        if not enabled:
+            state = "OFF"
+        elif self._sleep_active:
+            state = "SLEEP"
+        elif post_sleep_remaining > 0.0:
+            state = "POST-SLEEP"
+        elif fatigue >= tired_threshold:
+            state = "TIRED"
+        else:
+            state = "AWAKE"
+        return {
+            "enabled": enabled,
+            "state": state,
+            "fatigue": float(fatigue),
+            "tired_threshold": float(tired_threshold),
+            "post_sleep_remaining": float(post_sleep_remaining),
+            "post_sleep_seconds": int(
+                self.cfg.brain.circadian_post_sleep_seconds
+            ),
+            "method": (
+                "awake time -> persistent fatigue drive -> FAFB "
+                "SATIETY/STRESS attractors -> One Brain; sleep replay "
+                "repays fatigue and enables a short post-sleep state"
+            ),
+        }
+
     def _note_external_activity(self, reason: str) -> None:
         """Record real Discord activity and immediately wake sleep mode."""
         self._last_external_activity = time.monotonic()
@@ -6200,10 +6268,17 @@ class MuchaClient(discord.Client):
             1,
             int(self.cfg.voice.sleep_max_cycles),
         )
+        circadian = self._circadian_snapshot(now)
         self._sleep_debug.update({
             "enabled": enabled,
             "active": bool(self._sleep_active),
             "quiet_for": quiet_for,
+            "circadian_state": str(circadian["state"]),
+            "fatigue": float(circadian["fatigue"]),
+            "tired_threshold": float(circadian["tired_threshold"]),
+            "post_sleep_remaining": float(
+                circadian["post_sleep_remaining"]
+            ),
             "idle_required": float(
                 self.cfg.voice.sleep_idle_seconds
             ),
@@ -6319,6 +6394,7 @@ class MuchaClient(discord.Client):
             self._sleep_debug.update({
                 "active": True,
                 "state": "SLEEP",
+                "circadian_state": "SLEEP",
                 "reason": "offline-consolidation",
                 "started_at": time.time(),
                 "completed_at": 0.0,
@@ -6377,6 +6453,12 @@ class MuchaClient(discord.Client):
             # Normal time-based pruning still runs during sleep. The actual
             # strengthening happened through replay -> reward -> plasticity.
             self.brain.consolidate_and_forget(now=time.time())
+            if replayed and bool(self.cfg.brain.circadian_enabled):
+                self.brain.register_internal_drive_event(
+                    "rest",
+                    intensity=1.0,
+                    inject=False,
+                )
             synaptic_diag = self.brain.learned_synapses_snapshot(
                 limit=1
             )
@@ -6464,9 +6546,38 @@ class MuchaClient(discord.Client):
             self._sleep_last_cycle = 0.0
             self._sleep_cycle = 0
             self._last_external_activity = now
+            if completed_full and bool(
+                self.cfg.brain.circadian_enabled
+            ):
+                self._post_sleep_until = now + max(
+                    0.0,
+                    float(
+                        self.cfg.brain.circadian_post_sleep_seconds
+                    ),
+                )
+                async with self._brain_lock:
+                    self.brain.inject_internal_state_cue(
+                        "satiety",
+                        0.22,
+                        key="circadian:post-sleep:satiety",
+                    )
+                    self.brain.inject_internal_state_cue(
+                        "arousal",
+                        0.10,
+                        key="circadian:post-sleep:arousal",
+                    )
+                    self.brain.step(1)
+
+            circadian = self._circadian_snapshot(now)
             self._sleep_debug.update({
                 "active": False,
                 "state": "COMPLETE",
+                "circadian_state": str(circadian["state"]),
+                "fatigue": float(circadian["fatigue"]),
+                "tired_threshold": float(circadian["tired_threshold"]),
+                "post_sleep_remaining": float(
+                    circadian["post_sleep_remaining"]
+                ),
                 "reason": (
                     "cycle-complete"
                     if completed_full
@@ -9140,6 +9251,7 @@ class MuchaClient(discord.Client):
             "episodic_memory": self.voice_episodes.diagnostics(),
             "memory_replay": dict(self._memory_replay_debug),
             "sleep": dict(self._sleep_debug),
+            "circadian": self._circadian_snapshot(),
             "audio_debug": dict(self._audio_debug),
             "stt_debug": dict(self._stt_debug),
             "reaction_debug": reaction_debug,
