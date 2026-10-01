@@ -2004,6 +2004,27 @@ class VoiceEpisodicMemory:
             for row in rows
         ]
 
+    def _person_history_summary(self, user_id: int) -> dict:
+        if self.db is None:
+            return {
+                "observations": 0,
+                "first_seen": 0.0,
+                "last_seen": 0.0,
+            }
+        row = self.db.execute(
+            """
+            SELECT COUNT(*), MIN(created_at), MAX(created_at)
+            FROM person_interaction_history
+            WHERE user_id = ?
+            """,
+            (int(user_id),),
+        ).fetchone()
+        return {
+            "observations": int(row[0] or 0),
+            "first_seen": float(row[1] or 0.0),
+            "last_seen": float(row[2] or 0.0),
+        }
+
     def _backfill_person_history_from_db(self) -> None:
         """Seed Stage 28 chronology from already persisted voice episodes."""
         if self.db is None:
@@ -2528,6 +2549,7 @@ class VoiceEpisodicMemory:
                 break
 
         history = self._person_history_rows(user_id, 64)
+        history_summary = self._person_history_summary(user_id)
         if history and not display_name:
             display_name = next(
                 (
@@ -2588,13 +2610,12 @@ class VoiceEpisodicMemory:
         else:
             relationship_stability = 0.0
 
-        history_times = [
-            float(row.get("time", 0.0))
-            for row in history
-            if float(row.get("time", 0.0)) > 0.0
-        ]
-        first_seen_history = min(history_times) if history_times else 0.0
-        last_seen_history = max(history_times) if history_times else 0.0
+        first_seen_history = float(
+            history_summary.get("first_seen", 0.0)
+        )
+        last_seen_history = float(
+            history_summary.get("last_seen", 0.0)
+        )
         if first_seen_history > 0.0:
             first_seen = first_seen_history
         else:
@@ -2683,7 +2704,9 @@ class VoiceEpisodicMemory:
             "first_seen": first_seen,
             "last_seen": last_seen,
             "relationship_age_days": relationship_age_days,
-            "history_observations": len(history),
+            "history_observations": int(
+                history_summary.get("observations", len(history))
+            ),
             "recent_valence": max(
                 -1.0,
                 min(1.0, recent_valence),
