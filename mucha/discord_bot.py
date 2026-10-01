@@ -532,6 +532,14 @@ class MuchaClient(discord.Client):
             "foresight_state_signal_gain",
             "foresight_base_confidence",
             "foresight_uncertainty_weight",
+            "intention_enabled",
+            "intention_half_life_seconds",
+            "intention_max_age_seconds",
+            "intention_signal_gain",
+            "intention_reinforcement_gain",
+            "intention_switch_margin",
+            "intention_min_evidence",
+            "intention_outcome_gain",
             "action_policy_enabled",
             "action_policy_lr",
             "action_policy_max_bias",
@@ -898,6 +906,30 @@ class MuchaClient(discord.Client):
             ),
             ("brain", "internal_state_satiety_stability_gain"): (
                 float, 0.0, 0.5
+            ),
+            ("brain", "intention_enabled"): (
+                bool, None, None
+            ),
+            ("brain", "intention_half_life_seconds"): (
+                float, 1.0, 86400.0
+            ),
+            ("brain", "intention_max_age_seconds"): (
+                float, 1.0, 604800.0
+            ),
+            ("brain", "intention_signal_gain"): (
+                float, 0.0, 2.0
+            ),
+            ("brain", "intention_reinforcement_gain"): (
+                float, 0.0, 1.0
+            ),
+            ("brain", "intention_switch_margin"): (
+                float, 0.0, 1.0
+            ),
+            ("brain", "intention_min_evidence"): (
+                float, 0.0, 1.0
+            ),
+            ("brain", "intention_outcome_gain"): (
+                float, 0.0, 1.0
             ),
             ("brain", "action_policy_enabled"): (
                 bool, None, None
@@ -9290,6 +9322,7 @@ class MuchaClient(discord.Client):
             "circadian": self._circadian_snapshot(),
             "affective_state": self.brain.affective_state_diagnostics(),
             "motivation_state": self.brain.motivation_state_diagnostics(),
+            "intention_state": self.brain.intention_state_diagnostics(),
             "audio_debug": dict(self._audio_debug),
             "stt_debug": dict(self._stt_debug),
             "reaction_debug": reaction_debug,
