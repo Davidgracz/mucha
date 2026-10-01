@@ -1603,6 +1603,42 @@ function renderSignalFlow(){
  root.className="";root.innerHTML='<div class="signal-summary"><div><small>readout</small><b style="color:'+(actionColors[f.winner]||"#fff")+'">'+esc(f.winner||"—")+'</b></div><div><small>gain</small><b>'+Number(f.propagation_gain||0).toFixed(3)+'</b></div><div><small>edges</small><b>'+nfmt(edges.length)+'</b></div></div><div>'+cueHtml+'</div><div class="flow-note">'+esc(snap.method||"")+'</div><div class="signal-list" style="margin-top:8px">'+edgeHtml+'</div>'+learnHtml+learnedHtml+'<div class="effects"><small>Historia — kliknij, aby odtworzyć przepływ</small><div class="signal-list">'+histHtml+'</div></div>';
  root.querySelectorAll("[data-flow-tick]").forEach(el=>el.onclick=()=>{flowReplayTick=Number(el.dataset.flowTick);mapFlowFocus=flowNodeSet();renderSignalFlow()})
 }
+function stepFlow(delta){
+ const history=data?.signal_flow?.history||[];if(!history.length)return;
+ if(flowReplayTick===null){
+  if(delta>=0)return;
+  const idx=Math.max(0,history.length-2);
+  flowReplayTick=Number(history[idx].tick)
+ }else{
+  let idx=history.findIndex(x=>Number(x.tick)===Number(flowReplayTick));
+  if(idx<0)idx=history.length-1;
+  const next=idx+Number(delta||0);
+  if(next>=history.length){flowReplayTick=null}
+  else{flowReplayTick=Number(history[Math.max(0,next)].tick)}
+ }
+ mapFlowFocus=flowNodeSet();renderSignalFlow()
+}
+function renderDecisionExplanation(){
+ const root=$("decision-explanation"),d=data?.decision_explanation||{},action=String(d.action||"");
+ if(!action){$("why-action").textContent="BRAK";$("why-title").textContent="🔬 Dlaczego ta akcja?";root.className="empty";root.textContent="Atrybucja neuronów pojawi się po propagacji i odczycie akcji.";return}
+ $("why-title").textContent="🔬 Dlaczego "+displayAction(action)+"?";
+ $("why-action").textContent=displayAction(action);
+ const pos=d.supporting_neurons||[],neg=d.opposing_neurons||[];
+ const rows=(xs,kind)=>xs.slice(0,8).map(x=>'<div class="why-row '+kind+'" data-why-neuron="'+esc(x.id)+'"><span>'+esc(x.id)+' • '+esc(x.type||x.region||"—")+'</span><strong>'+(Number(x.contribution||0)>=0?"+":"")+Number(x.contribution||0).toExponential(2)+'</strong></div>').join("")||'<div class="note">Brak mierzalnych neuronów w tej grupie.</div>';
+ root.className="";root.innerHTML=
+  '<div class="why-summary">'+
+   '<div><small>winner score</small><b>'+Number(d.score||0).toFixed(4)+'</b></div>'+
+   '<div><small>runner-up</small><b>'+esc(displayAction(d.runner_up||"stay"))+' '+Number(d.runner_up_score||0).toFixed(4)+'</b></div>'+
+   '<div><small>margin</small><b>'+Number(d.margin||0).toFixed(4)+'</b></div>'+
+   '<div><small>frame</small><b>'+nfmt(d.frame||0)+' / '+nfmt(d.frames||0)+'</b></div>'+
+  '</div>'+
+  '<div class="why-grid">'+
+   '<div class="why-col"><div class="why-head"><b style="color:var(--cyan)">WSPIERAJĄCE</b><span class="muted">+ drive</span></div>'+rows(pos,"pos")+'</div>'+
+   '<div class="why-col"><div class="why-head"><b style="color:var(--pink)">HAMUJĄCE</b><span class="muted">− drive</span></div>'+rows(neg,"neg")+'</div>'+
+  '</div>'+
+  '<div class="flow-note">'+esc(d.method||"")+'</div>';
+ root.querySelectorAll("[data-why-neuron]").forEach(el=>el.onclick=()=>selectNeuronById(el.dataset.whyNeuron))
+}
 function drawSelectedConnections(w,h){
  if(!selected)return;const rows=selected.structural_connections||[];if(!rows.length)return;
  const p0=point(selected,w,h,26),max=Math.max(.000001,...rows.map(x=>Math.abs(Number(x.current_drive||0))));
@@ -1721,6 +1757,8 @@ $("learned-btn").onclick=()=>{showLearned=!showLearned;$("learned-btn").classLis
 $("attractor-btn").onclick=()=>{showAttractors=!showAttractors;$("attractor-btn").classList.toggle("on",showAttractors)};
 $("follow-btn").onclick=()=>{followDecision=!followDecision;$("follow-btn").classList.toggle("on",followDecision)};
 $("flow-live-btn").onclick=()=>{flowReplayTick=null;mapFlowFocus=flowNodeSet();renderSignalFlow()};
+$("flow-prev-btn").onclick=()=>stepFlow(-1);
+$("flow-next-btn").onclick=()=>stepFlow(1);
 
 function render(payload){
  const m=payload.brain_map||{};data=m;mapNodeLookup=new Map((m.nodes||[]).map(n=>[String(n.id),n]));mapMaxActivation=.0001;for(const n of (m.nodes||[]))mapMaxActivation=Math.max(mapMaxActivation,Math.abs(Number(n.activation||0)));mapFlowFocus=flowNodeSet();updateTrail();const scores=payload.scores||{};
@@ -1730,7 +1768,7 @@ function render(payload){
  const top=(m.regions||[])[0];$("top-region").textContent=top?top.name:"—";$("top-region-detail").textContent=top?(nfmt(top.active_count)+" active • mean "+Number(top.mean_abs||0).toFixed(3)):"brak adnotacji";
  const badge=$("coord-badge"),mode=m.coordinate_mode||"synthetic";badge.textContent=mode==="real"?"REAL FAFB COORDS":mode==="hybrid"?"HYBRID COORDS":"FALLBACK LAYOUT";badge.className="badge "+mode;
  const rs=$("region-source");rs.textContent=m.region_source==="neuropil"?"NAMED NEUROPILS":"CLASS FALLBACK";rs.className="badge "+(m.region_source==="neuropil"?"neuropil":"fallback");$("region-note").textContent=m.region_source_detail||"—";
- $("event").textContent=payload.last_event||"—";$("last-action").textContent=payload.last_action||"—";$("source").textContent=(payload.source||"runtime").includes("FlyWire")?"FAFB v783":"runtime";renderActions(scores);renderInternalStates();renderSignalFlow();renderRegions();regionInspector();
+ $("event").textContent=payload.last_event||"—";$("last-action").textContent=payload.last_action||"—";$("source").textContent=(payload.source||"runtime").includes("FlyWire")?"FAFB v783":"runtime";renderActions(scores);renderInternalStates();renderSignalFlow();renderDecisionExplanation();renderRegions();regionInspector();
  if(selected){const fresh=(m.nodes||[]).find(n=>n.id===selected.id);if(fresh){selected=fresh;inspect(fresh)}}
  $("live").textContent="LIVE";lastFetch=Date.now()
 }
