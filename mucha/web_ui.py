@@ -136,6 +136,16 @@ const groups=[
   ["intention_min_evidence","Minimum evidence","number",0.01,0,1,"Minimalna siła świeżego neuronalnego zwycięstwa potrzebna do utworzenia intencji."],
   ["intention_outcome_gain","Wpływ reward/punish","number",0.05,0,1,"Jak mocno realny outcome wzmacnia lub osłabia intencję tej samej akcji."]
  ]},
+ {id:"goal",title:"Stage 33 — Multi-step motivational goals",desc:"Mucha może utrzymywać cel typu SOCIAL / NOVELTY / SAFETY / REST i realizować go przez serię kolejnych neuronalnie wybranych działań. Goal nie wybiera akcji bezpośrednio — tylko wzmacnia sensorycznie kandydatów, dla których Stage 31 przewiduje relief docelowej potrzeby.",section:"brain",open:true,fields:[
+  ["goal_enabled","Multi-step goals","bool",0,0,0,"Włącza cele wieloetapowe Stage 33."],
+  ["goal_signal_gain","Goal → sensory signal","number",0.05,0,2,"Jak mocno przewidywany relief docelowej potrzeby wraca jako sensory cue dla kandydata."],
+  ["goal_min_relief","Minimum relief do utworzenia celu","number",0.005,0,1,"Minimalny Stage-31 relief wymagany, aby winner mógł uruchomić nowy cel."],
+  ["goal_min_start_urgency","Minimum urgency celu","number",0.05,0,1.5,"Minimalna bieżąca urgency potrzeby, aby powstał cel wieloetapowy."],
+  ["goal_success_progress","Próg ukończenia","number",0.05,0.05,1,"Jaka część początkowej urgency musi zostać realnie zredukowana, aby cel został uznany za ukończony."],
+  ["goal_max_age_seconds","Maks. wiek celu [s]","number",10,1,604800,"Po jakim czasie nierozwiązany cel zostaje porzucony."],
+  ["goal_max_steps","Maks. liczba kroków","number",1,1,100,"Ile wykonanych prób może należeć do jednego celu."],
+  ["goal_max_failed_steps","Maks. nieudanych kroków","number",1,1,50,"Po ilu nieudanych wykonaniach cel zostaje porzucony."]
+ ]},
  {id:"action-policy",title:"Learned Action Policy",desc:"Reward i punish uczą osobny bias każdej akcji. Connectome nadal daje surowy readout, a policy tylko przesuwa jego skuteczną wartość w ograniczonym zakresie.",section:"brain",open:true,fields:[
   ["action_policy_enabled","Learned action policy","bool",0,0,0,"Włącza trwałe uczenie preferencji akcji na podstawie reward/punish."],
   ["action_policy_lr","Policy learning rate","number",0.005,0,1,"Jak szybko reward zmienia bias wybranej akcji."],
@@ -1730,7 +1740,7 @@ AUTONOMY_HTML = r"""<!doctype html>
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at 12% 0%,rgba(88,218,196,.10),transparent 30%),radial-gradient(circle at 88% 0%,rgba(110,168,254,.10),transparent 32%),linear-gradient(180deg,#070b10,#0a1017 60%,#080c11);color:var(--txt);font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
 main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-bottom:16px}.brand{display:flex;gap:13px;align-items:center}.logo{font-size:37px}h1{margin:0;font-size:24px}.sub{margin-top:4px;color:var(--muted);font-size:12px}.nav{display:flex;gap:8px;flex-wrap:wrap}.nav a{color:#b9c8d7;text-decoration:none;background:#0e1720;border:1px solid var(--line);padding:8px 11px;border-radius:10px;font-size:12px}.nav a.active{color:#07110e;background:var(--a);border-color:var(--a);font-weight:800}
 .hero{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:12px}.card,.hero-card{background:rgba(15,22,31,.94);border:1px solid var(--line);border-radius:16px}.hero-card{padding:14px}.hero-card small{display:block;color:var(--muted);font-size:10px;text-transform:uppercase;letter-spacing:.08em;margin-bottom:6px}.hero-card strong{font-size:17px;word-break:break-word}
-.pipeline{display:grid;grid-template-columns:repeat(5,1fr);gap:10px;margin-bottom:12px}.stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px}.stage:not(:last-child):after{content:"→";position:absolute;right:-9px;top:50%;transform:translateY(-50%);z-index:3;color:var(--a);font-size:20px;font-weight:900}.stage b{display:block;font-size:12px;margin-bottom:5px}.stage span{color:var(--muted);font-size:11px;line-height:1.45}
+.pipeline{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin-bottom:12px}.stage{position:relative;background:var(--panel);border:1px solid var(--line);border-radius:15px;padding:14px}.stage:not(:last-child):after{content:"→";position:absolute;right:-9px;top:50%;transform:translateY(-50%);z-index:3;color:var(--a);font-size:20px;font-weight:900}.stage b{display:block;font-size:12px;margin-bottom:5px}.stage span{color:var(--muted);font-size:11px;line-height:1.45}
 .grid{display:grid;grid-template-columns:1.35fr .65fr;gap:12px}.card{padding:15px;min-width:0}.card h2{margin:0 0 12px;font-size:12px;color:#aebdcb;text-transform:uppercase;letter-spacing:.1em}.span2{grid-column:1/-1}
 .guild-tabs{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.guild-tab{border:1px solid var(--line);background:#0a121a;color:#aebdcb;border-radius:999px;padding:7px 10px;cursor:pointer;font-size:11px}.guild-tab.active{background:rgba(88,218,196,.15);border-color:var(--a);color:#dffff8}
 .candidates{display:flex;flex-direction:column;gap:8px}.candidate{display:grid;grid-template-columns:128px 70px minmax(100px,1fr) 110px 110px 126px 110px;gap:8px;align-items:center;padding:10px;background:var(--panel2);border:1px solid #1e2c3b;border-radius:12px;font-size:11px}.candidate.winner{border-color:var(--a);box-shadow:0 0 0 1px rgba(88,218,196,.15),0 0 24px rgba(88,218,196,.08)}.candidate.disabled{opacity:.52}.action-name{font-weight:850;font-size:12px}.pill{display:inline-flex;align-items:center;justify-content:center;border:1px solid #2b4054;border-radius:999px;padding:4px 7px;font-size:9px;white-space:nowrap}.pill.ok{color:var(--good);border-color:rgba(87,219,145,.45)}.pill.no{color:var(--bad);border-color:rgba(255,114,114,.45)}.pill.win{color:#06110e;background:var(--a);border-color:var(--a);font-weight:900}
@@ -1738,7 +1748,8 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
 .reason{color:#93a5b7;font-size:10px;line-height:1.4}.summary-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.summary{background:var(--panel2);border:1px solid #1e2c3b;border-radius:11px;padding:10px}.summary small{display:block;color:var(--muted);font-size:9px;text-transform:uppercase;letter-spacing:.07em;margin-bottom:5px}.summary strong{font-size:14px;word-break:break-word}.cue-list{display:flex;flex-direction:column;gap:7px;margin-top:10px}.cue{display:grid;grid-template-columns:115px 1fr 65px;gap:8px;align-items:center;padding:8px 9px;background:#09121a;border:1px solid #1d2b39;border-radius:10px;font-size:10px}.cue span{color:var(--muted)}
 .history{display:flex;flex-direction:column;gap:7px;max-height:420px;overflow:auto}.hist{display:grid;grid-template-columns:68px 95px 1fr 82px 72px;gap:8px;align-items:center;background:#09121a;border:1px solid #1c2937;border-radius:10px;padding:9px;font-size:10px}.hist .time{color:var(--muted);font-variant-numeric:tabular-nums}.hist .act{font-weight:800}.hist .detail{color:#b6c4d2;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hist .rep{color:var(--muted);text-align:right}.hist.external{border-color:rgba(88,218,196,.35)}
 .intent-panel{display:grid;grid-template-columns:240px 1fr;gap:14px;align-items:stretch}.intent-main{display:flex;flex-direction:column;justify-content:center;align-items:center;min-height:180px;background:radial-gradient(circle at 50% 15%,rgba(185,149,255,.14),transparent 58%),#09121a;border:1px solid rgba(185,149,255,.30);border-radius:14px;padding:18px}.intent-main .intent-action{font-size:27px;font-weight:900;letter-spacing:.04em}.intent-main .intent-state{font-size:10px;color:var(--purple);text-transform:uppercase;letter-spacing:.12em;margin-bottom:8px}.intent-track{width:100%;height:9px;background:#071019;border:1px solid #26384a;border-radius:999px;overflow:hidden;margin:14px 0 7px}.intent-track i{display:block;height:100%;background:linear-gradient(90deg,var(--purple),var(--a));border-radius:999px}.intent-meta{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;width:100%;margin-top:10px}.intent-k{background:#0b151e;border:1px solid #1d2c3b;border-radius:10px;padding:9px;text-align:center}.intent-k small{display:block;color:var(--muted);font-size:8px;text-transform:uppercase}.intent-k b{font-size:12px}.intent-side{display:flex;flex-direction:column;gap:10px}.intent-flow{display:grid;grid-template-columns:repeat(4,1fr);gap:7px}.intent-flow div{background:#09121a;border:1px solid #1d2b39;border-radius:10px;padding:9px;font-size:9px;color:#aebdcb;text-align:center}.intent-flow b{display:block;color:var(--txt);font-size:10px;margin-bottom:3px}.intent-history .hist{grid-template-columns:68px 110px 110px 1fr 72px}
-@media(max-width:900px){.intent-panel{grid-template-columns:1fr}.intent-flow{grid-template-columns:1fr 1fr}}
+.goal-panel{display:grid;grid-template-columns:260px 1fr;gap:14px}.goal-main{background:radial-gradient(circle at 50% 15%,rgba(88,218,196,.13),transparent 58%),#09121a;border:1px solid rgba(88,218,196,.32);border-radius:14px;padding:18px}.goal-title{font-size:26px;font-weight:900;letter-spacing:.06em}.goal-status{font-size:10px;color:var(--a);text-transform:uppercase;letter-spacing:.12em;margin-bottom:7px}.goal-track{height:10px;background:#071019;border:1px solid #26384a;border-radius:999px;overflow:hidden;margin:14px 0 7px}.goal-track i{display:block;height:100%;background:linear-gradient(90deg,var(--blue),var(--a));border-radius:999px}.goal-kpis{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin-top:12px}.goal-k{background:#0b151e;border:1px solid #1d2c3b;border-radius:10px;padding:9px}.goal-k small{display:block;color:var(--muted);font-size:8px;text-transform:uppercase}.goal-k b{font-size:12px}.goal-sequence{display:flex;gap:7px;flex-wrap:wrap;margin-bottom:10px}.goal-step{display:inline-flex;gap:6px;align-items:center;background:#09121a;border:1px solid #24374a;border-radius:999px;padding:7px 10px;font-size:10px}.goal-step.ok{border-color:rgba(87,219,145,.45)}.goal-step.fail{border-color:rgba(255,114,114,.45)}.goal-step .n{color:var(--muted)}.goal-history .hist{grid-template-columns:68px 100px 110px 1fr 72px}
+@media(max-width:900px){.intent-panel,.goal-panel{grid-template-columns:1fr}.intent-flow{grid-template-columns:1fr 1fr}}
 .help{display:inline-flex;width:16px;height:16px;align-items:center;justify-content:center;border:1px solid #385069;border-radius:50%;color:#8fa6ba;font-size:9px;cursor:help;position:relative;vertical-align:middle}.help:hover{color:var(--a);border-color:var(--a)}.help:hover:after{content:attr(data-tip);position:absolute;z-index:20;left:50%;top:22px;transform:translateX(-50%);width:270px;background:#05090e;border:1px solid #31465c;border-radius:9px;padding:9px;color:#d5e3f0;font:10px/1.45 Inter,system-ui;box-shadow:0 12px 35px rgba(0,0,0,.45);pointer-events:none}
 .live{display:inline-flex;align-items:center;gap:6px}.live:before{content:"";width:7px;height:7px;border-radius:50%;background:var(--good);box-shadow:0 0 10px rgba(87,219,145,.65)}.bad{color:var(--bad)}.good{color:var(--good)}.warn{color:var(--warn)}.muted{color:var(--muted)}.foot{margin-top:12px;text-align:right;color:#5e6e7d;font-size:10px}
 @media(max-width:1150px){.hero{grid-template-columns:repeat(3,1fr)}.grid{grid-template-columns:1fr}.candidate{grid-template-columns:120px 65px 1fr 90px 90px}.candidate .optional{display:none}}
@@ -1767,6 +1778,7 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
  <div class="stage"><b>24D • Neural winner</b><span>Signed prediction → sensory neurons → FAFB propagation → action_competition → executor.</span></div>
  <div class="stage"><b>25 • One Brain</b><span>TEXT, REACT, TTS i autonomia używają tego samego arbitra oraz wspólnej historii decyzji.</span></div>
  <div class="stage"><b>32 • Persistent intent</b><span>Poprzedni autonomiczny winner może wrócić jako słabnący sensory cue. Nie nadpisuje finalnej konkurencji FAFB.</span></div>
+ <div class="stage"><b>33 • Multi-step goal</b><span>Cel SOCIAL / NOVELTY / SAFETY / REST nadaje kierunek wielu kolejnym tickom, ale każdy krok musi ponownie wygrać w FAFB.</span></div>
 </section>
 
 <div class="guild-tabs" id="guild-tabs"></div>
@@ -1821,6 +1833,29 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
  </div>
 
  <div class="card span2">
+  <h2>Active Goal / Stage 33 <span class="help" data-tip="Cel reprezentuje potrzebę do realnego zmniejszenia. Kolejne akcje nie są z góry wymuszone: Stage 31 ocenia ich możliwy relief, a wskazówka goal wraca do FAFB jako sensory cue.">?</span></h2>
+  <div class="goal-panel">
+   <div class="goal-main">
+    <div class="goal-status" id="goal-status">BRAK CELU</div>
+    <div class="goal-title" id="goal-title">—</div>
+    <div class="goal-track"><i id="goal-bar" style="width:0%"></i></div>
+    <div class="muted" id="goal-progress-label">progress 0%</div>
+    <div class="goal-kpis">
+     <div class="goal-k"><small>Urgency</small><b id="goal-urgency">0 → 0</b></div>
+     <div class="goal-k"><small>Kroki</small><b id="goal-steps-count">0 / 0</b></div>
+     <div class="goal-k"><small>Wiek</small><b id="goal-age">0 s</b></div>
+     <div class="goal-k"><small>Failed</small><b id="goal-failed">0</b></div>
+    </div>
+   </div>
+   <div>
+    <div class="muted" style="font-size:10px;margin-bottom:8px">SEKWENCJA WYKONANYCH KROKÓW</div>
+    <div class="goal-sequence" id="goal-sequence"><span class="muted">Brak kroków.</span></div>
+    <div class="history goal-history" id="goal-history"><div class="muted">Brak historii celu.</div></div>
+   </div>
+  </div>
+ </div>
+
+ <div class="card span2">
   <h2>One Brain timeline <span class="help" data-tip="Wspólna historia decyzji z różnych modalności. kind pokazuje, czy bodziec pochodził z TEXT, VOICE_TTS czy AUTONOMY.">?</span></h2>
   <div class="history" id="one-brain-history"><div class="muted">Brak historii Stage 25.</div></div>
  </div>
@@ -1829,7 +1864,7 @@ main{max-width:1540px;margin:auto;padding:22px}.top{display:flex;align-items:cen
   <div class="history" id="history"><div class="muted">Brak historii.</div></div>
  </div>
 </section>
-<div class="foot">Stage 32 Persistent Intent + Stage 31 Foresight + Stage 30 Motivation + Stage 25 One Brain • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
+<div class="foot">Stage 33 Multi-step Goals + Stage 32 Persistent Intent + Stage 31 Foresight + Stage 30 Motivation + Stage 25 One Brain • dane z /api/state • odświeżanie LIVE_REFRESH_MS ms</div>
 
 <script>
 const LIVE_REFRESH_MS=250;
@@ -1883,14 +1918,16 @@ function renderCandidates(row,decision){
  }).join("");
 }
 function renderCues(decision){
- const rewardCues=decision?.prediction_cues||{},foresightCues=decision?.foresight_cues||{},root=$("cues");
+ const rewardCues=decision?.prediction_cues||{},foresightCues=decision?.foresight_cues||{},goalCues=decision?.goal_cues||{},intentCue=decision?.intention_cue||{},root=$("cues");
  const entries=[
-   ...Object.entries(rewardCues).map(([action,x])=>({action,x,kind:"reward"})),
-   ...Object.entries(foresightCues).map(([action,x])=>({action,x,kind:"foresight"}))
+   ...Object.entries(rewardCues).map(([action,x])=>({action,x,kind:"reward",signal:x.magnitude})),
+   ...Object.entries(foresightCues).map(([action,x])=>({action,x,kind:"foresight",signal:x.magnitude})),
+   ...Object.entries(goalCues).map(([action,x])=>({action,x:x.cue||{},kind:"goal",signal:x.signal,target:x.target})),
+   ...(intentCue.active?[{action:intentCue.action,x:intentCue.cue||{},kind:"intent",signal:intentCue.signal}]:[])
  ];
- if(!entries.length){root.innerHTML='<div class="muted" style="font-size:10px;margin-top:10px">Brak reward/foresight sensory cue w tej decyzji.</div>';return}
- root.innerHTML='<div class="muted" style="font-size:10px">Prediction + foresight cues → sensory paths</div>'+entries.map(row=>
-   '<div class="cue"><b>'+esc(displayAction(row.action))+'</b><span>'+esc(row.kind.toUpperCase())+' • '+esc(row.x.mode||"sensory")+' • '+Number(row.x.neurons||0)+' neuronów • reach '+fmt(row.x.reach_max)+'</span><strong>'+fmt(row.x.magnitude)+'</strong></div>'
+ if(!entries.length){root.innerHTML='<div class="muted" style="font-size:10px;margin-top:10px">Brak sensory guidance w tej decyzji.</div>';return}
+ root.innerHTML='<div class="muted" style="font-size:10px">Reward + foresight + intent + goal → sensory paths → FAFB</div>'+entries.map(row=>
+   '<div class="cue"><b>'+esc(displayAction(row.action))+'</b><span>'+esc(row.kind.toUpperCase())+(row.target?' • '+esc(String(row.target).toUpperCase()):'')+' • '+esc(row.x.mode||"sensory")+' • '+Number(row.x.neurons||0)+' neuronów</span><strong>'+fmt(row.signal||0)+'</strong></div>'
  ).join("");
 }
 function renderIntent(intent,decision){
@@ -1921,6 +1958,34 @@ function renderIntent(intent,decision){
      '<span>'+esc(action)+(winner!=="—"&&winner!==action?' ← '+esc(winner):'')+'</span>'+
      '<span class="detail" title="'+esc(x.reason||"")+'">'+esc(x.reason||"—")+'</span>'+
      '<span class="rep">'+fmt(x.strength||0,2)+'</span>'+
+   '</div>';
+ }).join("");
+}
+
+function renderGoal(goal){
+ const g=goal||{},active=!!g.active,progress=Number(g.progress||0),steps=Array.isArray(g.steps)?g.steps:[],hist=Array.isArray(g.history)?g.history.slice().reverse():[],last=g.last_event||{};
+ $("goal-status").textContent=active?"ACTIVE • "+String(last.event||"tracking").replaceAll("-"," ").toUpperCase():(String(last.event||"BRAK CELU").replaceAll("-"," ").toUpperCase());
+ $("goal-status").className="goal-status "+(active?"good":last.event==="completed"?"good":last.event==="abandoned"?"warn":"muted");
+ $("goal-title").textContent=active?String(g.motivation||"—").toUpperCase():"—";
+ $("goal-bar").style.width=pct(progress)+"%";
+ $("goal-progress-label").textContent="progress "+Math.round(progress*100)+"% • sukces przy "+Math.round(Number(g.success_progress||0)*100)+"%";
+ $("goal-urgency").textContent=fmt(g.baseline_urgency,2)+" → "+fmt(g.current_urgency,2);
+ $("goal-steps-count").textContent=Number(g.step_count||0)+" / "+Number(g.max_steps||0);
+ $("goal-age").textContent=Math.round(Number(g.age_seconds||0))+" s";
+ $("goal-failed").textContent=String(Number(g.failed_steps||0));
+ $("goal-sequence").innerHTML=steps.length?steps.map(x=>
+   '<span class="goal-step '+(x.executed&&x.success?"ok":"fail")+'"><span class="n">#'+Number(x.index||0)+'</span><b>'+esc(displayAction(x.action))+'</b><span>'+(x.executed&&x.success?"✓":"×")+'</span></span>'
+ ).join(""):'<span class="muted">Brak wykonanych kroków.</span>';
+ const root=$("goal-history");
+ if(!hist.length){root.innerHTML='<div class="muted">Brak historii celu.</div>';return}
+ root.innerHTML=hist.slice(0,24).map(x=>{
+   const t=new Date(Number(x.time||0)*1000).toLocaleTimeString("pl-PL");
+   return '<div class="hist">'+
+     '<span class="time">'+esc(t)+'</span>'+
+     '<span class="act">'+esc(String(x.event||"—").replaceAll("-"," ").toUpperCase())+'</span>'+
+     '<span>'+esc(String(x.motivation||"—").toUpperCase())+(x.action?' • '+esc(displayAction(x.action)):'')+'</span>'+
+     '<span class="detail" title="'+esc(x.reason||"")+'">'+esc(x.reason||"—")+'</span>'+
+     '<span class="rep">'+Math.round(Number(x.progress||0)*100)+'%</span>'+
    '</div>';
  }).join("");
 }
@@ -2000,6 +2065,7 @@ function render(payload){
  renderCandidates(row,rowDecision);
  renderCues(rowDecision);
  renderIntent(intent,rowDecision);
+ renderGoal(rowDecision.goal||payload?.goal_state||row?.candidate_set?.goal_state||{});
  renderOneBrainHistory(payload?.one_brain_history||[]);
  renderHistory(payload?.autonomous_history||[]);
 }
