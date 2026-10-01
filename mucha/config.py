@@ -51,6 +51,12 @@ class BrainConfig:
     internal_drive_exploration_per_minute: float = 0.016
     internal_drive_boredom_per_minute: float = 0.045
     internal_drive_caution_decay_per_minute: float = 0.055
+    circadian_enabled: bool = True
+    circadian_fatigue_per_minute: float = 0.006
+    circadian_activity_fatigue_per_minute: float = 0.003
+    circadian_sleep_recovery_per_cycle: float = 0.16
+    circadian_tired_threshold: float = 0.65
+    circadian_post_sleep_seconds: int = 600
     action_policy_enabled: bool = True
     action_policy_lr: float = 0.06
     action_policy_max_bias: float = 0.55
