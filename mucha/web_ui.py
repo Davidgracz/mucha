@@ -1648,24 +1648,32 @@ function corrRows(rows){
  if(!rows||!rows.length)return '<div class="note">Za mało próbek albo brak zmienności. Korelacje pojawią się po kilku sekundach działania Neuro-map.</div>';
  return rows.map(x=>{const c=clamp(Number(x.correlation||0),-1,1),width=Math.abs(c)*50;return '<div class="corr"><span>'+esc(x.action)+'</span><div class="corrbar"><i class="corrfill '+(c>=0?"pos":"neg")+'" style="width:'+width.toFixed(1)+'%"></i></div><b>'+(c>=0?"+":"")+c.toFixed(2)+'</b></div>'}).join("")
 }
+function selectNeuronById(id){
+ const n=(data?.nodes||[]).find(x=>String(x.id)===String(id));
+ if(!n)return false;
+ selected=n;inspect(n);return true
+}
 function regionInspector(){
  const root=$("region-inspector");if(!data||!selectedRegion){$("region-picked").textContent="kliknij region";root.className="empty";root.innerHTML="Wybierz region z listy. Zobaczysz historię aktywności od otwarcia Neuro-map, najaktywniejsze neurony, dominujące typy komórek oraz korelacje z readoutami Muchy.";return}
  const r=(data.regions||[]).find(x=>x.name===selectedRegion);if(!r){root.className="empty";root.textContent="Wybrany region nie jest teraz w TOP aktywnych regionów.";return}
  $("region-picked").textContent=data.region_source==="neuropil"?"NEUROPIL":"CLASS GROUP";root.className="";
  const types=(r.dominant_types||[]).map(x=>'<span class="chip">'+esc(x.name)+' ×'+nfmt(x.count)+'</span>').join("")||'<span class="chip">brak typów</span>';
- const neurons=(r.top_neurons||[]).map(n=>'<div class="nrow"><span>'+esc(n.id)+' • '+esc(n.primary_type||"—")+' • '+esc(n.nt_type||"—")+'</span><b class="'+(Number(n.activation)>=0?"plus":"minus")+'">'+(Number(n.activation)>=0?"+":"")+Number(n.activation||0).toFixed(4)+'</b></div>').join("");
+ const neurons=(r.top_neurons||[]).map(n=>'<div class="nrow clickable" data-neuron="'+esc(n.id)+'"><span>'+esc(n.id)+' • '+esc(n.primary_type||"—")+' • '+esc(n.nt_type||"—")+'</span><b class="'+(Number(n.activation)>=0?"plus":"minus")+'">'+(Number(n.activation)>=0?"+":"")+Number(n.activation||0).toFixed(4)+'</b></div>').join("");
+ const flowRows=(r.live_flow_edges||[]).slice(0,10).map(e=>'<div class="signal-row '+(Number(e.contribution||0)>=0?"pos":"neg")+'"><b>'+esc(String(e.direction||"").toUpperCase())+'</b><span>'+esc(String(e.source).slice(-7))+' → '+esc(String(e.target).slice(-7))+'</span><em>'+(Number(e.contribution||0)>=0?"+":"")+Number(e.contribution||0).toFixed(4)+'</em></div>').join("")||'<div class="note">Brak live flow przez ten region w aktualnej klatce.</div>';
  root.innerHTML='<div class="ins-title"><div><strong>'+esc(r.name)+'</strong><div class="note">'+nfmt(r.active_count)+' / '+nfmt(r.total)+' neuronów ma |a| &gt; 0.1</div></div><span class="role">mean '+Number(r.mean_abs||0).toFixed(4)+'</span></div>'+
  '<div class="meta"><div><small>max activation</small><b>'+Number(r.max_abs||0).toFixed(4)+'</b></div><div><small>history samples</small><b>'+nfmt(r.correlation_samples||0)+'</b></div></div>'+
  '<div class="spark-wrap"><canvas id="region-spark"></canvas></div>'+
  '<div class="effects"><small>Dominujące typy neuronów</small><div class="chips">'+types+'</div></div>'+
  '<div class="effects"><small>Runtime correlation z readoutami</small>'+corrRows(r.readout_correlations||[])+'<div class="note">To korelacja czasowa aktywności regionu z readoutem Muchy, nie dowód biologicznej funkcji ani przyczynowości.</div></div>'+
- '<div class="effects"><small>Najaktywniejsze neurony w regionie</small><div class="neuron-list">'+neurons+'</div></div>';
+ '<div class="effects"><small>Live flow regionu • IN '+Number(r.live_flow_in||0).toFixed(3)+' • INTERNAL '+Number(r.live_flow_internal||0).toFixed(3)+' • OUT '+Number(r.live_flow_out||0).toFixed(3)+'</small><div class="signal-list">'+flowRows+'</div></div>'+
+ '<div class="effects"><small>Najaktywniejsze neurony w regionie — kliknij</small><div class="neuron-list">'+neurons+'</div></div>';
+ root.querySelectorAll("[data-neuron]").forEach(el=>el.onclick=()=>selectNeuronById(el.dataset.neuron));
  requestAnimationFrame(()=>{const c=$("region-spark");if(c)sparkline(c,r.history||[])})
 }
 function renderRegions(){
  const regs=data.regions||[],max=Math.max(.0001,...regs.map(r=>Number(r.score||0)));
  $("regions").innerHTML=regs.slice(0,20).map(r=>{const q=clamp(Number(r.score||0)/max,0,1);return '<div class="region '+(selectedRegion===r.name?"on":"")+'" data-region="'+esc(r.name)+'"><div><b>'+esc(r.name)+'</b><br><small>'+nfmt(r.active_count)+' / '+nfmt(r.total)+' active</small></div><div class="rtrack"><div class="rfill" style="width:'+(q*100).toFixed(1)+'%"></div></div><small>'+Number(r.mean_abs||0).toFixed(3)+'</small></div>'}).join("")||'<div class="empty">Brak nazwanych regionów w aktualnym cache.</div>';
- document.querySelectorAll("[data-region]").forEach(el=>el.onclick=()=>{const name=el.dataset.region;selectedRegion=selectedRegion===name?"":name;$("region-filter").textContent=selectedRegion||"ALL";renderRegions();regionInspector();updateTrail()})
+ document.querySelectorAll("[data-region]").forEach(el=>el.onclick=()=>{const name=el.dataset.region;selectedRegion=selectedRegion===name?"":name;$("region-filter").textContent=selectedRegion||"ALL";mapFlowFocus=flowNodeSet();renderRegions();regionInspector();renderSignalFlow();updateTrail()})
 }
 function effectRows(n){
  const xs=n.system_actions||[];if(!xs.length)return '<div class="note">Brak bezpośredniego połączenia tego neuronu do sztucznych populacji action-readout w pokazanym kierunku.</div>';
@@ -1674,6 +1682,15 @@ function effectRows(n){
 function neuropilRows(n){
  const xs=n.neuropils||[];if(!xs.length)return '<div class="note">Brak summary neuropili dla tego neuronu. Przebuduj neuron_meta.npz z plikiem connections_princeton.csv.gz.</div>';
  return xs.map(x=>'<div class="effect"><span>'+esc(x.name)+'</span><div class="efill"><i style="width:'+(clamp(Number(x.share||0),0,1)*100).toFixed(1)+'%"></i></div><b>'+(Number(x.share||0)*100).toFixed(0)+'%</b></div>').join("")
+}
+function structuralRows(n){
+ const rows=n.structural_connections||[];if(!rows.length)return '<div class="note">Brak połączeń w aktualnym runtime matrix.</div>';
+ return rows.map(x=>'<div class="conn-row"><b>'+esc(String(x.direction||"").toUpperCase())+'</b><span>'+esc(x.peer||"—")+'</span><em>w '+Number(x.effective_weight||0).toFixed(4)+'</em><em class="drive '+(Number(x.current_drive||0)>=0?"pos":"neg")+'">'+(Number(x.current_drive||0)>=0?"+":"")+Number(x.current_drive||0).toFixed(4)+'</em></div>').join("")
+}
+function directActionRows(n){
+ const rows=n.action_contributions||[];if(!rows.length)return '<div class="note">Brak mierzalnego bezpośredniego wkładu do widocznych action-output pools.</div>';
+ const max=Math.max(.000001,...rows.map(x=>Math.abs(Number(x.contribution||0))));
+ return rows.map(x=>'<div class="effect"><span>'+esc(x.name)+'</span><div class="efill"><i style="width:'+(Math.abs(Number(x.contribution||0))/max*100).toFixed(1)+'%"></i></div><b class="'+(Number(x.contribution||0)>=0?"plus":"minus")+'">'+(Number(x.contribution||0)>=0?"+":"")+Number(x.contribution||0).toExponential(2)+'</b></div>').join("")
 }
 function inspect(n){
  selected=n||selected;if(!selected)return;const n0=selected;$("picked").textContent=n0.real_position?"REAL POSITION":"FALLBACK POSITION";
@@ -1685,9 +1702,11 @@ function inspect(n){
  '<div><small>static in / out</small><b>'+nfmt(n0.incoming_edges||0)+' / '+nfmt(n0.outgoing_edges||0)+'</b></div><div><small>live flow in / out</small><b>'+Number(n0.live_flow_in||0).toFixed(4)+' / '+Number(n0.live_flow_out||0).toFixed(4)+'</b></div>'+
  '<div><small>internal attractor</small><b>'+esc((n0.internal_states||[]).join(", ")||"—")+'</b></div></div>'+
  '<div class="effects"><small>Live incoming / outgoing — ostatnia klatka</small>'+liveFlowRows(n0)+'</div>'+
+ '<div class="effects"><small>Najsilniejsze aktualne połączenia strukturalne IN / OUT</small>'+structuralRows(n0)+'</div>'+
+ '<div class="effects"><small>Signed wkład do action readoutów</small>'+directActionRows(n0)+'</div>'+
  '<div class="effects"><small>Top neuropile wg incident synapse mass</small>'+neuropilRows(n0)+'</div>'+
- '<div class="effects"><small>Wpływ na systemowe readouty Muchy</small>'+effectRows(n0)+'</div>'+
- '<div class="note">Live flow pokazuje zmierzone wkłady z ostatniej propagacji. Korelacja/readout nadal nie jest dowodem biologicznej funkcji neuronu.</div>'
+ '<div class="effects"><small>Siła bezpośrednich połączeń do systemowych readoutów</small>'+effectRows(n0)+'</div>'+
+ '<div class="note">Stage 34 rozdziela: live propagation, strukturalny runtime matrix i signed presynaptic contribution. To telemetryka algorytmu, nie pełny dowód biologicznej przyczynowości.</div>'
 }
 canvas.addEventListener("mousemove",e=>{const r=canvas.getBoundingClientRect();mouse.x=e.clientX-r.left;mouse.y=e.clientY-r.top;mouse.inside=true;if(hover){tip.style.display="block";tip.style.left=Math.min(r.width-255,mouse.x+13)+"px";tip.style.top=Math.min(r.height-155,mouse.y+13)+"px";tip.innerHTML='<b>'+esc(hover.id)+'</b><br><span class="mut">'+esc(hover.primary_type||hover.cell_class||hover.super_class||hover.role)+'</span><br><span class="acc">activation '+Number(hover.activation||0).toFixed(5)+'</span><br>flow in/out '+Number(hover.live_flow_in||0).toFixed(3)+' / '+Number(hover.live_flow_out||0).toFixed(3)+'<br>neuropil '+esc(hover.primary_neuropil||"—")+'<br>'+esc(hover.side||"")+' '+esc(hover.nt_type||"")}else tip.style.display="none"});
 canvas.addEventListener("mouseleave",()=>{mouse.inside=false;tip.style.display="none"});
