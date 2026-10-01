@@ -2044,6 +2044,126 @@ class VoiceEpisodicMemory:
             if len(recent_episodes) >= 6:
                 break
 
+        history = self._channel_history_rows(channel_id, 64)
+        history_summary = self._channel_history_summary(channel_id)
+        if history and not channel_name:
+            channel_name = next(
+                (
+                    str(row.get("channel_name") or "")
+                    for row in history
+                    if row.get("channel_name")
+                ),
+                "",
+            )
+
+        signed_history = [
+            row
+            for row in history
+            if (
+                str(row.get("kind")) == "episode"
+                and abs(float(row.get("amount", 0.0))) > 1e-9
+            )
+        ]
+        recent_signed = signed_history[:12]
+        recent_valence = (
+            sum(float(row["amount"]) for row in recent_signed)
+            / len(recent_signed)
+            if recent_signed
+            else 0.0
+        )
+        newer = recent_signed[:6]
+        older = recent_signed[6:12]
+        newer_mean = (
+            sum(float(row["amount"]) for row in newer) / len(newer)
+            if newer
+            else 0.0
+        )
+        older_mean = (
+            sum(float(row["amount"]) for row in older) / len(older)
+            if older
+            else newer_mean
+        )
+        trend_delta = newer_mean - older_mean
+        if len(recent_signed) < 4 or abs(trend_delta) < 0.06:
+            place_trend = "stable"
+        elif trend_delta > 0.0:
+            place_trend = "improving"
+        else:
+            place_trend = "worsening"
+
+        if len(recent_signed) >= 2:
+            mean_signed = sum(
+                float(row["amount"]) for row in recent_signed
+            ) / len(recent_signed)
+            variance = sum(
+                (float(row["amount"]) - mean_signed) ** 2
+                for row in recent_signed
+            ) / len(recent_signed)
+            place_stability = max(
+                0.0,
+                min(1.0, 1.0 - math.sqrt(variance)),
+            )
+        else:
+            place_stability = 0.0
+
+        first_seen = float(
+            history_summary.get("first_seen", 0.0)
+        )
+        last_seen_history = float(
+            history_summary.get("last_seen", 0.0)
+        )
+        last_seen = max(last_seen, last_seen_history)
+        place_age_days = (
+            max(0.0, (last_seen - first_seen) / 86400.0)
+            if first_seen > 0.0 and last_seen >= first_seen
+            else 0.0
+        )
+
+        recent_humans = [
+            max(0, int(row.get("human_count", 0)))
+            for row in history
+            if str(row.get("kind")) in {"visit", "dynamics", "episode"}
+        ][:12]
+        recent_human_density = (
+            sum(recent_humans) / len(recent_humans)
+            if recent_humans
+            else 0.0
+        )
+
+        action_history_groups: dict[str, list[float]] = {}
+        for row in history:
+            if str(row.get("kind")) != "episode":
+                continue
+            action_name = str(row.get("action") or "")
+            if not action_name:
+                continue
+            action_history_groups.setdefault(
+                action_name,
+                [],
+            ).append(float(row.get("amount", 0.0)))
+
+        action_outcomes = []
+        for action_name, amounts in action_history_groups.items():
+            mean_reward = sum(amounts) / max(1, len(amounts))
+            action_outcomes.append({
+                "action": action_name,
+                "observations": len(amounts),
+                "mean_reward": max(-1.0, min(1.0, mean_reward)),
+                "positive_count": sum(
+                    1 for amount in amounts if amount > 1e-9
+                ),
+                "negative_count": sum(
+                    1 for amount in amounts if amount < -1e-9
+                ),
+            })
+        action_outcomes.sort(
+            key=lambda row: (
+                int(row["observations"]),
+                abs(float(row["mean_reward"])),
+            ),
+            reverse=True,
+        )
+
         profile = {
             "channel_id": channel_id,
             "channel_name": channel_name or str(channel_id),
@@ -2082,12 +2202,27 @@ class VoiceEpisodicMemory:
                 else None
             ),
             "recent_episodes": recent_episodes,
+            "history_observations": int(
+                history_summary.get("observations", len(history))
+            ),
+            "first_seen": first_seen,
+            "last_seen": last_seen,
+            "place_age_days": place_age_days,
+            "recent_valence": max(
+                -1.0,
+                min(1.0, recent_valence),
+            ),
+            "place_trend": place_trend,
+            "place_trend_delta": float(trend_delta),
+            "place_stability": place_stability,
+            "recent_human_density": float(recent_human_density),
+            "action_outcomes": action_outcomes[:8],
+            "interaction_history": history[:16],
             "updated_at": max(
                 float(direct["updated_at"]),
                 float(visits["updated_at"]),
                 last_seen,
             ),
-            "last_seen": last_seen,
         }
         self._channel_profile_cache[channel_id] = dict(profile)
         return dict(profile)
