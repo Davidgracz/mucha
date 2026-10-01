@@ -4449,10 +4449,16 @@ class VoiceEpisodicMemory:
             >= self.consolidated_threshold
         )
         person_history_events = 0
+        channel_history_events = 0
         if self.db is not None:
             person_history_events = int(
                 self.db.execute(
                     "SELECT COUNT(*) FROM person_interaction_history"
+                ).fetchone()[0]
+            )
+            channel_history_events = int(
+                self.db.execute(
+                    "SELECT COUNT(*) FROM channel_interaction_history"
                 ).fetchone()[0]
             )
         return {
@@ -4471,6 +4477,7 @@ class VoiceEpisodicMemory:
             ),
             "semantic_entries": int(len(self._semantic)),
             "person_history_events": person_history_events,
+            "channel_history_events": channel_history_events,
             "semantic_recall_min_observations": int(
                 self.semantic_recall_min_observations
             ),
