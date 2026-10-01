@@ -333,6 +333,8 @@ def main():
         assert intention["active"] is True
         assert intention["action"] == "speak"
         assert intention["strength"] > 0.0
+        assert len(intention["history"]) >= 2
+        assert intention["history"][-1]["event"] == "formed"
         reinforced = b.register_intention_outcome("speak", 0.5)
         assert reinforced["matched"] is True
         assert reinforced["after"] >= reinforced["before"]
@@ -1746,6 +1748,10 @@ def main():
         assert "intention_signal_gain" in CONFIG_HTML
         assert 'id="active-intent"' in AUTONOMY_HTML
         assert 'id="intent-strength"' in AUTONOMY_HTML
+        assert 'id="intent-action-big"' in AUTONOMY_HTML
+        assert 'id="intent-history"' in AUTONOMY_HTML
+        assert "function renderIntent" in AUTONOMY_HTML
+        assert "Current Intent / Stage 32" in AUTONOMY_HTML
         assert "Credit queue" in HTML
         assert "SIGNAL FLOW" in NEUROMAP_HTML
         assert "FOLLOW DECISION" in NEUROMAP_HTML
@@ -1878,6 +1884,8 @@ def main():
         assert "foresight_cues" in brain_source
         assert "Stage-31 counterfactual foresight" in brain_source
         assert "def intention_state_diagnostics" in brain_source
+        assert "def _record_intention_event" in brain_source
+        assert "_intention_history" in brain_source
         assert "def _update_intention_from_decision" in brain_source
         assert "def register_intention_outcome" in brain_source
         assert "one-brain-intention:" in brain_source
