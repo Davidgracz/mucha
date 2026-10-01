@@ -11015,6 +11015,33 @@ class FlyBrain:
             for pos in order[:keep]:
                 add_important(int(pool[int(pos)]))
 
+        # Stage 34: keep representative high-activity neurons from the
+        # strongest named regions clickable even when they are not globally
+        # top-active. This makes region -> neuron drill-down deterministic.
+        region_seeds: list[tuple[float, list[int]]] = []
+        for _, indices in self._neuro_map_regions.items():
+            if not len(indices):
+                continue
+            values = abs_state[indices]
+            keep = min(2, len(indices))
+            if keep >= len(indices):
+                order = np.argsort(values)[::-1]
+            else:
+                part = np.argpartition(values, -keep)[-keep:]
+                order = part[np.argsort(values[part])[::-1]]
+            chosen = [
+                int(indices[int(pos)])
+                for pos in order[:keep]
+            ]
+            region_seeds.append((
+                float(np.max(values)) if len(values) else 0.0,
+                chosen,
+            ))
+        region_seeds.sort(key=lambda item: item[0], reverse=True)
+        for _, chosen in region_seeds[:32]:
+            for index in chosen:
+                add_important(index)
+
         remaining = max(0, count - len(important))
         if remaining:
             active_order = np.argsort(abs_state)[::-1]
@@ -11049,9 +11076,14 @@ class FlyBrain:
         # mapping from those broad behaviors to Discord actions is still an
         # explicit adapter and must not be read as a literal biological claim.
         action_influence: dict[str, np.ndarray] = {}
+        action_direct_contribution: dict[str, np.ndarray] = {}
         for action, targets in self._action_output_pools.items():
             if len(targets) == 0 or len(selected) == 0:
                 action_influence[action] = np.zeros(
+                    len(selected),
+                    dtype=np.float32,
+                )
+                action_direct_contribution[action] = np.zeros(
                     len(selected),
                     dtype=np.float32,
                 )
@@ -11060,6 +11092,17 @@ class FlyBrain:
             action_influence[action] = np.asarray(
                 sub.sum(axis=0)
             ).ravel().astype(np.float32, copy=False)
+            signed_sub = self._runtime_matrix_cpu[
+                targets
+            ][:, selected]
+            signed_weights = np.asarray(
+                signed_sub.sum(axis=0)
+            ).ravel().astype(np.float32, copy=False)
+            action_direct_contribution[action] = (
+                signed_weights
+                * state_cpu[selected]
+                / max(1, len(targets))
+            ).astype(np.float32, copy=False)
 
         live_flow_in: dict[int, float] = {}
         live_flow_out: dict[int, float] = {}
@@ -11121,6 +11164,18 @@ class FlyBrain:
                 key=lambda item: item["strength"],
                 reverse=True,
             )[:3]
+            direct_actions = sorted(
+                (
+                    {
+                        "name": action,
+                        "contribution": float(values[pos]),
+                    }
+                    for action, values in action_direct_contribution.items()
+                    if abs(float(values[pos])) > 1e-10
+                ),
+                key=lambda item: abs(float(item["contribution"])),
+                reverse=True,
+            )[:4]
 
             neuropils = []
             total_np_mass = max(
@@ -11170,6 +11225,7 @@ class FlyBrain:
                 ),
                 "neuropils": neuropils,
                 "system_actions": actions,
+                "action_contributions": direct_actions,
                 "incoming_edges": int(
                     self._runtime_matrix_cpu.indptr[idx + 1]
                     - self._runtime_matrix_cpu.indptr[idx]
