@@ -8212,20 +8212,32 @@ class MuchaClient(discord.Client):
                     social_drive_level=float(
                         selected_plan.get("social_drive_level", 0.0)
                     ),
+                    social_drive_magnitude=float(
+                        self.cfg.voice.social_drive_max_magnitude
+                    ),
                     social_fatigue_level=float(
                         selected_plan.get(
                             "social_fatigue_level",
                             0.0,
                         )
                     ),
+                    social_fatigue_magnitude=float(
+                        self.cfg.voice.social_fatigue_max_magnitude
+                    ),
                     habituation_level=float(
                         selected_plan.get("habituation_level", 0.0)
+                    ),
+                    habituation_change_magnitude=float(
+                        self.cfg.voice.habituation_change_magnitude
                     ),
                     exploration_drive_level=float(
                         selected_plan.get(
                             "exploration_drive_level",
                             0.0,
                         )
+                    ),
+                    exploration_drive_magnitude=float(
+                        self.cfg.voice.exploration_drive_max_magnitude
                     ),
                 )
 
