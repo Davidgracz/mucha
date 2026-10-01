@@ -2455,6 +2455,58 @@ def main():
         )
         assert policy_after["last_update"]["action"] == "react"
 
+        b._internal_drive_values["social_need"] = 0.90
+        b.tick_motivation_state(0.0)
+        persisted_intent = b._update_intention_from_decision(
+            "voice_join",
+            competition={
+                "action": "voice_join",
+                "candidates": {
+                    "voice_join": 0.92,
+                    "stay": 0.20,
+                },
+            },
+            foresight={
+                "simulations": {
+                    "voice_join": {
+                        "state_relief": 0.30,
+                        "simulation_confidence": 0.90,
+                    },
+                },
+            },
+            rows={
+                "voice_join": {
+                    "predicted_reward": 0.35,
+                    "prediction_confidence": 0.80,
+                },
+            },
+            decision_context="autonomous-idle",
+        )
+        assert persisted_intent["active"] is True
+        persisted_goal = b._update_goal_from_decision(
+            "voice_join",
+            foresight={
+                "simulations": {
+                    "voice_join": {
+                        "simulation_confidence": 0.90,
+                        "motivation_changes": {
+                            "social": {"relief": 0.16},
+                        },
+                    },
+                },
+            },
+            intention=persisted_intent,
+            decision_context="autonomous-idle",
+        )
+        assert persisted_goal["active"] is True
+        persisted_goal = b.register_goal_step(
+            "voice_join",
+            executed=True,
+            success=True,
+            detail="persisted smoke goal step",
+        )
+        assert persisted_goal["step_count"] == 1
+
         b.save()
         reloaded = FlyBrain(c, cfg)
         assert reloaded.diagnostics()["learned_synapses"] >= 1
@@ -2477,6 +2529,16 @@ def main():
             "safety",
             "rest",
         }
+        reloaded_intention = reloaded.intention_state_diagnostics()
+        assert reloaded_intention["active"] is True
+        assert reloaded_intention["action"] == "voice_join"
+        assert reloaded_intention["history"][-1]["event"] == "restored"
+        reloaded_goal = reloaded.goal_state_diagnostics()
+        assert reloaded_goal["active"] is True
+        assert reloaded_goal["motivation"] == "social"
+        assert reloaded_goal["step_count"] == 1
+        assert reloaded_goal["steps"][0]["action"] == "voice_join"
+        assert reloaded_goal["history"][-1]["event"] == "restored"
 
         lang = OnlineLanguage(
             td / "lang.sqlite3",
