@@ -2590,6 +2590,9 @@ def main():
             detail="persisted smoke goal step",
         )
         assert persisted_goal["step_count"] == 1
+        curiosity_before_persist = b.personality_state_diagnostics()[
+            "traits"
+        ]["curiosity"]["value"]
         for _ in range(4):
             b.register_personality_action(
                 "explore",
@@ -2600,7 +2603,10 @@ def main():
             "explore",
             0.8,
         )
-        assert persisted_personality["traits"]["curiosity"]["value"] > 0.5
+        curiosity_after_persist = persisted_personality[
+            "traits"
+        ]["curiosity"]["value"]
+        assert curiosity_after_persist > curiosity_before_persist
 
         b.save()
         reloaded = FlyBrain(c, cfg)
@@ -2635,7 +2641,16 @@ def main():
         assert reloaded_goal["steps"][0]["action"] == "voice_join"
         assert reloaded_goal["history"][-1]["event"] == "restored"
         reloaded_personality = reloaded.personality_state_diagnostics()
-        assert reloaded_personality["traits"]["curiosity"]["value"] > 0.5
+        assert np.isclose(
+            reloaded_personality["traits"]["curiosity"]["value"],
+            curiosity_after_persist,
+            rtol=1e-5,
+            atol=1e-5,
+        )
+        assert (
+            reloaded_personality["traits"]["curiosity"]["value"]
+            > curiosity_before_persist
+        )
         assert reloaded_personality["traits"]["curiosity"]["observations"] >= 5
         assert reloaded_personality["last_event"]["event"] == "restored"
 
