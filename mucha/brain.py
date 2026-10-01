@@ -109,6 +109,50 @@ class FlyBrain:
         ),
     }
 
+    # Stage 30: individual homeostatic drives are grouped into a smaller
+    # motivational landscape. Motivation never writes directly to an action
+    # score; urgency only changes how strongly the existing drive -> internal
+    # state -> FAFB path is stimulated.
+    MOTIVATION_NAMES = (
+        "social",
+        "novelty",
+        "safety",
+        "rest",
+    )
+    MOTIVATION_DRIVE_WEIGHTS = {
+        "social": (
+            ("social_need", 0.80),
+            ("boredom", 0.20),
+        ),
+        "novelty": (
+            ("curiosity", 0.45),
+            ("exploration", 0.35),
+            ("boredom", 0.20),
+        ),
+        "safety": (("caution", 1.00),),
+        "rest": (("fatigue", 1.00),),
+    }
+    MOTIVATION_AFFECT_WEIGHTS = {
+        "social": (("social_longing", 0.30),),
+        "novelty": (
+            ("curiosity", 0.20),
+            ("activation", 0.10),
+        ),
+        "safety": (("tension", 0.35),),
+        "rest": (),
+    }
+    DRIVE_MOTIVATION_MAP = {
+        "social_need": (("social", 1.00),),
+        "curiosity": (("novelty", 1.00),),
+        "exploration": (("novelty", 1.00),),
+        "caution": (("safety", 1.00),),
+        "boredom": (
+            ("novelty", 0.70),
+            ("social", 0.30),
+        ),
+        "fatigue": (("rest", 1.00),),
+    }
+
     ACTION_BIOLOGICAL_SEEDS = {
         "speak": (),
         "react": (
@@ -229,6 +273,29 @@ class FlyBrain:
         self._affective_last_target: dict[str, float] = {
             name: 0.0
             for name in self.AFFECTIVE_STATE_NAMES
+        }
+        self._motivation_frustration: dict[str, float] = {
+            name: 0.0
+            for name in self.MOTIVATION_NAMES
+        }
+        self._motivation_satiation: dict[str, float] = {
+            name: 0.0
+            for name in self.MOTIVATION_NAMES
+        }
+        self._motivation_last_pressure: dict[str, float] = {
+            name: 0.0
+            for name in self.MOTIVATION_NAMES
+        }
+        self._motivation_last_urgency: dict[str, float] = {
+            name: 0.0
+            for name in self.MOTIVATION_NAMES
+        }
+        self._motivation_last_tick = time.monotonic()
+        self._motivation_last_event: dict = {
+            "event": "startup",
+            "intensity": 0.0,
+            "time": time.time(),
+            "changes": {},
         }
         self._internal_drive_last_event: dict = {
             "event": "startup",
@@ -1717,6 +1784,7 @@ class FlyBrain:
             "states": states,
             "homeostatic_drives": self.internal_drive_diagnostics(),
             "affective_state": self.affective_state_diagnostics(),
+            "motivation_state": self.motivation_state_diagnostics(),
             "method": (
                 "sensory entry pools → real FAFB paths → internal assemblies; "
                 "persistence amplifies only existing recurrent FAFB edges"
@@ -1830,6 +1898,296 @@ class FlyBrain:
     @staticmethod
     def _clip_internal_drive(value: float) -> float:
         return max(0.0, min(1.0, float(value)))
+
+    def _motivation_base_pressures(self) -> dict[str, float]:
+        pressures: dict[str, float] = {}
+        for name in self.MOTIVATION_NAMES:
+            weighted = 0.0
+            weight_total = 0.0
+            for drive, weight in self.MOTIVATION_DRIVE_WEIGHTS.get(
+                name,
+                (),
+            ):
+                w = max(0.0, float(weight))
+                weighted += (
+                    float(self._internal_drive_values.get(drive, 0.0))
+                    * w
+                )
+                weight_total += w
+            for affect, weight in self.MOTIVATION_AFFECT_WEIGHTS.get(
+                name,
+                (),
+            ):
+                w = max(0.0, float(weight))
+                weighted += (
+                    float(self._affective_values.get(affect, 0.0))
+                    * w
+                )
+                weight_total += w
+            pressures[name] = max(
+                0.0,
+                min(
+                    1.0,
+                    weighted / weight_total
+                    if weight_total > 1e-9
+                    else 0.0,
+                ),
+            )
+        return pressures
+
+    def tick_motivation_state(
+        self,
+        elapsed_seconds: float | None = None,
+    ) -> dict:
+        """Update Stage 30 frustration/satiation and motivational urgency."""
+        now = time.monotonic()
+        if elapsed_seconds is None:
+            elapsed = max(
+                0.0,
+                now - float(self._motivation_last_tick),
+            )
+        else:
+            elapsed = max(0.0, float(elapsed_seconds))
+        self._motivation_last_tick = now
+
+        pressures = self._motivation_base_pressures()
+        if not bool(self.cfg.motivation_enabled):
+            self._motivation_last_pressure = dict(pressures)
+            self._motivation_last_urgency = dict(pressures)
+            return self.motivation_state_diagnostics()
+
+        minutes = min(5.0, elapsed / 60.0)
+        threshold = max(
+            0.0,
+            min(
+                0.95,
+                float(self.cfg.motivation_frustration_threshold),
+            ),
+        )
+        frustration_rate = max(
+            0.0,
+            float(self.cfg.motivation_frustration_per_minute),
+        )
+        frustration_decay = max(
+            0.0,
+            float(
+                self.cfg.motivation_frustration_decay_per_minute
+            ),
+        )
+        satiation_decay = max(
+            0.0,
+            float(self.cfg.motivation_satiation_decay_per_minute),
+        )
+        frustration_gain = max(
+            0.0,
+            float(self.cfg.motivation_frustration_gain),
+        )
+        satiation_gain = max(
+            0.0,
+            min(1.0, float(self.cfg.motivation_satiation_gain)),
+        )
+
+        for name in self.MOTIVATION_NAMES:
+            pressure = float(pressures.get(name, 0.0))
+            frustration = float(
+                self._motivation_frustration.get(name, 0.0)
+            )
+            satiation = float(
+                self._motivation_satiation.get(name, 0.0)
+            )
+
+            if minutes > 0.0:
+                if pressure > threshold:
+                    excess = (
+                        (pressure - threshold)
+                        / max(1e-6, 1.0 - threshold)
+                    )
+                    frustration += (
+                        frustration_rate
+                        * minutes
+                        * (0.35 + 0.65 * excess)
+                    )
+                else:
+                    frustration -= (
+                        frustration_decay
+                        * minutes
+                        * (1.0 + max(0.0, threshold - pressure))
+                    )
+                satiation -= satiation_decay * minutes
+
+            frustration = max(0.0, min(1.0, frustration))
+            satiation = max(0.0, min(1.0, satiation))
+            self._motivation_frustration[name] = frustration
+            self._motivation_satiation[name] = satiation
+
+            urgency = (
+                pressure
+                * (1.0 + frustration_gain * frustration)
+                * max(0.12, 1.0 - satiation_gain * satiation)
+            )
+            self._motivation_last_urgency[name] = max(
+                0.0,
+                min(1.5, urgency),
+            )
+
+        self._motivation_last_pressure = dict(pressures)
+        result = self.motivation_state_diagnostics()
+        result["elapsed_seconds"] = float(elapsed)
+        return result
+
+    def _register_motivation_event(
+        self,
+        event: str,
+        intensity: float,
+    ) -> dict:
+        if not bool(self.cfg.motivation_enabled):
+            return {}
+        event = str(event or "").strip().lower()
+        intensity = max(0.0, min(2.0, float(intensity)))
+        satiation_effects = {
+            "social_contact": {"social": 0.26},
+            "social_success": {"social": 0.42},
+            "novelty": {"novelty": 0.28},
+            "exploration_complete": {"novelty": 0.44},
+            "rest": {"rest": 0.48},
+        }
+        frustration_effects = {
+            "threat": {"safety": 0.34},
+            "negative_reward": {"safety": 0.12},
+        }
+        changes: dict[str, dict[str, float]] = {}
+        for name, amount in satiation_effects.get(event, {}).items():
+            before = float(self._motivation_satiation[name])
+            after = max(
+                0.0,
+                min(1.0, before + float(amount) * intensity),
+            )
+            self._motivation_satiation[name] = after
+            self._motivation_frustration[name] = max(
+                0.0,
+                self._motivation_frustration[name]
+                - 0.55 * float(amount) * intensity,
+            )
+            changes[name] = {
+                "kind": "satiation",
+                "before": before,
+                "after": after,
+            }
+        for name, amount in frustration_effects.get(event, {}).items():
+            before = float(self._motivation_frustration[name])
+            after = max(
+                0.0,
+                min(1.0, before + float(amount) * intensity),
+            )
+            self._motivation_frustration[name] = after
+            changes[name] = {
+                "kind": "frustration",
+                "before": before,
+                "after": after,
+            }
+
+        if changes:
+            # Recompute urgency immediately after meaningful outcomes.
+            self.tick_motivation_state(0.0)
+        self._motivation_last_event = {
+            "event": event or "unknown",
+            "intensity": float(intensity),
+            "time": time.time(),
+            "changes": changes,
+        }
+        return dict(self._motivation_last_event)
+
+    def _drive_motivation_multiplier(self, drive: str) -> float:
+        if not bool(self.cfg.motivation_enabled):
+            return 1.0
+        mapped = self.DRIVE_MOTIVATION_MAP.get(str(drive), ())
+        if not mapped:
+            return 1.0
+        weighted = 0.0
+        weight_total = 0.0
+        for name, weight in mapped:
+            w = max(0.0, float(weight))
+            weighted += (
+                float(self._motivation_last_urgency.get(name, 0.0))
+                * w
+            )
+            weight_total += w
+        urgency = (
+            weighted / weight_total
+            if weight_total > 1e-9
+            else 0.0
+        )
+        gain = max(
+            0.0,
+            min(1.5, float(self.cfg.motivation_neural_gain)),
+        )
+        return max(
+            0.25,
+            min(1.75, 0.50 + gain * urgency),
+        )
+
+    def motivation_state_diagnostics(self) -> dict:
+        pressures = self._motivation_base_pressures()
+        rows: dict[str, dict] = {}
+        for name in self.MOTIVATION_NAMES:
+            rows[name] = {
+                "pressure": float(pressures.get(name, 0.0)),
+                "frustration": float(
+                    self._motivation_frustration.get(name, 0.0)
+                ),
+                "satiation": float(
+                    self._motivation_satiation.get(name, 0.0)
+                ),
+                "urgency": float(
+                    self._motivation_last_urgency.get(
+                        name,
+                        pressures.get(name, 0.0),
+                    )
+                ),
+                "drive_components": [
+                    {
+                        "drive": drive,
+                        "weight": float(weight),
+                        "value": float(
+                            self._internal_drive_values.get(drive, 0.0)
+                        ),
+                    }
+                    for drive, weight in self.MOTIVATION_DRIVE_WEIGHTS.get(
+                        name,
+                        (),
+                    )
+                ],
+                "affect_components": [
+                    {
+                        "affect": affect,
+                        "weight": float(weight),
+                        "value": float(
+                            self._affective_values.get(affect, 0.0)
+                        ),
+                    }
+                    for affect, weight in self.MOTIVATION_AFFECT_WEIGHTS.get(
+                        name,
+                        (),
+                    )
+                ],
+            }
+        dominant = max(
+            self.MOTIVATION_NAMES,
+            key=lambda name: float(rows[name]["urgency"]),
+        )
+        return {
+            "enabled": bool(self.cfg.motivation_enabled),
+            "dominant": dominant,
+            "dominant_urgency": float(rows[dominant]["urgency"]),
+            "motivations": rows,
+            "last_event": dict(self._motivation_last_event),
+            "neural_gain": float(self.cfg.motivation_neural_gain),
+            "method": (
+                "homeostatic drives + slow affect -> pressure -> "
+                "frustration/satiation -> urgency -> scaled drive sensory "
+                "input -> internal attractors -> FAFB -> One Brain"
+            ),
+        }
 
     def _inject_internal_drive(
         self,
@@ -1978,6 +2336,8 @@ class FlyBrain:
                 values["boredom"] - 0.10 * minutes
             )
 
+        motivation = self.tick_motivation_state(elapsed)
+
         neural_scale = min(
             1.0,
             max(0.05, elapsed / 5.0),
@@ -1987,13 +2347,17 @@ class FlyBrain:
             injected[drive] = self._inject_internal_drive(
                 drive,
                 values[drive],
-                scale=neural_scale,
+                scale=(
+                    neural_scale
+                    * self._drive_motivation_multiplier(drive)
+                ),
             )
 
         result = self.internal_drive_diagnostics()
         result["elapsed_seconds"] = float(elapsed)
         result["external_stimulation"] = bool(external_stimulation)
         result["social_contact"] = bool(social_contact)
+        result["motivation_state"] = motivation
         result["injected"] = injected
         return result
 
@@ -2075,11 +2439,16 @@ class FlyBrain:
                     scale=min(0.65, 0.25 + 0.20 * intensity),
                 )
 
+        motivation_event = self._register_motivation_event(
+            event,
+            intensity,
+        )
         self._internal_drive_last_event = {
             "event": event or "unknown",
             "intensity": float(intensity),
             "time": time.time(),
             "changes": changes,
+            "motivation_event": motivation_event,
         }
         return {
             "enabled": bool(self.cfg.internal_drives_enabled),
@@ -2452,6 +2821,7 @@ class FlyBrain:
         selection mechanism. Existing `stay` is exposed as NOOP externally.
         """
         drives = self.internal_drive_diagnostics()
+        motivation = self.motivation_state_diagnostics()
         states = self._internal_state_levels()
         raw_scores = self.action_scores()
         effective_scores = self.action_policy_scores(raw_scores)
@@ -2547,12 +2917,18 @@ class FlyBrain:
                     })
                 if action_weight <= 0.0:
                     continue
-                contribution = drive_value * action_weight
+                motivation_scale = self._drive_motivation_multiplier(
+                    drive_name
+                )
+                raw_contribution = drive_value * action_weight
+                contribution = raw_contribution * motivation_scale
                 drive_support += contribution
                 supporting_drives.append({
                     "drive": drive_name,
                     "value": drive_value,
                     "weight": action_weight,
+                    "motivation_scale": motivation_scale,
+                    "raw_contribution": raw_contribution,
                     "contribution": contribution,
                     "paths": paths,
                 })
@@ -2698,11 +3074,12 @@ class FlyBrain:
             "can_speak": bool(can_speak),
             "can_explore": bool(can_explore),
             "can_voice_move": bool(can_voice_move),
+            "motivation_state": motivation,
             "executed": False,
             "source": (
-                "technical-feasibility + homeostatic-drives + "
-                "FAFB internal-state attractors + learned reward prediction + "
-                "neural competition preview"
+                "technical-feasibility + Stage-30 motivational urgency + "
+                "homeostatic drives + FAFB internal-state attractors + "
+                "learned reward prediction + neural competition preview"
             ),
             "prediction_executed": False,
         }
@@ -3276,6 +3653,27 @@ class FlyBrain:
                     0.0,
                     min(1.0, float(value)),
                 )
+        if "motivation_frustration" in data:
+            values = np.asarray(
+                data["motivation_frustration"],
+                dtype=np.float32,
+            ).ravel()
+            for name, value in zip(self.MOTIVATION_NAMES, values):
+                self._motivation_frustration[name] = max(
+                    0.0,
+                    min(1.0, float(value)),
+                )
+        if "motivation_satiation" in data:
+            values = np.asarray(
+                data["motivation_satiation"],
+                dtype=np.float32,
+            ).ravel()
+            for name, value in zip(self.MOTIVATION_NAMES, values):
+                self._motivation_satiation[name] = max(
+                    0.0,
+                    min(1.0, float(value)),
+                )
+        self.tick_motivation_state(0.0)
 
     def save(self) -> None:
         p = self.cfg.state_file
@@ -3381,6 +3779,20 @@ class FlyBrain:
                 [
                     self._affective_values[name]
                     for name in self.AFFECTIVE_STATE_NAMES
+                ],
+                dtype=np.float32,
+            ),
+            motivation_frustration=np.asarray(
+                [
+                    self._motivation_frustration[name]
+                    for name in self.MOTIVATION_NAMES
+                ],
+                dtype=np.float32,
+            ),
+            motivation_satiation=np.asarray(
+                [
+                    self._motivation_satiation[name]
+                    for name in self.MOTIVATION_NAMES
                 ],
                 dtype=np.float32,
             ),
