@@ -2444,6 +2444,12 @@ main{padding:12px}.guide-head{flex-direction:column}.decision-flow{grid-template
       <div id="action-policy-debug"><div class="reason">Policy czeka na dane connectomu i pierwszy reward/punish…</div></div>
     </div>
 
+    <div class="card span3 focus-card">
+      <h2>🧠 Affective State / Stage 27 <span class="help-dot" data-help-key="affective-state" tabindex="0">?</span></h2>
+      <div class="reason" id="affective-summary">Czekam na pierwszy slow affect tick…</div>
+      <div class="learning-grid" id="affective-state-grid" style="grid-template-columns:repeat(5,minmax(0,1fr));margin-top:10px"></div>
+    </div>
+
     <div class="section-heading" id="voice-section"><div><span class="section-no">02 / VOICE</span><h2>Voice i decyzje</h2><p>Najpierw decyzja, potem jej przyczyna: readouty, potrzeby, pamięć, reward i zagrożenia.</p></div></div>
 
     <div class="card span3 focus-card">
@@ -2728,6 +2734,7 @@ const HELP={
   "attention":{title:"Attention / Working Memory",body:"Krótkotrwały kontekst osób, kanałów i tematów. Ślad zanika, a aktywny focus jest ponownie podawany do connectomu.",read:"Attention jest chwilowe. Affinity jest relacją długoterminową. Working memory pokazuje ostatnie sceny nadal dostępne jako kontekst."},
   "attention-score":{title:"Attention score",body:"Połączenie świeżości krótkotrwałego śladu z neuronalnym attention_score odczytanym z connectomu.",read:"Wyższy score = większa aktualna dominacja tego elementu w kontekście. To nie jest reward."},
   "action-policy":{title:"Learned Action Policy",body:"Warstwa ucząca się na reward/punish, która przesuwa efektywne readouty. Przy Connectome behavior competition SPEAK/REACT nie przechodzą już przez ręczny próg — konkurują ze STAY.",read:"raw = sam connectome, bias = doświadczenie, effective = raw po policy. W trybie competition patrz na winner/runner-up i margin. Progi są tylko legacy fallback."},
+  "affective-state":{title:"Affective State / Stage 27",body:"Wolnozmienny stan afektywny wyliczany z realnej aktywności attractorów FAFB, homeostatic drives i reward trace. Nie jest osobnym systemem decyzji. Jego pamięć jest zapisywana w brain_state.npz i wraca jako delikatny sensory feedback do tych samych attractorów.",read:"value = utrwalony stan, target = to, do czego pcha go bieżąca aktywność neuronalna. CONTENTMENT, TENSION, CURIOSITY, SOCIAL_LONGING i ACTIVATION mogą utrzymywać się między eventami, ale każda akcja nadal wygrywa w One Brain."},
   "brain-state":{title:"Stan connectomu",body:"Bieżąca aktywność całej sieci po bodźcach, propagacji, plastyczności i internal states. Stan nie resetuje się po każdym evencie.",read:"Globalna aktywność mówi jak mocno sieć pracuje, ale do konkretnej decyzji patrz na readouty."},
   "readout":{title:"Readout",body:"Wartość 0–1 z populacji neuronów wyjściowych przypisanej do akcji speak/react/join/move/leave/explore/stay.",read:"Najsilniejszy readout jest kandydatem. Wykonanie może być zablokowane przez cooldown, permissions albo warunki bezpieczeństwa."},
   "last-action":{title:"Faktyczna akcja",body:"Ostatnie zachowanie naprawdę wykonane przez bota, a nie sam zamiar connectomu.",read:"Porównaj ją z najsilniejszym readoutem i z polem 'powód decyzji'."},
@@ -3495,6 +3502,32 @@ function renderLearningSinceStart(x){
     $("session-summary").textContent='Czekam na nowe próbki językowe albo pierwszy reward.';
   }
 }
+function renderAffective(a){
+  a=a||{};
+  const values=a.values||{},targets=a.targets||{};
+  const labels={
+    contentment:"CONTENTMENT",
+    tension:"TENSION",
+    curiosity:"CURIOSITY",
+    social_longing:"SOCIAL LONGING",
+    activation:"ACTIVATION"
+  };
+  const dominant=String(a.dominant||"—");
+  const dominantValue=Number(a.dominant_value||0);
+  $("affective-summary").innerHTML=
+    '<b>'+esc(dominant.toUpperCase())+'</b> • '+(dominantValue*100).toFixed(0)+'%'+
+    ' • feedback '+Number(a.feedback_gain||0).toFixed(2)+
+    ' • reward trace '+(Number(a.reward_trace||0)>=0?"+":"")+Number(a.reward_trace||0).toFixed(3);
+  $("affective-state-grid").innerHTML=Object.keys(labels).map(key=>{
+    const value=Math.max(0,Math.min(1,Number(values[key]||0)));
+    const target=Math.max(0,Math.min(1,Number(targets[key]||0)));
+    const delta=target-value;
+    return '<div class="kpi"><small>'+esc(labels[key])+'</small>'+
+      '<strong>'+(value*100).toFixed(0)+'%</strong>'+
+      '<div class="track" style="margin-top:7px"><div class="fill" style="width:'+(value*100).toFixed(1)+'%"></div></div>'+
+      '<div class="footer">target '+(target*100).toFixed(0)+'% • Δ '+(delta>=0?"+":"")+(delta*100).toFixed(0)+' pp</div></div>';
+  }).join("");
+}
 function renderSleep(s){
   s=s||{};
   const state=String(s.state||"AWAKE");
@@ -3971,6 +4004,7 @@ async function update(){
     renderReaction(s.reaction_debug||{});
     renderLearning(s.learning_debug||{});
     renderSleep(s.sleep||{});
+    renderAffective(s.affective_state||{});
     renderLearningSinceStart(s.learning_since_start||{});
     renderSocialScenes(s.social_scene_profiles||[]);
     renderVoiceDynamicsProfiles(s.voice_dynamics_profiles||[]);
