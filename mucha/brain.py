@@ -153,6 +153,41 @@ class FlyBrain:
         "fatigue": (("rest", 1.00),),
     }
 
+    # Stage 35: slow emergent temperament. Traits are learned summaries of
+    # actual outcomes and repeated behaviour; they never edit action scores.
+    # Only above-neutral expression is allowed to re-enter through existing
+    # internal-state sensory paths so the FAFB network remains the selector.
+    PERSONALITY_NAMES = (
+        "sociability",
+        "curiosity",
+        "caution",
+        "persistence",
+        "expressiveness",
+    )
+    PERSONALITY_STATE_MAP = {
+        "sociability": (
+            ("social_need", 0.78),
+            ("arousal", 0.22),
+        ),
+        "curiosity": (
+            ("curiosity", 0.82),
+            ("arousal", 0.18),
+        ),
+        "caution": (
+            ("stress", 0.82),
+            ("arousal", 0.18),
+        ),
+        "persistence": (
+            ("arousal", 0.62),
+            ("curiosity", 0.23),
+            ("social_need", 0.15),
+        ),
+        "expressiveness": (
+            ("arousal", 0.72),
+            ("social_need", 0.28),
+        ),
+    }
+
     ACTION_BIOLOGICAL_SEEDS = {
         "speak": (),
         "react": (
@@ -335,6 +370,27 @@ class FlyBrain:
         }
         self._goal_history = deque(maxlen=96)
         self._goal_history.append(dict(self._goal_last_event))
+
+        self._personality_values: dict[str, float] = {
+            name: 0.5
+            for name in self.PERSONALITY_NAMES
+        }
+        self._personality_observations: dict[str, int] = {
+            name: 0
+            for name in self.PERSONALITY_NAMES
+        }
+        self._personality_last_event: dict = {
+            "event": "startup",
+            "time": time.time(),
+            "trait": None,
+            "evidence": 0.0,
+            "reason": "neutral-unlearned-temperament",
+        }
+        self._personality_history = deque(maxlen=128)
+        self._personality_history.append(
+            dict(self._personality_last_event)
+        )
+
         self._internal_drive_last_event: dict = {
             "event": "startup",
             "intensity": 0.0,
