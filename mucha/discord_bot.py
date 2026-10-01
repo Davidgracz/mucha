@@ -8393,7 +8393,7 @@ class MuchaClient(discord.Client):
         async with self._brain_lock:
             if brain_map is None:
                 brain_map = self.brain.neuro_map_snapshot(
-                    count=180,
+                    count=220,
                     projection=projection,
                 )
                 self._neuromap_dashboard_cache[projection] = (
