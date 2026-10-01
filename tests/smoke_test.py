@@ -611,10 +611,48 @@ def main():
             for row in person["social_events"]
         )
         assert person["recent_episodes"]
+        assert person["history_observations"] >= 7
+        assert person["interaction_history"]
+        assert person["first_seen"] > 0.0
+        assert person["last_seen"] >= person["first_seen"]
+        assert person["relationship_age_days"] >= 0.0
+        assert person["relationship_trend"] in {
+            "improving",
+            "stable",
+            "worsening",
+        }
+        assert -1.0 <= person["recent_valence"] <= 1.0
+        assert 0.0 <= person["relationship_stability"] <= 1.0
+        assert any(
+            row["action"] == "voice_move"
+            and row["observations"] >= 2
+            and row["mean_reward"] > 0.0
+            for row in person["action_outcomes"]
+        )
+        assert any(
+            row["kind"] == "social"
+            and row["source"] == "DIRECT_REPLY"
+            for row in person["interaction_history"]
+        )
         assert any(
             row["user_id"] == 11
             for row in restored.person_profiles(8)
         )
+
+        relationship_restored = VoiceEpisodicMemory(
+            max_events=32,
+            learning_rate=0.5,
+            database=persistent_path,
+            max_persisted_events=100,
+        )
+        reloaded_person = relationship_restored.person_profile(11)
+        assert reloaded_person["history_observations"] >= 7
+        assert reloaded_person["interaction_history"]
+        assert any(
+            row["action"] == "voice_move"
+            for row in reloaded_person["action_outcomes"]
+        )
+        relationship_restored.close()
 
         restored.observe_channel_visit(
             555,
@@ -1457,6 +1495,9 @@ def main():
         assert "renderPersonProfiles" in HTML
         assert 'id="people-memory-grid"' in HTML
         assert "person-memory" in HTML
+        assert "Recent valence" in HTML
+        assert "Outcome akcji" in HTML
+        assert "Wiek relacji" in HTML
         assert "Long-term Channel / Place Memory" in HTML
         assert "renderChannelProfiles" in HTML
         assert 'id="channel-memory-grid"' in HTML
@@ -1742,6 +1783,14 @@ def main():
         assert "observe_person_social_event" in episodic_source
         assert '"person_contact"' in episodic_source
         assert '"person_social"' in episodic_source
+        assert "person_interaction_history" in episodic_source
+        assert "def _record_person_history" in episodic_source
+        assert "def _person_history_rows" in episodic_source
+        assert "def _backfill_person_history_from_db" in episodic_source
+        assert '"relationship_trend"' in episodic_source
+        assert '"recent_valence"' in episodic_source
+        assert '"relationship_stability"' in episodic_source
+        assert '"action_outcomes"' in episodic_source
         assert "observe_channel_visit" in episodic_source
         assert "observe_channel_dynamics" in episodic_source
         assert "channel_profile" in episodic_source
@@ -1759,6 +1808,9 @@ def main():
         assert '"channel_people"' in episodic_source
         assert '"channel_mode"' in episodic_source
         assert "inject_person_profile" in bot_source
+        assert "social:person-history:trend:" in brain_source
+        assert "social:person-history:recent:" in brain_source
+        assert "social:person-history:action-outcome:" in brain_source
         assert "inject_channel_profile" in bot_source
         assert "inject_social_scene_profile" in bot_source
         assert "inject_voice_dynamics_profile" in bot_source
