@@ -515,6 +515,10 @@ class MuchaClient(discord.Client):
             "affective_state_smoothing",
             "affective_state_feedback_gain",
             "affective_state_reward_gain",
+            "one_brain_noop_reafference_enabled",
+            "one_brain_noop_reafference_min_support",
+            "one_brain_noop_reafference_gain",
+            "one_brain_noop_reafference_steps",
             "action_policy_enabled",
             "action_policy_lr",
             "action_policy_max_bias",
@@ -8060,9 +8064,12 @@ class MuchaClient(discord.Client):
                 selected_plan = max(
                     autonomous_rows,
                     key=lambda row: float(
-                        row.get("candidate_set", {})
-                        .get("competition_preview", {})
-                        .get("score", 0.0)
+                        row.get("candidate_set", {}).get(
+                            "context_selection_score",
+                            row.get("candidate_set", {})
+                            .get("competition_preview", {})
+                            .get("score", 0.0),
+                        )
                     ),
                 )
                 current_dwell = float(
