@@ -86,6 +86,14 @@ class BrainConfig:
     intention_switch_margin: float = 0.10
     intention_min_evidence: float = 0.10
     intention_outcome_gain: float = 0.75
+    goal_enabled: bool = True
+    goal_signal_gain: float = 0.40
+    goal_min_relief: float = 0.01
+    goal_min_start_urgency: float = 0.20
+    goal_success_progress: float = 0.45
+    goal_max_age_seconds: float = 900.0
+    goal_max_steps: int = 12
+    goal_max_failed_steps: int = 3
     action_policy_enabled: bool = True
     action_policy_lr: float = 0.06
     action_policy_max_bias: float = 0.55
