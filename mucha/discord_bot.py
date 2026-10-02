@@ -710,6 +710,9 @@ class MuchaClient(discord.Client):
             "memory_replay_max_age_days",
             "sleep_enabled",
             "sleep_idle_seconds",
+            "sleep_tired_idle_seconds",
+            "sleep_leave_signal_gain",
+            "sleep_force_disconnect_fatigue",
             "sleep_cycle_interval_seconds",
             "sleep_max_cycles",
             "sleep_replay_batch_size",
@@ -1312,6 +1315,15 @@ class MuchaClient(discord.Client):
             ),
             ("voice", "sleep_idle_seconds"): (
                 int, 60, 604800
+            ),
+            ("voice", "sleep_tired_idle_seconds"): (
+                int, 5, 3600
+            ),
+            ("voice", "sleep_leave_signal_gain"): (
+                float, 0.0, 4.0
+            ),
+            ("voice", "sleep_force_disconnect_fatigue"): (
+                float, 0.65, 1.0
             ),
             ("voice", "sleep_cycle_interval_seconds"): (
                 int, 5, 3600
