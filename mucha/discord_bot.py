@@ -12792,6 +12792,57 @@ class MuchaClient(discord.Client):
                     )
                 )
 
+                sleep_leave_diag = None
+                if current is not None and circadian_tired:
+                    sleep_signal = (
+                        max(
+                            0.0,
+                            min(
+                                4.0,
+                                float(
+                                    self.cfg.voice.sleep_leave_signal_gain
+                                ),
+                            ),
+                        )
+                        * (
+                            0.45
+                            + 0.55 * sleep_pressure_level
+                        )
+                    )
+                    self.brain.inject_internal_state_cue(
+                        "satiety",
+                        0.35 + 0.55 * sleep_pressure_level,
+                        key=(
+                            "circadian:sleep-prep:satiety:"
+                            f"{guild.id}"
+                        ),
+                    )
+                    sleep_leave_diag = (
+                        self.brain.inject_action_guided_signed_sensory(
+                            "voice_leave",
+                            (
+                                "circadian:sleep-prep:voice-leave:"
+                                f"{guild.id}"
+                            ),
+                            sleep_signal,
+                            width=224,
+                            hops=3,
+                        )
+                    )
+                    debug["sleep_leave_cue"] = {
+                        "magnitude": float(sleep_signal),
+                        "pressure": float(sleep_pressure_level),
+                        "mode": str(
+                            sleep_leave_diag.get("mode", "")
+                        ),
+                        "neurons": int(
+                            sleep_leave_diag.get("neurons", 0)
+                        ),
+                        "reach_max": float(
+                            sleep_leave_diag.get("reach_max", 0.0)
+                        ),
+                    }
+
                 if (
                     self.cfg.behavior.voice_dynamics_learning_enabled
                     and current is not None
@@ -12989,6 +13040,7 @@ class MuchaClient(discord.Client):
                     ),
                     can_leave=bool(
                         dwell_remaining <= 0.0
+                        or circadian_tired
                     ),
                 )
                 scores = dict(brain_decision["scores"])
@@ -13761,7 +13813,7 @@ class MuchaClient(discord.Client):
                     debug["decision"] = "SOCIAL AVOID • BŁĄD"
                     debug["reason"] = f"{type(exc).__name__}: {exc}"
 
-        if dwell_remaining > 0:
+        if dwell_remaining > 0 and not circadian_tired:
             debug["decision"] = "MOTOR REFRACTORY • STAY"
             debug["reason"] = (
                 f"move/leave fizycznie zablokowane jeszcze "
@@ -14088,7 +14140,8 @@ class MuchaClient(discord.Client):
                     return
 
         should_leave = (
-            bool(
+            bool(sleep_critical)
+            or bool(
                 connectome_voice_control
                 and brain_decision is not None
                 and brain_decision["action"] == "voice_leave"
@@ -14102,7 +14155,14 @@ class MuchaClient(discord.Client):
         if should_leave:
             old_name = getattr(current, "name", "voice")
             debug["decision"] = f"LEAVE ← {old_name}"
-            if connectome_voice_control and brain_decision is not None:
+            if sleep_critical:
+                debug["reason"] = (
+                    "CIRCADIAN SLEEP PREP • fatigue "
+                    f"{sleep_pressure['fatigue'] * 100:.0f}% ≥ "
+                    f"{sleep_pressure['force_disconnect_at'] * 100:.0f}% • "
+                    "VC disconnect is required before sleep"
+                )
+            elif connectome_voice_control and brain_decision is not None:
                 debug["reason"] = (
                     "CONNECTOME WINNER voice_leave "
                     f"{scores['voice_leave']:.3f}; "
