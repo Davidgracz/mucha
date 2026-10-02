@@ -104,6 +104,9 @@ class VoiceEpisodicMemory:
         self._episodes: deque[VoiceEpisode] = deque(
             maxlen=self.max_events
         )
+        self._autobiographical: deque[dict] = deque(
+            maxlen=max(64, self.max_events)
+        )
         self.path = (
             Path(database)
             if database is not None
@@ -3170,6 +3173,344 @@ class VoiceEpisodicMemory:
         )
         return rows[:limit]
 
+    @staticmethod
+    def _autobiographical_salience(
+        *,
+        external_effect: bool,
+        success: bool,
+        predicted_reward: float,
+        actual_reward: float,
+        prediction_error: float,
+        state: dict,
+    ) -> float:
+        goal = dict((state or {}).get("goal") or {})
+        intention = dict((state or {}).get("intention") or {})
+        affect = dict((state or {}).get("affective") or {})
+        affect_values = dict(affect.get("states") or affect.get("values") or {})
+        affect_peak = 0.0
+        for row in affect_values.values():
+            if isinstance(row, dict):
+                affect_peak = max(
+                    affect_peak,
+                    abs(float(row.get("value", row.get("level", 0.0)) or 0.0)),
+                )
+        value = (
+            0.08
+            + (0.14 if external_effect else 0.0)
+            + (0.08 if success else 0.0)
+            + 0.18 * min(1.0, abs(float(predicted_reward)))
+            + 0.24 * min(1.0, abs(float(actual_reward)))
+            + 0.18 * min(1.0, abs(float(prediction_error)))
+            + (0.06 if bool(goal.get("active")) else 0.0)
+            + (0.04 if bool(intention.get("active")) else 0.0)
+            + 0.08 * min(1.0, affect_peak)
+        )
+        return max(0.0, min(1.0, float(value)))
+
+    def record_autobiographical_event(
+        self,
+        *,
+        kind: str,
+        guild_id: int,
+        guild_name: str = "",
+        channel_id: int | None = None,
+        channel_name: str = "",
+        user_ids: list[int] | tuple[int, ...] = (),
+        user_names: list[str] | tuple[str, ...] = (),
+        action: str = "stay",
+        success: bool = True,
+        external_effect: bool = False,
+        detail: str = "",
+        decision_context: str = "",
+        predicted_reward: float = 0.0,
+        actual_reward: float = 0.0,
+        prediction_error: float = 0.0,
+        state: dict | None = None,
+        salience: float | None = None,
+        now: float | None = None,
+    ) -> dict:
+        when = float(time.time() if now is None else now)
+        normalized_users = tuple(sorted({int(x) for x in user_ids}))
+        names_in = [str(x) for x in user_names]
+        normalized_names = tuple(
+            names_in[index] if index < len(names_in) else ""
+            for index, _uid in enumerate(normalized_users)
+        )
+        state = dict(state or {})
+        salience_value = (
+            self._autobiographical_salience(
+                external_effect=bool(external_effect),
+                success=bool(success),
+                predicted_reward=float(predicted_reward),
+                actual_reward=float(actual_reward),
+                prediction_error=float(prediction_error),
+                state=state,
+            )
+            if salience is None
+            else max(0.0, min(1.0, float(salience)))
+        )
+        row = {
+            "time": when,
+            "kind": str(kind),
+            "guild_id": int(guild_id),
+            "guild_name": str(guild_name or ""),
+            "channel_id": int(channel_id) if channel_id is not None else None,
+            "channel_name": str(channel_name or ""),
+            "user_ids": list(normalized_users),
+            "user_names": list(normalized_names),
+            "action": str(action or "stay"),
+            "success": bool(success),
+            "external_effect": bool(external_effect),
+            "detail": str(detail or ""),
+            "decision_context": str(decision_context or ""),
+            "predicted_reward": float(predicted_reward),
+            "actual_reward": float(actual_reward),
+            "prediction_error": float(prediction_error),
+            "salience": float(salience_value),
+            "state": state,
+        }
+        self._autobiographical.append(dict(row))
+        if self.db is not None:
+            self.db.execute(
+                """
+                INSERT INTO autobiographical_events(
+                    created_at, kind, guild_id, guild_name,
+                    channel_id, channel_name,
+                    user_ids_json, user_names_json,
+                    action, success, external_effect, detail,
+                    decision_context, predicted_reward,
+                    actual_reward, prediction_error, salience, state_json
+                ) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+                """,
+                (
+                    when,
+                    row["kind"],
+                    row["guild_id"],
+                    row["guild_name"],
+                    row["channel_id"],
+                    row["channel_name"],
+                    json.dumps(row["user_ids"], ensure_ascii=False),
+                    json.dumps(row["user_names"], ensure_ascii=False),
+                    row["action"],
+                    1 if row["success"] else 0,
+                    1 if row["external_effect"] else 0,
+                    row["detail"],
+                    row["decision_context"],
+                    row["predicted_reward"],
+                    row["actual_reward"],
+                    row["prediction_error"],
+                    row["salience"],
+                    json.dumps(state, ensure_ascii=False, separators=(",", ":")),
+                ),
+            )
+            self.db.execute(
+                """
+                DELETE FROM autobiographical_events
+                WHERE id NOT IN (
+                    SELECT id FROM autobiographical_events
+                    ORDER BY id DESC LIMIT ?
+                )
+                """,
+                (self.max_persisted_events,),
+            )
+            self.db.commit()
+        return row
+
+    @staticmethod
+    def _autobiographical_row(row) -> dict:
+        (
+            created_at, kind, guild_id, guild_name,
+            channel_id, channel_name, user_ids_json, user_names_json,
+            action, success, external_effect, detail, decision_context,
+            predicted_reward, actual_reward, prediction_error, salience,
+            state_json,
+        ) = row
+        try:
+            user_ids = [int(x) for x in json.loads(user_ids_json or "[]")]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            user_ids = []
+        try:
+            user_names = [str(x) for x in json.loads(user_names_json or "[]")]
+        except (TypeError, ValueError, json.JSONDecodeError):
+            user_names = []
+        try:
+            state = dict(json.loads(state_json or "{}"))
+        except (TypeError, ValueError, json.JSONDecodeError):
+            state = {}
+        return {
+            "time": float(created_at),
+            "kind": str(kind or ""),
+            "guild_id": int(guild_id or 0),
+            "guild_name": str(guild_name or ""),
+            "channel_id": int(channel_id) if channel_id is not None else None,
+            "channel_name": str(channel_name or ""),
+            "user_ids": user_ids,
+            "user_names": user_names,
+            "action": str(action or "stay"),
+            "success": bool(success),
+            "external_effect": bool(external_effect),
+            "detail": str(detail or ""),
+            "decision_context": str(decision_context or ""),
+            "predicted_reward": float(predicted_reward or 0.0),
+            "actual_reward": float(actual_reward or 0.0),
+            "prediction_error": float(prediction_error or 0.0),
+            "salience": float(salience or 0.0),
+            "state": state,
+        }
+
+    def autobiographical_memories(
+        self,
+        limit: int = 48,
+        *,
+        min_salience: float = 0.0,
+    ) -> list[dict]:
+        limit = max(1, min(500, int(limit)))
+        min_salience = max(0.0, min(1.0, float(min_salience)))
+        if self.db is None:
+            rows = [
+                dict(row)
+                for row in reversed(self._autobiographical)
+                if float(row.get("salience", 0.0)) >= min_salience
+            ]
+            return rows[:limit]
+        rows = self.db.execute(
+            """
+            SELECT created_at, kind, guild_id, guild_name,
+                   channel_id, channel_name,
+                   user_ids_json, user_names_json,
+                   action, success, external_effect, detail,
+                   decision_context, predicted_reward,
+                   actual_reward, prediction_error, salience, state_json
+            FROM autobiographical_events
+            WHERE salience >= ?
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (min_salience, limit),
+        ).fetchall()
+        return [self._autobiographical_row(row) for row in rows]
+
+    def autobiographical_recall(
+        self,
+        *,
+        kind: str,
+        guild_id: int,
+        channel_id: int | None = None,
+        user_ids: list[int] | tuple[int, ...] = (),
+        goal_motivation: str | None = None,
+        intention_action: str | None = None,
+        limit: int = 6,
+        now: float | None = None,
+    ) -> dict:
+        now_value = float(time.time() if now is None else now)
+        current_users = {int(x) for x in user_ids}
+        goal_motivation = str(goal_motivation or "")
+        intention_action = str(intention_action or "")
+        candidates = self.autobiographical_memories(320, min_salience=0.08)
+        ranked = []
+        for memory in candidates:
+            score = 0.0
+            if int(memory.get("guild_id", 0)) == int(guild_id):
+                score += 0.12
+            if str(memory.get("kind", "")) == str(kind):
+                score += 0.18
+            mem_channel = memory.get("channel_id")
+            if channel_id is not None and mem_channel is not None:
+                if int(mem_channel) == int(channel_id):
+                    score += 0.18
+            mem_users = {int(x) for x in memory.get("user_ids", [])}
+            if current_users and mem_users:
+                union = current_users | mem_users
+                if union:
+                    score += 0.28 * (len(current_users & mem_users) / len(union))
+            state = dict(memory.get("state") or {})
+            goal = dict(state.get("goal") or {})
+            intent = dict(state.get("intention") or {})
+            if (
+                goal_motivation
+                and str(goal.get("motivation") or "") == goal_motivation
+            ):
+                score += 0.14
+            if (
+                intention_action
+                and str(intent.get("action") or "") == intention_action
+            ):
+                score += 0.10
+            age_days = max(
+                0.0,
+                (now_value - float(memory.get("time", 0.0))) / 86400.0,
+            )
+            recency = math.exp(-math.log(2.0) * age_days / 30.0)
+            similarity = max(0.0, min(1.0, score))
+            strength = (
+                similarity
+                * (0.35 + 0.65 * float(memory.get("salience", 0.0)))
+                * (0.55 + 0.45 * recency)
+            )
+            if strength <= 0.02:
+                continue
+            item = dict(memory)
+            item["similarity"] = float(similarity)
+            item["recency"] = float(recency)
+            item["recall_strength"] = float(strength)
+            ranked.append(item)
+        ranked.sort(
+            key=lambda row: (
+                float(row["recall_strength"]),
+                float(row["salience"]),
+                float(row["time"]),
+            ),
+            reverse=True,
+        )
+        recalled = ranked[: max(1, min(24, int(limit)))]
+        action_signals: dict[str, float] = {}
+        for memory in recalled:
+            action = str(memory.get("action") or "")
+            if not action:
+                continue
+            actual = float(memory.get("actual_reward", 0.0))
+            error = float(memory.get("prediction_error", 0.0))
+            outcome = actual if abs(actual) > 1e-6 else error
+            if abs(outcome) <= 1e-6:
+                outcome = (
+                    0.12
+                    if bool(memory.get("success"))
+                    and bool(memory.get("external_effect"))
+                    else 0.0
+                )
+            contribution = (
+                float(memory["recall_strength"])
+                * max(-1.0, min(1.0, outcome))
+            )
+            action_signals[action] = (
+                action_signals.get(action, 0.0) + contribution
+            )
+        return {
+            "query": {
+                "kind": str(kind),
+                "guild_id": int(guild_id),
+                "channel_id": (
+                    int(channel_id)
+                    if channel_id is not None
+                    else None
+                ),
+                "user_ids": sorted(current_users),
+                "goal_motivation": goal_motivation or None,
+                "intention_action": intention_action or None,
+            },
+            "memories": recalled,
+            "action_signals": {
+                action: max(-1.0, min(1.0, float(value)))
+                for action, value in action_signals.items()
+            },
+            "count": len(recalled),
+            "method": (
+                "context/person/place/goal similarity × salience × recency "
+                "-> signed remembered outcome; caller may re-enter only "
+                "through sensory guidance"
+            ),
+        }
+
     def _create_schema(self) -> None:
         assert self.db is not None
         self.db.executescript(
@@ -3206,6 +3547,34 @@ class VoiceEpisodicMemory:
 
             CREATE INDEX IF NOT EXISTS idx_voice_episodes_scene
             ON voice_episodes(scene_key, action, created_at DESC);
+
+            CREATE TABLE IF NOT EXISTS autobiographical_events(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                created_at REAL NOT NULL,
+                kind TEXT NOT NULL DEFAULT '',
+                guild_id INTEGER NOT NULL DEFAULT 0,
+                guild_name TEXT NOT NULL DEFAULT '',
+                channel_id INTEGER,
+                channel_name TEXT NOT NULL DEFAULT '',
+                user_ids_json TEXT NOT NULL DEFAULT '[]',
+                user_names_json TEXT NOT NULL DEFAULT '[]',
+                action TEXT NOT NULL DEFAULT 'stay',
+                success INTEGER NOT NULL DEFAULT 0,
+                external_effect INTEGER NOT NULL DEFAULT 0,
+                detail TEXT NOT NULL DEFAULT '',
+                decision_context TEXT NOT NULL DEFAULT '',
+                predicted_reward REAL NOT NULL DEFAULT 0,
+                actual_reward REAL NOT NULL DEFAULT 0,
+                prediction_error REAL NOT NULL DEFAULT 0,
+                salience REAL NOT NULL DEFAULT 0,
+                state_json TEXT NOT NULL DEFAULT '{}'
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_autobiographical_time
+            ON autobiographical_events(created_at DESC);
+
+            CREATE INDEX IF NOT EXISTS idx_autobiographical_context
+            ON autobiographical_events(kind, channel_id, created_at DESC);
 
             CREATE TABLE IF NOT EXISTS voice_memory_consolidation(
                 scene_key TEXT NOT NULL,
@@ -4450,7 +4819,13 @@ class VoiceEpisodicMemory:
         )
         person_history_events = 0
         channel_history_events = 0
+        autobiographical_events = len(self._autobiographical)
         if self.db is not None:
+            autobiographical_events = int(
+                self.db.execute(
+                    "SELECT COUNT(*) FROM autobiographical_events"
+                ).fetchone()[0]
+            )
             person_history_events = int(
                 self.db.execute(
                     "SELECT COUNT(*) FROM person_interaction_history"
@@ -4478,12 +4853,14 @@ class VoiceEpisodicMemory:
             "semantic_entries": int(len(self._semantic)),
             "person_history_events": person_history_events,
             "channel_history_events": channel_history_events,
+            "autobiographical_events": int(autobiographical_events),
             "semantic_recall_min_observations": int(
                 self.semantic_recall_min_observations
             ),
             "top_semantics": self.semantic_summary(16),
             "forgetting": dict(self._last_forgetting_diag),
             "top_memories": self.consolidation_summary(12),
+            "autobiographical_recent": self.autobiographical_memories(12),
             "recent": self.recent(12),
         }
 
