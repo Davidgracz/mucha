@@ -11246,6 +11246,22 @@ class MuchaClient(discord.Client):
             )
             self.brain.step(1)
             if self.cfg.behavior.one_brain_enabled:
+                tts_people = [
+                    member
+                    for member in getattr(vc.channel, "members", [])
+                    if not member.bot
+                ]
+                tts_autobiographical_recall = (
+                    self._inject_autobiographical_recall(
+                        kind="voice_tts",
+                        guild_id=int(guild.id),
+                        channel_id=int(vc.channel.id),
+                        user_ids=[
+                            int(member.id)
+                            for member in tts_people
+                        ],
+                    )
+                )
                 tts_candidate_set = self.brain.one_brain_candidate_set(
                     {
                         "stay": True,
@@ -11269,6 +11285,9 @@ class MuchaClient(discord.Client):
                         self.cfg.behavior
                         .one_brain_prediction_steps
                     ),
+                )
+                tts_one_brain["autobiographical_recall"] = dict(
+                    tts_autobiographical_recall
                 )
                 tts_competition = dict(
                     tts_one_brain["competition"]
