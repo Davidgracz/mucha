@@ -301,6 +301,13 @@ class MuchaClient(discord.Client):
         self._decision_trace_history = deque(maxlen=48)
         self._decision_trace_seq = 0
         self._decision_trace_last_key: tuple | None = None
+        self._autobiographical_debug: dict = {
+            "enabled": bool(
+                cfg.voice.autobiographical_memory_enabled
+            ),
+            "last_recall": {},
+            "last_recorded": {},
+        }
         self._autonomous_candidate_debug: dict = {
             "stage": "24D",
             "updated_at": 0.0,
@@ -723,6 +730,10 @@ class MuchaClient(discord.Client):
             "episodic_forgetting_half_life_days",
             "episodic_forgetting_interval_seconds",
             "episodic_consolidated_threshold",
+            "autobiographical_memory_enabled",
+            "autobiographical_recall_magnitude",
+            "autobiographical_min_salience",
+            "autobiographical_recall_limit",
             "semantic_memory_enabled",
             "semantic_recall_min_observations",
             "semantic_recall_magnitude",
@@ -1354,6 +1365,18 @@ class MuchaClient(discord.Client):
             ),
             ("voice", "episodic_consolidated_threshold"): (
                 float, 0.0, 1.0
+            ),
+            ("voice", "autobiographical_memory_enabled"): (
+                bool, None, None
+            ),
+            ("voice", "autobiographical_recall_magnitude"): (
+                float, 0.0, 2.0
+            ),
+            ("voice", "autobiographical_min_salience"): (
+                float, 0.0, 1.0
+            ),
+            ("voice", "autobiographical_recall_limit"): (
+                int, 1, 24
             ),
             ("voice", "semantic_memory_enabled"): (
                 bool, None, None
