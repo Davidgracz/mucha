@@ -210,6 +210,10 @@ class VoiceConfig:
     episodic_forgetting_half_life_days: float = 14.0
     episodic_forgetting_interval_seconds: int = 300
     episodic_consolidated_threshold: float = 0.35
+    autobiographical_memory_enabled: bool = True
+    autobiographical_recall_magnitude: float = 0.55
+    autobiographical_min_salience: float = 0.10
+    autobiographical_recall_limit: int = 6
     semantic_memory_enabled: bool = True
     semantic_recall_min_observations: int = 2
     semantic_recall_magnitude: float = 0.85
