@@ -1725,6 +1725,10 @@ def main():
         assert "sleep_steps_multiplier" in CONFIG_HTML
         assert "episodic_consolidation_gain" in CONFIG_HTML
         assert "episodic_forgetting_half_life_days" in CONFIG_HTML
+        assert "autobiographical_memory_enabled" in CONFIG_HTML
+        assert "autobiographical_recall_magnitude" in CONFIG_HTML
+        assert "autobiographical_min_salience" in CONFIG_HTML
+        assert "autobiographical_recall_limit" in CONFIG_HTML
         assert "semantic_memory_enabled" in CONFIG_HTML
         assert "semantic_recall_min_observations" in CONFIG_HTML
         assert "semantic_recall_magnitude" in CONFIG_HTML
@@ -1759,6 +1763,11 @@ def main():
         assert "renderVoiceDynamicsProfiles" in HTML
         assert 'id="voice-dynamics-grid"' in HTML
         assert "voice-dynamics-memory" in HTML
+        assert "Autobiographical Memory / Stage 36" in AUTONOMY_HTML
+        assert 'id="autobio-list"' in AUTONOMY_HTML
+        assert 'id="autobio-cues"' in AUTONOMY_HTML
+        assert "function renderAutobiography" in AUTONOMY_HTML
+        assert "36 • Autobiography" in AUTONOMY_HTML
         assert "Target selection" in HTML
         assert "Learning timing" in HTML
         assert "Target score" in HTML
