@@ -11348,12 +11348,17 @@ class MuchaClient(discord.Client):
                         float(self.cfg.voice.minimum_dwell_seconds),
                         float(self.cfg.voice.maximum_dwell_seconds),
                     )
+                    sleep_pressure = self._sleep_pressure_snapshot(now)
                     emergency = bool(
                         self._is_voice_guild_blocked(guild)
                         or self._chaser_panic_remaining(guild.id, now) > 0.0
                         or (
                             current is not None
                             and now - arrived >= maximum_dwell
+                        )
+                        or (
+                            current is not None
+                            and bool(sleep_pressure["tired"])
                         )
                     )
                     run_legacy_decision = emergency
@@ -11424,6 +11429,10 @@ class MuchaClient(discord.Client):
         connectome_voice_control = bool(
             self.cfg.voice.connectome_voice_control_enabled
         )
+        sleep_pressure = self._sleep_pressure_snapshot(now)
+        circadian_tired = bool(sleep_pressure["tired"])
+        sleep_critical = bool(sleep_pressure["critical"])
+        sleep_pressure_level = float(sleep_pressure["pressure"])
 
         if self._is_voice_guild_blocked(guild):
             if vc is not None and vc.is_connected():
@@ -11504,6 +11513,13 @@ class MuchaClient(discord.Client):
             "move_threshold": self.cfg.voice.move_threshold,
             "leave_threshold": self.cfg.voice.leave_threshold,
             "move_margin": self.cfg.voice.move_margin,
+            "circadian_tired": circadian_tired,
+            "sleep_pressure": sleep_pressure_level,
+            "sleep_critical": sleep_critical,
+            "fatigue": float(sleep_pressure["fatigue"]),
+            "sleep_force_disconnect_at": float(
+                sleep_pressure["force_disconnect_at"]
+            ),
             "minimum_dwell_seconds": self.cfg.voice.minimum_dwell_seconds,
             "maximum_dwell_seconds": self.cfg.voice.maximum_dwell_seconds,
             "dwell_elapsed": (
