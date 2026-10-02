@@ -197,6 +197,9 @@ class VoiceConfig:
     memory_replay_max_age_days: int = 14
     sleep_enabled: bool = True
     sleep_idle_seconds: int = 900
+    sleep_tired_idle_seconds: int = 30
+    sleep_leave_signal_gain: float = 1.75
+    sleep_force_disconnect_fatigue: float = 0.98
     sleep_cycle_interval_seconds: int = 15
     sleep_max_cycles: int = 8
     sleep_replay_batch_size: int = 4
