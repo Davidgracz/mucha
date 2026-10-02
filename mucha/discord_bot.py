@@ -8161,6 +8161,10 @@ class MuchaClient(discord.Client):
         external_effect: bool,
         success: bool,
         detail: str,
+        channel_id: int | None = None,
+        channel_name: str = "",
+        user_ids: list[int] | tuple[int, ...] = (),
+        user_names: list[str] | tuple[str, ...] = (),
     ) -> None:
         """Store one compact cross-modal One Brain decision."""
         if decision is None:
@@ -8232,6 +8236,25 @@ class MuchaClient(discord.Client):
             "last": dict(entry),
             "updated_at": float(entry["time"]),
         }
+        self._record_autobiographical_event(
+            kind=str(kind),
+            guild_id=int(guild_id),
+            guild_name=str(guild_name),
+            channel_id=channel_id,
+            channel_name=str(channel_name),
+            user_ids=user_ids,
+            user_names=user_names,
+            action=str(decision.get("action", "stay")),
+            success=bool(success),
+            external_effect=bool(external_effect),
+            detail=str(detail),
+            decision_context=str(
+                decision.get("decision_context", kind)
+            ),
+            predicted_reward=float(
+                decision.get("predicted_reward", 0.0)
+            ),
+        )
 
     def _remember_autonomous_execution(
         self,
