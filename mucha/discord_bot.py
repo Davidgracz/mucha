@@ -8603,6 +8603,22 @@ class MuchaClient(discord.Client):
                         ),
                     )
 
+                autobiographical_recall = (
+                    self._inject_autobiographical_recall(
+                        kind="autonomy",
+                        guild_id=int(selected_plan["guild_id"]),
+                        channel_id=selected_plan.get(
+                            "current_voice_id"
+                        ),
+                        user_ids=list(
+                            selected_plan.get(
+                                "prediction_user_ids",
+                                [],
+                            )
+                        ),
+                    )
+                )
+
                 autonomous_decision = (
                     self.brain.autonomous_action_decision(
                         selected_plan["candidate_set"],
@@ -8625,6 +8641,9 @@ class MuchaClient(discord.Client):
                             )
                         ),
                     )
+                )
+                autonomous_decision["autobiographical_recall"] = dict(
+                    autobiographical_recall
                 )
                 autonomous_trace = self.brain.capture_learning_trace()
                 selected_plan["candidate_set"][
