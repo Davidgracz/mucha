@@ -6443,7 +6443,8 @@ class MuchaClient(discord.Client):
             1,
             int(self.cfg.voice.sleep_max_cycles),
         )
-        circadian = self._circadian_snapshot(now)
+        sleep_pressure = self._sleep_pressure_snapshot(now)
+        circadian = sleep_pressure["circadian"]
         self._sleep_debug.update({
             "enabled": enabled,
             "active": bool(self._sleep_active),
@@ -6454,8 +6455,17 @@ class MuchaClient(discord.Client):
             "post_sleep_remaining": float(
                 circadian["post_sleep_remaining"]
             ),
+            "sleep_pressure": float(
+                sleep_pressure["pressure"]
+            ),
+            "sleep_critical": bool(
+                sleep_pressure["critical"]
+            ),
             "idle_required": float(
                 self.cfg.voice.sleep_idle_seconds
+            ),
+            "tired_idle_required": float(
+                self.cfg.voice.sleep_tired_idle_seconds
             ),
             "cycle": int(self._sleep_cycle),
             "max_cycles": max_cycles,
@@ -6514,9 +6524,16 @@ class MuchaClient(discord.Client):
                 })
                 return False
 
-            idle_required = max(
-                60.0,
-                float(self.cfg.voice.sleep_idle_seconds),
+            idle_required = (
+                max(
+                    5.0,
+                    float(self.cfg.voice.sleep_tired_idle_seconds),
+                )
+                if sleep_pressure["tired"]
+                else max(
+                    60.0,
+                    float(self.cfg.voice.sleep_idle_seconds),
+                )
             )
             if quiet_for < idle_required:
                 self._sleep_debug.update({
@@ -6548,7 +6565,7 @@ class MuchaClient(discord.Client):
                     * 86400.0,
                 ),
             )
-            if not candidates:
+            if not candidates and not sleep_pressure["tired"]:
                 self._sleep_debug.update({
                     "state": "WAITING",
                     "reason": "no-episodes",
@@ -6620,15 +6637,17 @@ class MuchaClient(discord.Client):
             sleep_mode=True,
         )
         self._sleep_last_cycle = now
-        if replayed:
-            self._sleep_cycle += 1
+        # A sleep cycle is still restorative even when there is currently
+        # nothing useful to replay. Replay is consolidation; sleep itself is
+        # the circadian recovery mechanism.
+        self._sleep_cycle += 1
 
         episodic_diag = self.voice_episodes.diagnostics()
         async with self._brain_lock:
             # Normal time-based pruning still runs during sleep. The actual
             # strengthening happened through replay -> reward -> plasticity.
             self.brain.consolidate_and_forget(now=time.time())
-            if replayed and bool(self.cfg.brain.circadian_enabled):
+            if bool(self.cfg.brain.circadian_enabled):
                 self.brain.register_internal_drive_event(
                     "rest",
                     intensity=1.0,
@@ -6709,7 +6728,7 @@ class MuchaClient(discord.Client):
                 f"SLEEP REPLAY • cycle {self._sleep_cycle}"
             )
 
-        if not replayed or self._sleep_cycle >= max_cycles:
+        if self._sleep_cycle >= max_cycles:
             completed_cycle = int(self._sleep_cycle)
             completed_full = completed_cycle >= max_cycles
             self._sleep_active = False
