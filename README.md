@@ -2606,3 +2606,124 @@ Na /autonomy znajduje się panel Emergent Personality / Stage 35. Każda karta p
 Panel pokazuje też dominującą cechę, ostatnią zmianę oraz aktywne sensory paths, np. SOCIABILITY → SOCIAL_NEED albo EXPRESSIVENESS → AROUSAL.
 
 W /config można zmieniać tempo uczenia i siłę neuronalnego wpływu, ale nie wpisuje się ręcznie wartości cech. Charakter ma powstawać z historii Muchy.
+
+
+---
+
+# Stage 36 — Autobiographical Memory
+
+Stage 36 zamienia rozproszone logi i modele pamięci Muchy w konkretne wspomnienia z jej własnej historii.
+
+Każdy istotny epizod może zapisać:
+
+- kiedy wydarzenie miało miejsce,
+- serwer i kanał,
+- ludzi obecnych w sytuacji,
+- akcję wybraną przez One Brain,
+- czy akcja została wykonana i czy się udała,
+- predicted reward, real reward i prediction error,
+- aktywny goal,
+- aktywną intention,
+- affective state,
+- motivation state,
+- emergent personality,
+- circadian / fatigue,
+- salience wspomnienia.
+
+Przykład:
+
+    02.10 13:20
+    ASG / Ogólny
+    Dawid, Stivi
+    VOICE_JOIN
+    goal: SOCIAL
+    intent: VOICE_JOIN
+    fatigue: 0.31
+    reward: +0.18
+    prediction error: +0.07
+    salience: 0.54
+
+## Salience
+
+Nie każdy tick staje się ważnym wspomnieniem. Salience rośnie między innymi przy:
+
+- realnym external effect,
+- sukcesie,
+- dużym reward/punish,
+- dużym prediction error,
+- aktywnym goal,
+- aktywnej intention,
+- silnym affective state.
+
+Neutralne NOOP bez znaczącego kontekstu są pomijane.
+
+## Recall podobnych sytuacji
+
+Przed decyzją One Brain wyszukuje podobne wspomnienia na podstawie:
+
+- rodzaju sytuacji,
+- serwera,
+- kanału/miejsca,
+- obecnych ludzi,
+- aktywnego goal,
+- aktywnej intention,
+- ważności wspomnienia,
+- wieku wspomnienia.
+
+Recall wylicza dla każdego wspomnienia:
+
+    similarity
+    recency
+    salience
+    remembered_outcome
+    recall_strength
+    action_contribution
+
+Przykładowo:
+
+    obecna sytuacja
+        ↓
+    podobny kanał + te same osoby + SOCIAL goal
+        ↓
+    stare VOICE_JOIN
+        ↓
+    remembered outcome +0.42
+        ↓
+    weak signed VOICE_JOIN sensory cue
+        ↓
+    FAFB propagation
+        ↓
+    normal action_competition()
+
+Autobiografia nie ustawia akcji bezpośrednio i nie dodaje prostego bonusu do score.
+
+## Persistence
+
+Wspomnienia są zapisywane w tej samej trwałej bazie SQLite co voice episodic memory:
+
+    state/voice_episodes.sqlite3
+
+Tabela:
+
+    autobiographical_events
+
+Przechowuje także pełny state snapshot w JSON, dzięki czemu po restarcie Mucha nadal ma swoją historię.
+
+## Dashboard
+
+Na /autonomy znajduje się panel:
+
+    Autobiographical Memory / Stage 36
+
+Pokazuje:
+
+- liczbę ostatnich wspomnień,
+- ile wspomnień zostało przywołanych w bieżącej decyzji,
+- siłę najlepszego recall,
+- ważność ostatniego wspomnienia,
+- sensory cues wynikające z recall,
+- timeline wspomnień.
+
+Wspomnienia użyte aktualnie przez recall są wyróżnione. Timeline pokazuje także ludzi, miejsce, akcję, outcome, salience oraz zapisany wtedy goal / intention / circadian / dominujący affect.
+
+Stage 36 korzysta z istniejącej pamięci epizodycznej, modeli osób i miejsc, ale dodaje perspektywę „co konkretnie przydarzyło się Musze”.
