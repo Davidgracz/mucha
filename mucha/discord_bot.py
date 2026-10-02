@@ -6330,9 +6330,62 @@ class MuchaClient(discord.Client):
             ),
             "method": (
                 "awake time -> persistent fatigue drive -> FAFB "
-                "SATIETY/STRESS attractors -> One Brain; sleep replay "
-                "repays fatigue and enables a short post-sleep state"
+                "SATIETY/STRESS attractors -> One Brain; sleep pressure "
+                "prepares VOICE_LEAVE, offline sleep repays fatigue and "
+                "enables a short post-sleep state"
             ),
+        }
+
+    def _sleep_pressure_snapshot(
+        self,
+        now: float | None = None,
+    ) -> dict:
+        circadian = self._circadian_snapshot(now)
+        fatigue = max(
+            0.0,
+            min(1.0, float(circadian.get("fatigue", 0.0))),
+        )
+        tired_threshold = max(
+            0.0,
+            min(
+                1.0,
+                float(circadian.get("tired_threshold", 1.0)),
+            ),
+        )
+        if fatigue < tired_threshold:
+            pressure = 0.0
+        else:
+            pressure = min(
+                1.0,
+                (fatigue - tired_threshold)
+                / max(1e-6, 1.0 - tired_threshold),
+            )
+        force_at = max(
+            tired_threshold,
+            min(
+                1.0,
+                float(
+                    self.cfg.voice.sleep_force_disconnect_fatigue
+                ),
+            ),
+        )
+        tired = bool(
+            circadian.get("enabled")
+            and fatigue >= tired_threshold
+        )
+        critical = bool(
+            self.cfg.voice.sleep_enabled
+            and tired
+            and fatigue >= force_at
+        )
+        return {
+            "circadian": circadian,
+            "fatigue": fatigue,
+            "tired_threshold": tired_threshold,
+            "tired": tired,
+            "pressure": float(pressure),
+            "force_disconnect_at": float(force_at),
+            "critical": critical,
         }
 
     def _note_external_activity(self, reason: str) -> None:
