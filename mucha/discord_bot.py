@@ -2057,6 +2057,60 @@ class MuchaClient(discord.Client):
 
         if (
             guild is not None
+            and self.cfg.voice.autobiographical_memory_enabled
+        ):
+            vc = guild.voice_client
+            memory_channel = (
+                vc.channel
+                if (
+                    vc is not None
+                    and vc.is_connected()
+                    and vc.channel is not None
+                )
+                else None
+            )
+            memory_people = [
+                member
+                for member in (
+                    getattr(memory_channel, "members", [])
+                    if memory_channel is not None
+                    else []
+                )
+                if not member.bot
+            ]
+            self._record_autobiographical_event(
+                kind="reward",
+                guild_id=int(guild.id),
+                guild_name=str(guild.name),
+                channel_id=(
+                    int(memory_channel.id)
+                    if memory_channel is not None
+                    else None
+                ),
+                channel_name=(
+                    str(memory_channel.name)
+                    if memory_channel is not None
+                    else ""
+                ),
+                user_ids=[
+                    int(member.id)
+                    for member in memory_people
+                ],
+                user_names=[
+                    str(member.display_name)
+                    for member in memory_people
+                ],
+                action=str(action or "stay"),
+                success=bool(float(amount) >= 0.0),
+                external_effect=True,
+                detail=str(source),
+                decision_context="reward-outcome",
+                actual_reward=float(amount),
+                prediction_error=float(amount),
+            )
+
+        if (
+            guild is not None
             and self.cfg.behavior.voice_dynamics_learning_enabled
             and voice_dynamics_key
             and action is not None
