@@ -5269,6 +5269,7 @@ class MuchaClient(discord.Client):
         )
         one_brain_decision = None
         one_brain_candidate_set = None
+        autobiographical_recall = None
         if self.cfg.behavior.one_brain_enabled:
             technical_reasons = {
                 "stay": "always-available-noop",
@@ -5304,6 +5305,14 @@ class MuchaClient(discord.Client):
                 ),
             }
             async with self._brain_lock:
+                autobiographical_recall = (
+                    self._inject_autobiographical_recall(
+                        kind="text",
+                        guild_id=int(message.guild.id),
+                        channel_id=int(message.channel.id),
+                        user_ids=[int(message.author.id)],
+                    )
+                )
                 one_brain_candidate_set = (
                     self.brain.one_brain_candidate_set(
                         {
@@ -5330,6 +5339,9 @@ class MuchaClient(discord.Client):
                             .one_brain_prediction_steps
                         ),
                     )
+                )
+                one_brain_decision["autobiographical_recall"] = dict(
+                    autobiographical_recall or {}
                 )
 
         self._reaction_debug = {
