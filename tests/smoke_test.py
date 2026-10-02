@@ -678,6 +678,70 @@ def main():
         assert ep["information_gain"] > 0.0
         assert episodes.size() == 1
 
+        autobiographical_state = {
+            "goal": {
+                "active": True,
+                "motivation": "social",
+            },
+            "intention": {
+                "active": True,
+                "action": "voice_join",
+            },
+            "affective": {
+                "states": {
+                    "valence": {"value": 0.6},
+                    "arousal": {"value": 0.4},
+                },
+            },
+            "motivation": {
+                "motivations": {
+                    "social": {"urgency": 0.8},
+                },
+            },
+            "personality": {
+                "dominant": "sociability",
+            },
+            "circadian": {
+                "state": "AWAKE",
+                "fatigue": 0.2,
+            },
+        }
+        autobio = episodes.record_autobiographical_event(
+            kind="autonomy",
+            guild_id=1,
+            guild_name="Smoke",
+            channel_id=555,
+            channel_name="ASG",
+            user_ids=[22, 11],
+            user_names=["Stivi", "Dawid"],
+            action="voice_join",
+            success=True,
+            external_effect=True,
+            detail="joined friends",
+            decision_context="autonomous-idle",
+            predicted_reward=0.2,
+            actual_reward=0.8,
+            prediction_error=0.6,
+            state=autobiographical_state,
+        )
+        assert autobio["user_ids"] == [11, 22]
+        assert autobio["user_names"] == ["Dawid", "Stivi"]
+        assert autobio["salience"] > 0.1
+        autobio_recall = episodes.autobiographical_recall(
+            kind="autonomy",
+            guild_id=1,
+            channel_id=555,
+            user_ids=[11, 22],
+            goal_motivation="social",
+            intention_action="voice_join",
+            limit=6,
+        )
+        assert autobio_recall["count"] >= 1
+        assert autobio_recall["memories"][0]["action"] == "voice_join"
+        assert autobio_recall["memories"][0]["remembered_outcome"] > 0.0
+        assert autobio_recall["memories"][0]["action_contribution"] > 0.0
+        assert autobio_recall["action_signals"]["voice_join"] > 0.0
+
         persistent_path = td / "voice-episodes.sqlite3"
         persistent = VoiceEpisodicMemory(
             max_events=32,
@@ -703,6 +767,24 @@ def main():
         )
         assert persisted["scene_observations"] == 1
         assert persistent.size() == 1
+        persistent_autobio = persistent.record_autobiographical_event(
+            kind="autonomy",
+            guild_id=7,
+            guild_name="Smoke persistent",
+            channel_id=555,
+            channel_name="ASG",
+            user_ids=[22, 11],
+            user_names=["Stivi", "Dawid"],
+            action="voice_move",
+            success=True,
+            external_effect=True,
+            detail="persistent autobiography",
+            predicted_reward=0.1,
+            actual_reward=0.7,
+            prediction_error=0.6,
+            state=autobiographical_state,
+        )
+        assert persistent_autobio["salience"] > 0.1
         expected_before = persistent.predict(
             "in|need=0|fatigue=1",
             "voice_move",
@@ -732,6 +814,16 @@ def main():
             "Dawid",
             "Stivi",
         }
+        restored_autobiography = restored.autobiographical_memories(
+            10,
+            min_salience=0.1,
+        )
+        assert any(
+            row["detail"] == "persistent autobiography"
+            and row["user_ids"] == [11, 22]
+            and row["user_names"] == ["Dawid", "Stivi"]
+            for row in restored_autobiography
+        )
         assert restored.diagnostics()["persistent"] is True
         semantic_before = restored.semantic_recall(
             "in|need=0|fatigue=1",
@@ -2185,6 +2277,11 @@ def main():
         assert "observe_voice_dynamics_contact" in episodic_source
         assert "observe_voice_dynamics_outcome" in episodic_source
         assert "voice_dynamics_profile" in episodic_source
+        assert "record_autobiographical_event" in episodic_source
+        assert "autobiographical_memories" in episodic_source
+        assert "autobiographical_recall" in episodic_source
+        assert "remembered_outcome" in episodic_source
+        assert "action_contribution" in episodic_source
         assert '"voice_dynamics_seen"' in episodic_source
         assert '"voice_dynamics"' in episodic_source
         assert '"channel_visit"' in episodic_source
