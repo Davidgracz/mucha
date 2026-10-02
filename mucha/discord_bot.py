@@ -8001,6 +8001,154 @@ class MuchaClient(discord.Client):
             return result
 
 
+    def _autobiographical_state_snapshot(self) -> dict:
+        return {
+            "goal": self.brain.goal_state_diagnostics(),
+            "intention": self.brain.intention_state_diagnostics(),
+            "affective": self.brain.affective_state_diagnostics(),
+            "motivation": self.brain.motivation_state_diagnostics(),
+            "personality": self.brain.personality_state_diagnostics(),
+            "circadian": self._circadian_snapshot(),
+        }
+
+    def _record_autobiographical_event(
+        self,
+        *,
+        kind: str,
+        guild_id: int,
+        guild_name: str = "",
+        channel_id: int | None = None,
+        channel_name: str = "",
+        user_ids: list[int] | tuple[int, ...] = (),
+        user_names: list[str] | tuple[str, ...] = (),
+        action: str = "stay",
+        success: bool = True,
+        external_effect: bool = False,
+        detail: str = "",
+        decision_context: str = "",
+        predicted_reward: float = 0.0,
+        actual_reward: float = 0.0,
+        prediction_error: float = 0.0,
+    ) -> dict:
+        if not self.cfg.voice.autobiographical_memory_enabled:
+            return {}
+        state = self._autobiographical_state_snapshot()
+        goal = dict(state.get("goal") or {})
+        if (
+            str(action) == "stay"
+            and not external_effect
+            and not bool(goal.get("active"))
+            and abs(float(predicted_reward)) < 0.15
+            and abs(float(actual_reward)) < 0.05
+            and abs(float(prediction_error)) < 0.05
+        ):
+            return {}
+        row = self.voice_episodes.record_autobiographical_event(
+            kind=str(kind),
+            guild_id=int(guild_id),
+            guild_name=str(guild_name),
+            channel_id=channel_id,
+            channel_name=str(channel_name),
+            user_ids=user_ids,
+            user_names=user_names,
+            action=str(action),
+            success=bool(success),
+            external_effect=bool(external_effect),
+            detail=str(detail),
+            decision_context=str(decision_context),
+            predicted_reward=float(predicted_reward),
+            actual_reward=float(actual_reward),
+            prediction_error=float(prediction_error),
+            state=state,
+        )
+        self._autobiographical_debug["last_recorded"] = dict(row)
+        return row
+
+    def _inject_autobiographical_recall(
+        self,
+        *,
+        kind: str,
+        guild_id: int,
+        channel_id: int | None = None,
+        user_ids: list[int] | tuple[int, ...] = (),
+    ) -> dict:
+        if not self.cfg.voice.autobiographical_memory_enabled:
+            return {
+                "enabled": False,
+                "memories": [],
+                "action_signals": {},
+                "injected": [],
+            }
+        goal = self.brain.goal_state_diagnostics()
+        intention = self.brain.intention_state_diagnostics()
+        recall = self.voice_episodes.autobiographical_recall(
+            kind=str(kind),
+            guild_id=int(guild_id),
+            channel_id=channel_id,
+            user_ids=user_ids,
+            goal_motivation=(
+                str(goal.get("motivation"))
+                if goal.get("active") and goal.get("motivation")
+                else None
+            ),
+            intention_action=(
+                str(intention.get("action"))
+                if intention.get("active") and intention.get("action")
+                else None
+            ),
+            limit=int(
+                self.cfg.voice.autobiographical_recall_limit
+            ),
+        )
+        gain = max(
+            0.0,
+            min(
+                2.0,
+                float(
+                    self.cfg.voice.autobiographical_recall_magnitude
+                ),
+            ),
+        )
+        injected = []
+        for action, signal in dict(
+            recall.get("action_signals", {})
+        ).items():
+            if action not in self.brain.ACTIONS:
+                continue
+            magnitude = max(
+                -1.5,
+                min(1.5, float(signal) * gain),
+            )
+            if abs(magnitude) <= 0.005:
+                continue
+            cue = self.brain.inject_action_guided_signed_sensory(
+                action,
+                (
+                    "autobiographical-recall:"
+                    f"{kind}:{guild_id}:{action}"
+                ),
+                magnitude,
+                width=192,
+                hops=3,
+            )
+            injected.append({
+                "action": str(action),
+                "signal": float(signal),
+                "magnitude": float(magnitude),
+                "cue": cue,
+            })
+        result = {
+            **recall,
+            "enabled": True,
+            "gain": float(gain),
+            "injected": injected,
+            "updated_at": time.time(),
+        }
+        self._autobiographical_debug["last_recall"] = deepcopy(
+            result
+        )
+        return result
+
     def _remember_one_brain_cycle(
         self,
         *,
