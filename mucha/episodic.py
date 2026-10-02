@@ -3230,11 +3230,22 @@ class VoiceEpisodicMemory:
         now: float | None = None,
     ) -> dict:
         when = float(time.time() if now is None else now)
-        normalized_users = tuple(sorted({int(x) for x in user_ids}))
         names_in = [str(x) for x in user_names]
+        user_name_map: dict[int, str] = {}
+        for index, raw_uid in enumerate(user_ids):
+            uid = int(raw_uid)
+            if uid <= 0:
+                continue
+            if uid not in user_name_map:
+                user_name_map[uid] = (
+                    names_in[index]
+                    if index < len(names_in)
+                    else ""
+                )
+        normalized_users = tuple(sorted(user_name_map))
         normalized_names = tuple(
-            names_in[index] if index < len(names_in) else ""
-            for index, _uid in enumerate(normalized_users)
+            user_name_map[uid]
+            for uid in normalized_users
         )
         state = dict(state or {})
         salience_value = (
@@ -3482,6 +3493,8 @@ class VoiceEpisodicMemory:
                 float(memory["recall_strength"])
                 * max(-1.0, min(1.0, outcome))
             )
+            memory["remembered_outcome"] = float(outcome)
+            memory["action_contribution"] = float(contribution)
             action_signals[action] = (
                 action_signals.get(action, 0.0) + contribution
             )
