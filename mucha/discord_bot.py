@@ -9782,6 +9782,24 @@ class MuchaClient(discord.Client):
                 list(self._one_brain_history)[-80:]
             ),
             "episodic_memory": self.voice_episodes.diagnostics(),
+            "autobiographical_memory": {
+                "enabled": bool(
+                    self.cfg.voice.autobiographical_memory_enabled
+                ),
+                "recall_magnitude": float(
+                    self.cfg.voice.autobiographical_recall_magnitude
+                ),
+                "min_salience": float(
+                    self.cfg.voice.autobiographical_min_salience
+                ),
+                "debug": deepcopy(self._autobiographical_debug),
+                "recent": self.voice_episodes.autobiographical_memories(
+                    40,
+                    min_salience=float(
+                        self.cfg.voice.autobiographical_min_salience
+                    ),
+                ),
+            },
             "memory_replay": dict(self._memory_replay_debug),
             "sleep": dict(self._sleep_debug),
             "circadian": self._circadian_snapshot(),
