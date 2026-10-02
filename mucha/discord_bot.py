@@ -5878,6 +5878,12 @@ class MuchaClient(discord.Client):
                 external_effect=ob_external,
                 success=ob_success,
                 detail=ob_detail,
+                channel_id=int(message.channel.id),
+                channel_name=str(
+                    getattr(message.channel, "name", message.channel.id)
+                ),
+                user_ids=[int(message.author.id)],
+                user_names=[str(message.author.display_name)],
             )
 
         self._remember_decision_trace(
@@ -8781,6 +8787,13 @@ class MuchaClient(discord.Client):
                         execution.get("success", False)
                     ),
                     detail=str(execution.get("detail", "")),
+                    channel_id=selected_plan.get("current_voice_id"),
+                    channel_name=str(
+                        selected_plan.get("current_voice") or ""
+                    ),
+                    user_ids=list(
+                        selected_plan.get("prediction_user_ids", [])
+                    ),
                 )
             return
 
@@ -11359,6 +11372,16 @@ class MuchaClient(discord.Client):
                         external_effect=False,
                         success=True,
                         detail="NOOP / STAY",
+                        channel_id=int(vc.channel.id),
+                        channel_name=str(channel_name),
+                        user_ids=[
+                            int(member.id)
+                            for member in tts_people
+                        ],
+                        user_names=[
+                            str(member.display_name)
+                            for member in tts_people
+                        ],
                     )
                 return
 
@@ -11522,6 +11545,16 @@ class MuchaClient(discord.Client):
                     external_effect=True,
                     success=True,
                     detail=f"TTS → {channel_name}",
+                    channel_id=int(vc.channel.id),
+                    channel_name=str(channel_name),
+                    user_ids=[
+                        int(member.id)
+                        for member in tts_people
+                    ],
+                    user_names=[
+                        str(member.display_name)
+                        for member in tts_people
+                    ],
                 )
         except Exception as exc:
             self._audio_debug.update({
