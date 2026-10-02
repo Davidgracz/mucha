@@ -1714,6 +1714,9 @@ def main():
         assert "memory_replay_max_age_days" in CONFIG_HTML
         assert "sleep_enabled" in CONFIG_HTML
         assert "sleep_idle_seconds" in CONFIG_HTML
+        assert "sleep_tired_idle_seconds" in CONFIG_HTML
+        assert "sleep_leave_signal_gain" in CONFIG_HTML
+        assert "sleep_force_disconnect_fatigue" in CONFIG_HTML
         assert "sleep_cycle_interval_seconds" in CONFIG_HTML
         assert "sleep_max_cycles" in CONFIG_HTML
         assert "sleep_replay_batch_size" in CONFIG_HTML
@@ -2125,6 +2128,13 @@ def main():
         assert "_sleep_tick" in bot_source
         assert "_note_external_activity" in bot_source
         assert "_circadian_snapshot" in bot_source
+        assert "_sleep_pressure_snapshot" in bot_source
+        assert "sleep_tired_idle_seconds" in bot_source
+        assert "sleep_leave_signal_gain" in bot_source
+        assert "sleep_force_disconnect_fatigue" in bot_source
+        assert "circadian:sleep-prep:voice-leave:" in bot_source
+        assert "or circadian_tired" in bot_source
+        assert "bool(sleep_critical)" in bot_source
         assert "circadian:post-sleep:satiety" in bot_source
         assert '"circadian": self._circadian_snapshot()' in bot_source
         assert '"affective_state": self.brain.affective_state_diagnostics()' in bot_source
