@@ -1,5 +1,7 @@
 # 🪰 Mucha
 
+📘 **Kompletny podręcznik projektu (architektura, pliki, konfiguracja, pamięć, VC, sen, Stage 1–36, naprawy i rozwój): [DOKUMENTACJA_MUCHY.md](DOKUMENTACJA_MUCHY.md)**
+
 **Mucha** to eksperymentalny autonomiczny bot Discord sterowany przez ciągły stan sieci o topologii **FlyWire FAFB v783**.
 
 Projekt nie używa ChatGPT ani innego gotowego LLM do generowania wypowiedzi. Mucha uczy się języka z wiadomości i transkrypcji, a decyzje o zachowaniu są powiązane ze stanem connectomu, pamięcią, rewardem, relacjami i wewnętrznymi stanami neuronalnymi.
