@@ -1,6 +1,6 @@
 # 🪰 Mucha
 
-📘 **Kompletny podręcznik projektu (architektura, pliki, konfiguracja, pamięć, VC, sen, Stage 1–36, naprawy i rozwój): [DOKUMENTACJA_MUCHY.md](DOKUMENTACJA_MUCHY.md)**
+📘 **Kompletny podręcznik projektu (architektura, pliki, konfiguracja, pamięć, VC, sen, rozwój do Stage 36, diagnostyka i naprawy): [DOKUMENTACJA_MUCHY.md](DOKUMENTACJA_MUCHY.md)**
 
 **Mucha** to eksperymentalny autonomiczny bot Discord sterowany przez ciągły stan sieci o topologii **FlyWire FAFB v783**.
 
